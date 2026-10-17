@@ -642,7 +642,7 @@ namespace AnonTool
                         if (m.Groups.Count >= 5 && fRule.Category == "BANNER")
                         {
                             string body = m.Groups[3].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****") return m.Value;
+                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
                             return protect(m.Groups[1].Value + m.Groups[2].Value + tok + m.Groups[4].Value);
@@ -650,7 +650,7 @@ namespace AnonTool
                         else if (m.Groups.Count >= 4)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****") return m.Value;
+                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
                             return protect(m.Groups[1].Value + tok + m.Groups[3].Value);
@@ -658,7 +658,7 @@ namespace AnonTool
                         else if (m.Groups.Count >= 3)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****") return m.Value;
+                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
                             return protect(m.Groups[1].Value + tok);

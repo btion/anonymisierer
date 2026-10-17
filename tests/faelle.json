@@ -386,5 +386,45 @@
     "erwartet": "uplink TOR-A neighbor HOST-1 site FIRMA-1 tag Rechenzentrum-Nord2",
     "netzerhaltend": true,
     "sauber": true
+  },
+  {
+    "id": "TC49",
+    "name": "HPE Comware: password/key (cipher|simple|hash), snmp-agent community, local-user, header (motd|login|shell|incoming)",
+    "eingabe": "sysname comware-core01\nheader motd %Nur fuer autorisierte Admins der Musterfirma%\nheader shell #Shell-Warnung Intern#\nlocal-user netops class manage\n password cipher $c$3$uZ8kP9mN2qL5vR7x\n password hash $h$6$SaltVal$HashVal\n password simple Klartext123!\nsnmp-agent community read cipher $c$3$ReadSec99\nsnmp-agent community write simple WriteSec88\nhwtacacs scheme tac1\n key authentication cipher $c$3$TacAuthKey1\n key simple TacSimpleKey2\ninterface Bridge-Aggregation10\n description Uplink_Core",
+    "erwartet": "sysname HOST-1\nheader motd %BANNER-1%\nheader shell #BANNER-2#\nlocal-user USER-1 class manage\n password cipher *****\n password hash *****\n password simple *****\nsnmp-agent community read cipher *****\nsnmp-agent community write simple *****\nhwtacacs scheme tac1\n key authentication cipher *****\n key simple *****\ninterface Bridge-Aggregation10\n description TEXT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC50",
+    "name": "MikroTik: interface=ether1 und name=bridge1 bleiben unverändert; name=VLAN10_Intern und interface=VLAN10_Intern erhalten denselben Platzhalter",
+    "eingabe": "/interface bridge\nadd name=bridge1\n/interface vlan\nadd interface=bridge1 name=VLAN10_Intern vlan-id=10\n/interface bridge port\nadd bridge=bridge1 interface=ether1\nadd bridge=bridge1 interface=sfp-sfpplus1\n/ip address\nadd address=10.10.10.1/24 interface=VLAN10_Intern",
+    "erwartet": "/interface bridge\nadd name=bridge1\n/interface vlan\nadd interface=bridge1 name=TEXT-1 vlan-id=10\n/interface bridge port\nadd bridge=bridge1 interface=ether1\nadd bridge=bridge1 interface=sfp-sfpplus1\n/ip address\nadd address=NET-1.H1/24 interface=TEXT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC51",
+    "name": "MikroTik: /system identity set name=... wird als Hostname (HOST-n) ersetzt, nicht als TEXT; /user add name=... als USER-n",
+    "eingabe": "/system identity\nset name=mt-core-halle4\n/system identity set name=mt-edge-nord\n/user\nadd name=tikadmin group=full password=Geheim123!\n/interface vlan\nadd interface=ether1 name=Kunden_VLAN20 vlan-id=20",
+    "erwartet": "/system identity\nset name=HOST-1\n/system identity set name=HOST-2\n/user\nadd name=USER-1 group=full password=*****\n/interface vlan\nadd interface=ether1 name=TEXT-1 vlan-id=20",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC52",
+    "name": "MikroTik: comment= mit Anführungszeichen/Leerzeichen und mehrzeiliger \\-Fortsetzung, board-name bleibt erhalten, serial-number maskiert",
+    "eingabe": "        version: 7.14.2 (stable)\n     board-name: CRS326-24G-2S+RM\n  serial-number: HE808ABC1234\n/interface ethernet\nset [ find default-name=ether1 ] comment=\"Uplink zum Hauptwerk Nord\"\nset [ find default-name=ether2 ] comment=\\\n    \"Serverraum_Rack_4_Management\"\nset [ find default-name=ether3 ] comment=Uplink_Lager\n/snmp\nset contact=\"Netzteam +49 89 12345\" enabled=yes location=\"Bau 2 Raum 104\"",
+    "erwartet": "        version: 7.14.2 (stable)\n     board-name: CRS326-24G-2S+RM\n  serial-number: SERIAL-1\n/interface ethernet\nset [ find default-name=ether1 ] comment=\"TEXT-1\"\nset [ find default-name=ether2 ] comment=\\\n    \"TEXT-2\"\nset [ find default-name=ether3 ] comment=TEXT-3\n/snmp\nset contact=\"KONTAKT-1\" enabled=yes location=\"ORT-1\"",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC53",
+    "name": "MikroTik: WireGuard public-key=/private-key=/preshared-key= als Geheimnis (*****) und DHCP-Lease host-name= als HOST-n",
+    "eingabe": "/interface wireguard\nadd listen-port=13231 name=wg_standort private-key=\"cGxhY2Vob2xkZXJfcHJpdmF0ZV9rZXlfMTIzNDU2Nzg=\"\n/interface wireguard peers\nadd interface=wg_standort public-key=\"cHVibGljX2tleV9leGFtcGxlX2Jhc2U2NF8xMjM0NTY=\" preshared-key=\"cHJlc2hhcmVkX2tleV9leGFtcGxlXzEyMzQ1Njc4OTA=\"\n/ip dhcp-server lease\nadd address=192.168.50.25 mac-address=AA:BB:CC:11:22:33 host-name=nb-mueller-01 active-host-name=\"nb-mueller-01\"",
+    "erwartet": "/interface wireguard\nadd listen-port=13231 name=TEXT-1 private-key=*****\n/interface wireguard peers\nadd interface=TEXT-1 public-key=***** preshared-key=*****\n/ip dhcp-server lease\nadd address=NET-1.H1 mac-address=MAC-1 host-name=HOST-1 active-host-name=\"HOST-1\"",
+    "netzerhaltend": true,
+    "sauber": true
   }
 ]

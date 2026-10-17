@@ -17,4 +17,4 @@ interface Ethernet1/1/10
 lldp neighbor-info 1/1/10
    Chassis ID : MAC-1
    System Name : HOST-1
-   System Description : TEXT-3
+   System Description : ArubaOS-CX FL.10.13.1020

@@ -482,8 +482,58 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   delete decryptedLegacy._loadedFormat;
   assert(JSON.stringify(decryptedLegacy) === sampleTableJson, "WebCrypto lädt alte Tabellen (100.000 Iterationen ohne iterations-Feld) weiterhin fehlerfrei");
 
+  console.log("=== 7. Prüfe HPE Comware, MikroTik & switch-sammler.ps1 Vorgaben ===");
+  // Explizite MikroTik-Prüfungen (LF + CRLF):
+  // - interface=ether1 und name=bridge1 dürfen NICHT ersetzt werden
+  // - name=VLAN10_Intern und interface=VLAN10_Intern müssen denselben Platzhalter bekommen
+  // - /system identity set name=... muss als Hostname (HOST-n) ersetzt werden, nicht als TEXT
+  for (const eol of ["\n", "\r\n"]) {
+    const label = eol === "\r\n" ? "CRLF" : "LF";
+    const mtState = new core.AnonState();
+    const mtCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+    const mtInput = [
+      "/system identity set name=mt-switch-halle1",
+      "/interface bridge add name=bridge1",
+      "/interface vlan add interface=bridge1 name=VLAN10_Intern vlan-id=10",
+      "/interface bridge port add bridge=bridge1 interface=ether1 comment=\"Port_Halle_1\"",
+      "/ip address add address=10.10.10.1/24 interface=VLAN10_Intern"
+    ].join(eol);
+    const mtAnon = core.processText(mtInput, mtCfg, mtState);
+    assert(mtAnon.includes("/system identity set name=HOST-1"), `MikroTik (${label}): /system identity set name=... wird als HOST-1 ersetzt`);
+    assert(mtAnon.includes("name=bridge1") && mtAnon.includes("interface=bridge1"), `MikroTik (${label}): name=bridge1 und interface=bridge1 bleiben unverändert`);
+    assert(mtAnon.includes("interface=ether1"), `MikroTik (${label}): interface=ether1 bleibt unverändert`);
+    assert(mtAnon.includes("comment=\"TEXT-1\"") && mtAnon.includes("name=TEXT-2") && mtAnon.includes("interface=TEXT-2"), `MikroTik (${label}): name=VLAN10_Intern und interface=VLAN10_Intern erhalten denselben Platzhalter TEXT-2`);
+
+    // HPE Comware expliziter Test (LF + CRLF)
+    const cwState = new core.AnonState();
+    const cwInput = [
+      "header login %Warnung vor unbefugtem Zugriff%",
+      "local-user comware_admin class manage",
+      " password cipher $c$3$SecretCipher123",
+      "snmp-agent community write cipher $c$3$SnmpSecret456",
+      "key simple MyTacacsKey789"
+    ].join(eol);
+    const cwAnon = core.processText(cwInput, mtCfg, cwState);
+    assert(cwAnon.includes("header login %BANNER-1%"), `HPE Comware (${label}): header login %...% wird als BANNER-1 ersetzt`);
+    assert(cwAnon.includes("local-user USER-1 class manage"), `HPE Comware (${label}): local-user <name> wird als USER-1 ersetzt`);
+    assert(cwAnon.includes("password cipher *****") && cwAnon.includes("snmp-agent community write cipher *****") && cwAnon.includes("key simple *****"), `HPE Comware (${label}): password/community/key werden mit ***** maskiert`);
+  }
+
+  // Prüfe switch-sammler.ps1 und sammler-befehle.json
+  const sammlerPs1Path = path.join(ROOT, "switch-sammler.ps1");
+  const sammlerJsonPath = path.join(ROOT, "sammler-befehle.json");
+  assert(fs.existsSync(sammlerPs1Path), "switch-sammler.ps1 existiert im Projektordner");
+  assert(fs.existsSync(sammlerJsonPath), "sammler-befehle.json existiert im Projektordner");
+  const sammlerPs1 = fs.readFileSync(sammlerPs1Path, "utf8");
+  const sammlerJson = JSON.parse(fs.readFileSync(sammlerJsonPath, "utf8"));
+  assert(sammlerPs1.includes("sitzungsModus") && sammlerPs1.includes("Split-ShellSessionOutput"), "switch-sammler.ps1 implementiert sitzungsModus (exec/shell) und Split-ShellSessionOutput");
+  assert(sammlerPs1.includes("ConvertFrom-SshPublicKey") && sammlerPs1.includes("sprungserverHostkey"), "switch-sammler.ps1 validiert vollständige SSH-Public-Keys und sprungserverHostkey (kein TOFU)");
+  assert(sammlerPs1.includes("/ip dhcp-server lease print without-paging") && sammlerPs1.includes("MitDhcpLeases"), "switch-sammler.ps1 führt MikroTik DHCP-Leases in 07_extra.txt standardmäßig abgewählt und nur per -MitDhcpLeases");
+  assert(Object.prototype.hasOwnProperty.call(sammlerJson, "abgewaehlteBefehle"), "sammler-befehle.json enthält abgewaehlteBefehle");
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);
   process.exit(failed > 0 ? 1 : 0);
 })();
+

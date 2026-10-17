@@ -48,6 +48,8 @@
       "system",
       "default",
       "local",
+      "all",
+      "none",
       "hash",
       "aes",
       "sha256",
@@ -60,6 +62,9 @@
       "SONiC",
       "Sophos",
       "FortiGate",
+      "Comware",
+      "MikroTik",
+      "RouterOS",
       "OS10",
       "AOS-CX",
       "AOS-S",
@@ -79,14 +84,15 @@
       "RSTP"
     ],
     "versionKontext": [
-      "(?i)\\b(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?\\d+(?:\\.\\d+){1,4}(?:[-._a-zA-Z0-9]+)?",
+      "(?i)\\b(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|comware|routeros|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?\\d+(?:\\.\\d+){1,4}(?:[-._a-zA-Z0-9]+)?",
       "(?i)\\b(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
       "\\b\\d{1,3}\\.\\d{1,3}\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?\\b"
     ],
     "musterRegex": [
-      "(?i)\\b(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|FortyGigE|HundredGigE|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu)\\d+(?:[/:.]\\d+)*\\b",
+      "(?i)\\b(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)\\b",
       "(?<![0-9A-Fa-f:])\\d{1,2}:\\d{2}:\\d{2}(?:[.,]\\d{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-]\\d{2}:?\\d{2}))?(?![0-9A-Fa-f:])",
-      "\\b(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)\\b"
+      "\\b(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)\\b",
+      "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)"
     ]
   },
   "pruefung": {
@@ -117,6 +123,9 @@
       "NX-OS",
       "IOS-XE",
       "SONiC",
+      "Comware",
+      "MikroTik",
+      "RouterOS",
       "SHA256",
       "AES256",
       "IKEv2",
@@ -130,7 +139,7 @@
     ],
     "erlaubtMuster": [
       "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP(?:-PRIV|-PUB|6|-6-PRIV|-6-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|(?:CORE|TOR|FW|DC|SW)-[A-Z0-9-]+)$",
-      "(?i)^(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|FortyGigE|HundredGigE|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|lag|eth|po|Gi|Te|Fa|Fo|Hu)\\d+(?:[/:.]\\d+)*$",
+      "(?i)^(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)$",
       "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}$",
       "^v?\\d+\\.\\d+\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?$"
     ]
@@ -152,6 +161,18 @@
       "name": "Aruba AOS-CX / AOS-S ciphertext, Passwörter, Keys",
       "hersteller": "Aruba",
       "suche": "(?i)(\\b(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "HPE Comware password/key (cipher|simple|hash) & snmp-agent community",
+      "hersteller": "HPE Comware",
+      "suche": "(?i)(\\b(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "MikroTik RouterOS Passwörter, Secrets, WireGuard Keys (inkl. public-key=) & PSKs",
+      "hersteller": "MikroTik",
+      "suche": "(?i)(\\b(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"[^\"]+\"|[^\\s\\r\\n]+)",
       "ersetzen": "$1*****"
     },
     {
@@ -205,9 +226,9 @@
   ],
   "freitextMuster": [
     {
-      "name": "Mehrzeilige oder einzeilige Banner (banner motd / exec / login)",
+      "name": "Mehrzeilige oder einzeilige Banner (banner/header motd, exec, login, shell, incoming)",
       "kategorie": "BANNER",
-      "suche": "(?im)^([ \\t]*banner[ \\t]+(?:motd|login|exec)[ \\t]+)([\\^#%~\"])([\\s\\S]{1,4096}?)(\\2)"
+      "suche": "(?im)^([ \\t]*(?:banner|header)[ \\t]+(?:motd|login|exec|shell|incoming)[ \\t]+)([\\^#%~\"])([\\s\\S]{1,4096}?)(\\2)"
     },
     {
       "name": "SNMP Location & System-Location (CLI)",
@@ -243,14 +264,41 @@
       "name": "LLDP / CDP System Description & Port Description",
       "kategorie": "TEXT",
       "suche": "(?im)^([ \\t]*(?:System Description|Port Description)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
+    },
+    {
+      "name": "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \\-Fortsetzung)",
+      "kategorie": "TEXT",
+      "suche": "(?i)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?\")((?:[^\"\\\\]|\\\\.|\\\\\\r?\\n)*)(\")"
+    },
+    {
+      "name": "MikroTik comment= (ohne Anführungszeichen)",
+      "kategorie": "TEXT",
+      "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)([^\"\\s\\r\\n]+)()(?=[ \\t]|\\r?$)"
+    },
+    {
+      "name": "MikroTik SNMP Location (location=)",
+      "kategorie": "ORT",
+      "suche": "(?im)(\\blocation=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
+    },
+    {
+      "name": "MikroTik SNMP Contact (contact=)",
+      "kategorie": "KONTAKT",
+      "suche": "(?im)(\\bcontact=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
+    },
+    {
+      "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
+      "kategorie": "TEXT",
+      "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)"
     }
   ],
   "seriennummerMuster": [
-    "(?i)(\\b(?:Serial[ \\t]*Number|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t]+Number|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
+    "(?i)(\\b(?:Serial[ \\t-]*Number|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+Number|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
     "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
   ],
   "benutzerMuster": [
     "(?im)(\\b(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type)|[ \\t]*(?=\\r?$))",
+    "(?im)^([ \\t]*local-user[ \\t]+)([A-Za-z0-9._-]{2,64})()(?=[ \\t]|\\r?$)",
+    "(?im)(/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))[^\\r\\n]*?(?<![A-Za-z0-9-])name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)(\\b(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
     "(?i)(\"(?:username|user_name|account_name|login_user)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._\\\\@-]{2,32})(\")",
     "(?i)(\\b(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
@@ -258,7 +306,9 @@
   "hostnamenMuster": [
     "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
     "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
-    "(?i)(\"(?:hostname|sys_name|device_name|switch_name)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
+    "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
+    "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
+    "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
     "(?i)\\b((?:rz\\d|sv|sw|tsw|back|lwl)-[A-Za-z0-9-]+)\\b"
   ]
 }

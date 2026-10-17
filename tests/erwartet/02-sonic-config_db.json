@@ -17,8 +17,8 @@
   },
   "PORT": {
     "Ethernet1/1/10": {
-      "alias": "TEXT-4",
-      "description": "TEXT-5"
+      "alias": "TEXT-3",
+      "description": "TEXT-4"
     }
   }
 }
