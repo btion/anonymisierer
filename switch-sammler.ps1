@@ -551,7 +551,7 @@ function ConvertFrom-SshPublicKey {
         throw "SICHERHEITSFEHLER ($Kontext): Nicht unterstuetzter oder ungueltiger SSH-Key-Typ '$keyType'."
     }
 
-    if ($base64Blob.Length -lt 32 -or $base64Blob -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
+    if ($base64Blob.Length -lt 32 -or $base64Blob -notmatch '^[A-Za-z0-9+/]+={0,2}\z') {
         throw "SICHERHEITSFEHLER ($Kontext): Ungueltiger Base64-Key-Blob fuer '$keyType'."
     }
 
@@ -606,7 +606,7 @@ function Format-KnownHostsEintrag {
         [hashtable]$KeyInfo
     )
     $hostFeld = $HostName.Trim()
-    if ($Port -ne 22 -and $hostFeld -notmatch '^\[.*\]:\d+$') {
+    if ($Port -ne 22 -and $hostFeld -notmatch '^\[.*\]:\d+\z') {
         $hostFeld = "[$hostFeld]:$Port"
     }
     return "$hostFeld $($KeyInfo.keyType) $($KeyInfo.base64Blob)"
@@ -647,7 +647,7 @@ function Test-SammlerHostNameOderIp {
 
     # 1. IPv6-Literal (nur Hex-Ziffern und Doppelpunkte, kein %Zone-Suffix)
     if ($Wert.IndexOf(':') -ge 0) {
-        if ($Wert -notmatch '^[0-9A-Fa-f:]{2,45}$') {
+        if ($Wert -notmatch '^[0-9A-Fa-f:]{2,45}\z') {
             throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige IPv6-Adresse '$Wert'."
         }
         $ipObj = $null
@@ -658,15 +658,15 @@ function Test-SammlerHostNameOderIp {
     }
 
     # 2. Rein numerisch mit Punkten -> muss gueltige IPv4-Adresse sein
-    if ($Wert -match '^\d+(?:\.\d+)*$') {
-        if ($Wert -notmatch '^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$') {
+    if ($Wert -match '^\d+(?:\.\d+)*\z') {
+        if ($Wert -notmatch '^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\z') {
             throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige IPv4-Adresse '$Wert'."
         }
         return $true
     }
 
-    # 3. Hostname nach Vorgabe: ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ (kein fuehrendes '-', keine Leerzeichen)
-    if ($Wert -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$' -or $Wert.EndsWith("-", [StringComparison]::Ordinal) -or $Wert.Contains("..")) {
+    # 3. Hostname nach Vorgabe: ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z (kein fuehrendes '-', keine Leerzeichen)
+    if ($Wert -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z' -or $Wert.EndsWith("-", [StringComparison]::Ordinal) -or $Wert.Contains("..")) {
         throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltiger Hostname '$Wert'."
     }
     return $true
@@ -686,8 +686,8 @@ function Test-SammlerBenutzerName {
     if ($Benutzer.StartsWith("-", [StringComparison]::Ordinal)) {
         throw "SICHERHEITSVERSTOSS ($Kontext): Benutzername '$Benutzer' beginnt mit '-' (Argument-Injection verhindert)."
     }
-    # Erlaubt: ^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}$ (fuer MikroTik optional +ct am Ende)
-    if ($Benutzer -notmatch '^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}(?:\+ct)?$') {
+    # Erlaubt: ^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}(?:\+ct)?\z (mit \z statt $ gegen abschliessendes \n)
+    if ($Benutzer -notmatch '^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}(?:\+ct)?\z') {
         throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltiger Benutzername '$Benutzer' (Argument-Injection verhindert)."
     }
     return $true
@@ -728,7 +728,7 @@ function Test-SammlerSprungserver {
     $jumpPort = 22
 
     if ($hostPortTeil.StartsWith("[", [StringComparison]::Ordinal)) {
-        if ($hostPortTeil -match '^\[([^\]]+)\](?::(\d+))?$') {
+        if ($hostPortTeil -match '^\[([^\]]+)\](?::(\d+))?\z') {
             $jumpHost = $Matches[1]
             if (-not [string]::IsNullOrEmpty($Matches[2])) {
                 $jumpPort = [int]$Matches[2]
@@ -741,7 +741,7 @@ function Test-SammlerSprungserver {
         $jumpHost = $hostPortTeil
         $jumpPort = 22
     } elseif ($hostPortTeil.IndexOf(':') -ge 0) {
-        if ($hostPortTeil -match '^([^:]+):(\d+)$') {
+        if ($hostPortTeil -match '^([^:]+):(\d+)\z') {
             $jumpHost = $Matches[1]
             $jumpPort = [int]$Matches[2]
         } else {

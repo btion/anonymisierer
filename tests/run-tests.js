@@ -624,6 +624,9 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       . "${sammlerPs1Path.replace(/\\/g, "\\\\")}" -NurFunktionenLaden
       $injCases = @(
         @{ fn = { Test-SammlerBenutzerName -Benutzer "-oProxyCommand=calc" } },
+        @{ fn = { Test-SammlerBenutzerName -Benutzer "admin\`n" } },
+        @{ fn = { Test-SammlerHostNameOderIp -Wert "sw01\`n" } },
+        @{ fn = { Test-SammlerSprungserver -Sprungserver "admin@jump01\`n" } },
         @{ fn = { Test-SammlerHostNameOderIp -Wert "-oProxyCommand=x" } },
         @{ fn = { Test-SammlerSprungserver -Sprungserver "x -oProxyCommand=y" } },
         @{ fn = { Test-SammlerHostNameOderIp -Wert "sw01 mit leerzeichen" } },
@@ -644,7 +647,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       }
     `;
     const runRes = spawnSync("pwsh", ["-NoProfile", "-Command", psTestScript], { encoding: "utf8" });
-    assert(runRes.status === 0, `Befund 2 & 3 (via pwsh): Argument-Injection-Abwehr und Temp-Datei-Lauf erfolgreich (${runRes.stderr || "ok"})`);
+    assert(runRes.status === 0, `Befund 2 & 3 (via pwsh): Argument-Injection-Abwehr (inkl. 'admin\\n') und Temp-Datei-Lauf erfolgreich (${runRes.stderr || "ok"})`);
     if (fs.existsSync(protokollPfad)) {
       const prot = JSON.parse(fs.readFileSync(protokollPfad, "utf8"));
       const expectedTempSuffix = path.join("Anon", "Temp");
@@ -659,6 +662,224 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
     fs.rmSync(tmpLocalAppData, { recursive: true, force: true });
   }
+
+  // ============================================================================
+  // 16. NEUE BEDIENFUNKTIONEN IN ANONYMISIERER.HTML (UI-Tests & Statische Prüfungen)
+  // ============================================================================
+  console.log("--- 16. Prüfe neue Bedienfunktionen (Eigene Begriffe, Vorschau-Kopieren, Tabellen-Vorschau) ---");
+
+  // 16.1 Statischer Check: Keine Verwendung von localStorage / sessionStorage / indexedDB im gesamten HTML-Code
+  const forbiddenStorageRegex = /\b(?:localStorage|sessionStorage|indexedDB)\b/i;
+  assert(
+    !forbiddenStorageRegex.test(htmlContent),
+    "Statischer Check: anonymisierer.html enthält keinerlei Verwendung von localStorage, sessionStorage oder indexedDB"
+  );
+  assert(
+    htmlContent.includes("Diese Datei enthält echte Namen – nicht weitergeben, nicht ins Repo."),
+    "UI-Hinweis: Warnhinweis 'Diese Datei enthält echte Namen – nicht weitergeben, nicht ins Repo.' ist in anonymisierer.html enthalten"
+  );
+  assert(
+    htmlContent.includes("Nicht bei Bildschirmfreigabe verwenden"),
+    "UI-Hinweis: Warnhinweis 'Nicht bei Bildschirmfreigabe verwenden' ist in anonymisierer.html enthalten"
+  );
+
+  // 16.2 Eigene Begriffe: Zusammenführung, Wirkung auf Anonymisierung, Export nur eigeneBegriffe, Validierung
+  const mergeTestRes = core.validateAndMergeEigeneBegriffe(diskRules, {
+    festeZuordnung: [
+      { original: "sw-spezial-01", placeholder: "SW-CORE-99" },
+      { original: "sw-auto-02", placeholder: "" }, // automatischer Platzhalter
+      { original: "   ", placeholder: "   " }      // leere Zeile wird ignoriert
+    ],
+    firmenUndStandorte: ["", "Klinikum-Suedstadt", "   "],
+    interneDomains: ["", "klinik-sued.local"]
+  });
+  assert(mergeTestRes.valid === true && mergeTestRes.errors.length === 0, "Eigene Begriffe: Gültige Eingaben + leere Zeilen + automatischer Platzhalter werden akzeptiert");
+  assert(mergeTestRes.mergedRules.eigeneBegriffe.festeZuordnung["sw-spezial-01"] === "SW-CORE-99", "Eigene Begriffe: Expliziter Platzhalter 'SW-CORE-99' wurde zusammengeführt");
+  const autoAssignedPh = mergeTestRes.mergedRules.eigeneBegriffe.festeZuordnung["sw-auto-02"];
+  assert(/^[A-Z0-9-]{1,32}$/.test(autoAssignedPh), `Eigene Begriffe: Automatischer Platzhalter '${autoAssignedPh}' erfüllt [A-Z0-9-]{1,32}`);
+  assert(mergeTestRes.mergedRules.eigeneBegriffe.firmenUndStandorte.includes("Klinikum-Suedstadt"), "Eigene Begriffe: firmenUndStandorte zusammengeführt");
+  assert(mergeTestRes.mergedRules.eigeneBegriffe.interneDomains.includes("klinik-sued.local"), "Eigene Begriffe: interneDomains zusammengeführt");
+
+  // Wirkung auf Anonymisierung + Prüfung (SAUBER)
+  const customCfg = core.buildEngineConfig(mergeTestRes.mergedRules, { netzerhaltend: true });
+  const customState = new core.AnonState();
+  const sampleCustomText = "hostname sw-spezial-01\nsnmp-server location Klinikum-Suedstadt\nSystem Name : sw-auto-02.klinik-sued.local\n";
+  const anonCustomText = core.processText(sampleCustomText, customCfg, customState);
+  assert(
+    anonCustomText.includes("SW-CORE-99") &&
+    anonCustomText.includes(autoAssignedPh) &&
+    !anonCustomText.includes("sw-spezial-01") &&
+    !anonCustomText.includes("sw-auto-02") &&
+    !anonCustomText.includes("Klinikum-Suedstadt") &&
+    !anonCustomText.includes("klinik-sued.local"),
+    "Eigene Begriffe Wirkung: festeZuordnung (inkl. Auto-Platzhalter), firmenUndStandorte und interneDomains greifen sofort beim Lauf"
+  );
+  const customAudit = core.auditText(anonCustomText, "test.txt", customCfg);
+  assert(customAudit.length === 0, "Eigene Begriffe Wirkung: Anonymisierter Text mit eigenen Begriffen und Auto-Platzhalter ist im Prüfmodus SAUBER");
+
+  // Export enthält NUR eigeneBegriffe
+  const exportedLocalJson = core.exportLokaleBegriffeJson({
+    festeZuordnung: [{ original: "sw-spezial-01", placeholder: "SW-CORE-99" }],
+    firmenUndStandorte: ["Klinikum-Suedstadt"],
+    interneDomains: ["klinik-sued.local"]
+  }, diskRules);
+  const parsedLocalObj = JSON.parse(exportedLocalJson);
+  assert(
+    Object.keys(parsedLocalObj).length === 1 &&
+    parsedLocalObj.eigeneBegriffe &&
+    Object.keys(parsedLocalObj.eigeneBegriffe).sort().join(",") === "festeZuordnung,firmenUndStandorte,interneDomains",
+    "Eigene Begriffe Export: anon-regeln.lokal.json enthält ausschließlich den Abschnitt 'eigeneBegriffe'"
+  );
+  const reimportedLocal = core.importLokaleBegriffeJson(exportedLocalJson);
+  assert(
+    reimportedLocal.festeZuordnung.length === 1 &&
+    reimportedLocal.festeZuordnung[0].original === "sw-spezial-01" &&
+    reimportedLocal.firmenUndStandorte[0] === "Klinikum-Suedstadt" &&
+    reimportedLocal.interneDomains[0] === "klinik-sued.local",
+    "Eigene Begriffe Import: Geladene anon-regeln.lokal.json stellt alle 3 Listen korrekt wieder her"
+  );
+
+  // Validierung lehnt ungültige Platzhalter, Duplikate und Platzhalter == echter Begriff ab
+  const invalidPhRes = core.validateAndMergeEigeneBegriffe(diskRules, {
+    festeZuordnung: [{ original: "sw-01", placeholder: "klein_und_ungueltig!" }],
+    firmenUndStandorte: [],
+    interneDomains: []
+  });
+  assert(!invalidPhRes.valid && invalidPhRes.errors.some(e => e.includes("[A-Z0-9-]{1,32}")), "Eigene Begriffe Validierung: Ungültiger Platzhalter (Kleinbuchstaben/Sonderzeichen) wird abgelehnt");
+
+  const tooLongPhRes = core.validateAndMergeEigeneBegriffe(diskRules, {
+    festeZuordnung: [{ original: "sw-01", placeholder: "A".repeat(33) }],
+    firmenUndStandorte: [],
+    interneDomains: []
+  });
+  assert(!tooLongPhRes.valid, "Eigene Begriffe Validierung: Platzhalter > 32 Zeichen wird abgelehnt");
+
+  const dupRes = core.validateAndMergeEigeneBegriffe(diskRules, {
+    festeZuordnung: [
+      { original: "sw-dup", placeholder: "SW-DUP-1" },
+      { original: "SW-DUP", placeholder: "SW-DUP-2" }
+    ],
+    firmenUndStandorte: ["FirmaA", "firmaa"],
+    interneDomains: ["dom.local", "DOM.LOCAL"]
+  });
+  assert(!dupRes.valid && dupRes.errors.length >= 3, "Eigene Begriffe Validierung: Duplikate in festeZuordnung, firmenUndStandorte und interneDomains werden gemeldet");
+
+  const collisionRes = core.validateAndMergeEigeneBegriffe(diskRules, {
+    festeZuordnung: [{ original: "sw-echt-01", placeholder: "MUSTERFIRMA" }],
+    firmenUndStandorte: ["Musterfirma"],
+    interneDomains: []
+  });
+  assert(!collisionRes.valid && collisionRes.errors.some(e => e.includes("echten Begriff")), "Eigene Begriffe Validierung: Platzhalter darf nicht mit einem echten Begriff übereinstimmen");
+
+  // 16.3 Kopierfunktion in der Vorschau (> 200 KB Testfall, Bestätigung bei Original & unsauberem Prüfstatus)
+  const copyLargeOriginal = "hostname rz1-sw-core01\n" + "X".repeat(250 * 1024); // > 200 KB
+  const copyLargeAnon = "hostname CORE-A\n" + "X".repeat(250 * 1024);
+  const previewTextTruncated = core.formatPreviewText(copyLargeAnon);
+  assert(previewTextTruncated.length < copyLargeAnon.length && previewTextTruncated.includes("VORSCHAU GEKÜRZT"), "Vorschau-Anzeige kürzt Texte > 200 KB im DOM");
+
+  const mockProcessedResults = [
+    {
+      path: "clean-large.txt",
+      originalText: copyLargeOriginal,
+      anonText: copyLargeAnon,
+      findings: []
+    },
+    {
+      path: "dirty-file.txt",
+      originalText: "secret original",
+      anonText: "anon with restfund",
+      findings: [{ datei: "dirty-file.txt", zeile: 1, kategorie: "FIRMA_STANDORT", fund: "Musterfirma" }]
+    }
+  ];
+
+  // Original kopieren: verlangt immer Bestätigung mit Echtdaten-Hinweis; bei Ablehnung kein Kopieren
+  let lastConfirmPrompt = "";
+  const origCancelled = core.preparePreviewCopy(mockProcessedResults, 0, "original", (msg) => {
+    lastConfirmPrompt = msg;
+    return false;
+  });
+  assert(
+    origCancelled.allowed === false &&
+    lastConfirmPrompt.includes("Enthält Echtdaten. Zwischenablage-Verlauf/Cloud-Sync können den Inhalt speichern."),
+    "Kopierfunktion Original: Vor dem Kopieren wird Bestätigung mit Hinweis 'Enthält Echtdaten. Zwischenablage-Verlauf/Cloud-Sync können den Inhalt speichern.' verlangt"
+  );
+
+  const origConfirmed = core.preparePreviewCopy(mockProcessedResults, 0, "original", () => true);
+  assert(
+    origConfirmed.allowed === true &&
+    origConfirmed.text === copyLargeOriginal &&
+    origConfirmed.text.length === copyLargeOriginal.length &&
+    origConfirmed.statusMessage.includes("vollständiger Inhalt kopiert ("),
+    "Kopierfunktion Original (> 200 KB): Liefert nach Bestätigung den VOLLSTÄNDIGEN ungekürzten Inhalt und Hinweis 'vollständiger Inhalt kopiert (X KB)'"
+  );
+
+  // Anonymisiert kopieren (SAUBER, > 200 KB): kopiert sofort ohne Warn-Dialog den ungekürzten Text
+  let anonCleanPromptCalled = false;
+  const anonCleanCopy = core.preparePreviewCopy(mockProcessedResults, 0, "anon", () => {
+    anonCleanPromptCalled = true;
+    return false;
+  });
+  assert(
+    anonCleanCopy.allowed === true &&
+    !anonCleanPromptCalled &&
+    anonCleanCopy.text === copyLargeAnon &&
+    anonCleanCopy.statusMessage.includes("vollständiger Inhalt kopiert ("),
+    "Kopierfunktion Anonymisiert (SAUBER, > 200 KB): Liefert ungekürzten Inhalt ohne Warnabfrage inkl. KB-Hinweis"
+  );
+
+  // Anonymisiert kopieren (nicht SAUBER): verlangt Bestätigung mit Anzahl der Treffer
+  let dirtyPromptMsg = "";
+  const anonDirtyCancelled = core.preparePreviewCopy(mockProcessedResults, 1, "anon", (msg) => {
+    dirtyPromptMsg = msg;
+    return false;
+  });
+  assert(
+    anonDirtyCancelled.allowed === false &&
+    dirtyPromptMsg.includes("nicht SAUBER") &&
+    dirtyPromptMsg.includes("1"),
+    "Kopierfunktion Anonymisiert (nicht SAUBER): Warnt mit Anzahl der Treffer und bricht ohne Bestätigung ab"
+  );
+  const anonDirtyConfirmed = core.preparePreviewCopy(mockProcessedResults, 1, "anon", () => true);
+  assert(anonDirtyConfirmed.allowed === true && anonDirtyConfirmed.text === "anon with restfund", "Kopierfunktion Anonymisiert (nicht SAUBER): Erlaubt Kopieren nach ausdrücklicher Bestätigung");
+
+  // 16.4 Vorschau der Zuordnungstabelle: Originale standardmäßig nicht im DOM, erst nach Umschalten sichtbar, Suche/Filter/Sortierung, Tab-Wechsel verdeckt wieder
+  const extractedTable = core.extractMappingTableEntries(customState);
+  assert(extractedTable.entries.length >= 3, "Tabellen-Vorschau: Einträge aus AnonState extrahiert");
+  assert(extractedTable.categoryCounts["FESTE_ZUORDNUNG"] >= 2, "Tabellen-Vorschau: Anzahl Einträge pro Kategorie berechnet");
+
+  const maskedHtml = core.renderMappingTableRowsHtml(extractedTable.entries, { showOriginals: false });
+  assert(
+    maskedHtml.includes("••••") &&
+    !maskedHtml.includes("sw-spezial-01") &&
+    !maskedHtml.includes("Klinikum-Suedstadt") &&
+    !maskedHtml.includes("klinik-sued.local"),
+    "Tabellen-Vorschau Sicherheit: Standardmäßig (showOriginals=false) sind alle Originale durch '••••' verdeckt und stehen NICHT im DOM-HTML"
+  );
+
+  const revealedHtml = core.renderMappingTableRowsHtml(extractedTable.entries, { showOriginals: true });
+  assert(
+    revealedHtml.includes("sw-spezial-01") &&
+    revealedHtml.includes("Klinikum-Suedstadt") &&
+    revealedHtml.includes("klinik-sued.local"),
+    "Tabellen-Vorschau: Erst nach Umschalten (showOriginals=true) werden die Originale im DOM gerendert"
+  );
+
+  // Suche nach Original und Platzhalter
+  const filteredByOrig = core.filterAndSortMappingEntries(extractedTable.entries, { search: "Klinikum-Suedstadt", sortBy: "placeholder", sortDir: "asc" });
+  assert(filteredByOrig.length === 1 && filteredByOrig[0].original === "Klinikum-Suedstadt", "Tabellen-Vorschau Suche: Filtert nach Originalbegriff");
+  const filteredByPh = core.filterAndSortMappingEntries(extractedTable.entries, { search: "SW-CORE-99", sortBy: "placeholder", sortDir: "asc" });
+  assert(filteredByPh.length === 1 && filteredByPh[0].placeholder === "SW-CORE-99", "Tabellen-Vorschau Suche: Filtert nach Platzhalter");
+
+  // Geladene Tabelle funktioniert ebenfalls in der Vorschau
+  const reloadedState = core.AnonState.fromJSON(customState.toJSON());
+  const extractedReloaded = core.extractMappingTableEntries(reloadedState);
+  assert(extractedReloaded.entries.length === extractedTable.entries.length, "Tabellen-Vorschau: Funktioniert identisch für geladene Zuordnungstabelle");
+
+  // Prüfe, dass Tab-Wechsel im Browser-Code maskTablePreviewOriginals() aufruft
+  assert(
+    /querySelectorAll\("nav\.tabs button"\)[\s\S]{1,400}?maskTablePreviewOriginals\(\)/.test(htmlContent),
+    "Tabellen-Vorschau Tab-Wechsel: Beim Wechsel des Reiters wird maskTablePreviewOriginals() automatisch aufgerufen"
+  );
 
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);

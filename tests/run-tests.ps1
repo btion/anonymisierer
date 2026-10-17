@@ -769,6 +769,9 @@ foreach ($eol in @("`n", "`r`n")) {
 # 7.2 Befund 2: Argument-Injection in switch-sammler.ps1 (harter Abbruch VOR Prozessstart)
 $injectionCases = @(
     @{ Name = "benutzer = '-oProxyCommand=calc'";       Call = { Test-SammlerBenutzerName -Benutzer "-oProxyCommand=calc" } },
+    @{ Name = "benutzer = 'admin`n' (\z Anker-Prüfung)"; Call = { Test-SammlerBenutzerName -Benutzer "admin`n" } },
+    @{ Name = "geraet = 'sw01`n' (\z Anker-Prüfung)";    Call = { Test-SammlerHostNameOderIp -Wert "sw01`n" } },
+    @{ Name = "sprungserver = 'admin@jump01`n' (\z)";    Call = { Test-SammlerSprungserver -Sprungserver "admin@jump01`n" } },
     @{ Name = "geraet = '-oProxyCommand=x'";            Call = { Test-SammlerHostNameOderIp -Wert "-oProxyCommand=x" } },
     @{ Name = "sprungserver = 'x -oProxyCommand=y'";    Call = { Test-SammlerSprungserver -Sprungserver "x -oProxyCommand=y" } },
     @{ Name = "geraet mit Leerzeichen";                 Call = { Test-SammlerHostNameOderIp -Wert "sw01 -oProxyCommand=calc" } },
@@ -795,11 +798,12 @@ foreach ($ic in $injectionCases) {
 # CLI-Aufrufe von switch-sammler.ps1 mit bösartigen Parametern müssen hart abbrechen (throw vor jedem Prozessstart)
 $cliInjectionRuns = @(
     @{ Desc = "CLI -Benutzer '-oProxyCommand=calc'";      Script = { & $sammlerPath -Geraete @("sw01") -Benutzer "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -Benutzer 'admin`n' (\z Anker)";       Script = { & $sammlerPath -Geraete @("sw01") -Benutzer "admin`n" -Hostkey $validHostkeyLine -TestModus } },
     @{ Desc = "CLI -Geraete '-oProxyCommand=x'";          Script = { & $sammlerPath -Geraete @("-oProxyCommand=x") -Hostkey $validHostkeyLine -TestModus } },
     @{ Desc = "CLI -Sprungserver 'x -oProxyCommand=y'";   Script = { & $sammlerPath -Geraete @("sw01") -Sprungserver "x -oProxyCommand=y" -SprungserverHostkey $validHostkeyLine -Hostkey $validHostkeyLine -TestModus } },
     @{ Desc = "CLI -Geraete mit Leerzeichen/Quotes";      Script = { & $sammlerPath -Geraete @('sw01 " -oProxyCommand=calc') -Hostkey $validHostkeyLine -TestModus } },
     @{ Desc = "CLI -SshKeyPfad '-oProxyCommand=calc'";    Script = { & $sammlerPath -Geraete @("sw01") -SshKeyPfad "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } },
-    @{ Desc = "CLI -PlinkPfad '-oProxyCommand=calc'";     Script = { & $sammlerPath -Geraete @("sw01") -PlinkPfad "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } }
+    @{ Name = "CLI -PlinkPfad '-oProxyCommand=calc'";     Desc = "CLI -PlinkPfad '-oProxyCommand=calc'"; Script = { & $sammlerPath -Geraete @("sw01") -PlinkPfad "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } }
 )
 foreach ($cr in $cliInjectionRuns) {
     $cliThrew = $false
@@ -850,6 +854,10 @@ try {
 } finally {
     $env:LOCALAPPDATA = $oldLocalAppData
 }
+
+# 7.4 Statische Prüfung für anonymisierer.html (keine Verwendung von localStorage/sessionStorage/indexedDB)
+$htmlRawContent = [System.IO.File]::ReadAllText((Join-Path $rootDir "anonymisierer.html"), [System.Text.Encoding]::UTF8)
+Assert-True (-not [regex]::IsMatch($htmlRawContent, '(?i)\b(?:localStorage|sessionStorage|indexedDB)\b')) "Statischer Check (PowerShell): anonymisierer.html enthält kein localStorage, sessionStorage oder indexedDB"
 
 # Aufräumen des temporären Testordners
 if (Test-Path -LiteralPath $tempRunRoot) { Remove-Item -LiteralPath $tempRunRoot -Recurse -Force }

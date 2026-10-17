@@ -261,6 +261,62 @@
       color: var(--muted);
       font-size: 12px;
     }
+    .warn-banner {
+      background: rgba(245, 158, 11, 0.16);
+      border: 1px solid var(--warning);
+      color: #fde68a;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .terms-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 1100px) {
+      .terms-grid { grid-template-columns: 1fr; }
+    }
+    .term-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .term-row input[type="text"] {
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    .btn-sm {
+      padding: 4px 9px;
+      font-size: 12px;
+    }
+    .preview-col-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .copy-feedback {
+      font-size: 12px;
+      color: var(--success);
+      font-weight: 600;
+    }
+    th.sortable-th {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable-th:hover {
+      color: var(--primary);
+    }
+    td.masked-original {
+      color: var(--muted);
+      letter-spacing: 2px;
+      font-family: var(--mono);
+    }
   </style>
 </head>
 <body>
@@ -269,12 +325,12 @@
       <span>Netzwerk-Anonymisierer</span>
       <span class="badge-offline">100 % Offline &bull; CSP-geschützt &bull; Nur RAM</span>
     </h1>
-    <div class="small-muted">Aruba &bull; SONiC &bull; Dell OS10 &bull; Cisco &bull; FortiGate &bull; Sophos &bull; Syslog &bull; Windows Eventlog</div>
+    <div class="small-muted">Aruba &bull; SONiC &bull; Dell OS10 &bull; Comware &bull; MikroTik &bull; Cisco &bull; FortiGate &bull; Sophos</div>
   </header>
 
   <nav class="tabs">
     <button class="active" data-tab="tab-anon">1. Anonymisieren &amp; Prüfen</button>
-    <button data-tab="tab-regeln">2. Regeldatei (JSON)</button>
+    <button data-tab="tab-regeln">2. Regeldatei &amp; Eigene Begriffe</button>
     <button data-tab="tab-tabelle">3. Zuordnungstabelle (AES-GCM)</button>
     <button data-tab="tab-zurueck">4. Rückübersetzen</button>
   </nav>
@@ -377,11 +433,23 @@
             </div>
             <div class="diff-grid">
               <div>
-                <div class="small-muted" style="margin-bottom:4px;">Originaldatei (nur lokal im RAM)</div>
+                <div class="preview-col-header">
+                  <span class="small-muted">Originaldatei (nur lokal im RAM)</span>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="copyOriginalStatus" class="copy-feedback"></span>
+                    <button type="button" class="btn-sm" id="btnCopyOriginal">Original kopieren</button>
+                  </div>
+                </div>
                 <div id="previewOriginal" class="code-box"></div>
               </div>
               <div>
-                <div class="small-muted" style="margin-bottom:4px;">Anonymisierte Ausgabe (für Weitergabe)</div>
+                <div class="preview-col-header">
+                  <span class="small-muted">Anonymisierte Ausgabe (für Weitergabe)</span>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="copyAnonStatus" class="copy-feedback"></span>
+                    <button type="button" class="btn-sm" id="btnCopyAnon">Anonymisiert kopieren</button>
+                  </div>
+                </div>
                 <div id="previewAnon" class="code-box"></div>
               </div>
             </div>
@@ -390,12 +458,55 @@
       </div>
     </section>
 
-    <!-- TAB 2: REGELDATEI -->
+    <!-- TAB 2: REGELDATEI & EIGENE BEGRIFFE -->
     <section id="tab-regeln" class="tab-panel">
+      <div class="card" id="customTermsCard">
+        <h2>Eigene Begriffe eingeben (festeZuordnung, firmenUndStandorte, interneDomains)</h2>
+        <div class="warn-banner">
+          Warnung: Diese Datei enthält echte Namen – nicht weitergeben, nicht ins Repo.
+        </div>
+        <div class="small-muted" style="margin-bottom:10px;">
+          Eingaben werden sofort für den nächsten Lauf mit der geladenen Regeldatei zusammengeführt. Keine Speicherung im Browser – Export ausschließlich als lokale Datei <code>anon-regeln.lokal.json</code> (enthält nur den Abschnitt <code>eigeneBegriffe</code>).
+        </div>
+        <div class="btn-row" style="margin-bottom:12px;">
+          <button type="button" id="btnLoadLocalTerms">anon-regeln.lokal.json laden</button>
+          <button type="button" class="primary" id="btnDownloadLocalTerms">Als anon-regeln.lokal.json speichern</button>
+          <button type="button" id="btnClearLocalTerms" class="danger">Eigene Begriffe leeren</button>
+          <input type="file" id="inputLocalTermsFile" accept=".json" style="display:none">
+        </div>
+        <div id="customTermsValidationMsg" class="small-muted" style="margin-bottom:10px;"></div>
+        <div class="terms-grid">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>1. festeZuordnung (Original &rarr; Platzhalter)</strong>
+              <button type="button" class="btn-sm" id="btnAddFesteRow">+ Zeile</button>
+            </div>
+            <div class="small-muted" style="margin-bottom:6px;">Platzhalter optional (nur <code>[A-Z0-9-]{1,32}</code>), sonst automatisch.</div>
+            <div id="festeZuordnungRows" style="max-height:260px; overflow:auto;"></div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>2. firmenUndStandorte</strong>
+              <button type="button" class="btn-sm" id="btnAddFirmaRow">+ Zeile</button>
+            </div>
+            <div class="small-muted" style="margin-bottom:6px;">Ein Begriff (Firma, Standort, Personenname) pro Zeile.</div>
+            <div id="firmenUndStandorteRows" style="max-height:260px; overflow:auto;"></div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>3. interneDomains</strong>
+              <button type="button" class="btn-sm" id="btnAddDomainRow">+ Zeile</button>
+            </div>
+            <div class="small-muted" style="margin-bottom:6px;">Eine interne Domain pro Zeile (z. B. <code>intern.firma.de</code>).</div>
+            <div id="interneDomainsRows" style="max-height:260px; overflow:auto;"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Regeldatei (anon-regeln.json) bearbeiten, laden oder speichern</h2>
         <div class="small-muted" style="margin-bottom:10px;">
-          Diese JSON-Struktur ist zu 100 % kompatibel mit <code>anon.ps1</code>. Optional kann die Regeldatei (enthält keine Geheimnisse) im Browser gemerkt werden.
+          Diese JSON-Struktur ist zu 100 % kompatibel mit <code>anon.ps1</code>. Es findet keinerlei Speicherung im Browser statt.
         </div>
         <div class="btn-row" style="margin-bottom:10px;">
           <button type="button" id="btnLoadRulesFile">anon-regeln.json von Festplatte laden</button>
@@ -404,7 +515,7 @@
           <button type="button" id="btnResetRules">Standardregeln wiederherstellen</button>
           <input type="file" id="inputRulesFile" accept=".json" style="display:none">
         </div>
-        <textarea id="rulesTextarea" rows="26" spellcheck="false"></textarea>
+        <textarea id="rulesTextarea" rows="22" spellcheck="false"></textarea>
         <div id="rulesStatus" class="small-muted" style="margin-top:6px;"></div>
       </div>
     </section>
@@ -425,7 +536,6 @@
             <input type="password" id="tableSavePassConfirm" placeholder="Passwort erneut eingeben..." style="margin:6px 0 10px 0;">
             <div class="btn-row">
               <button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Tabelle (.anon-tab) herunterladen</button>
-              <button type="button" id="btnExportPlainTable">Unverschlüsselt (.json, kompatibel mit anon.ps1)</button>
             </div>
             <div id="tableSaveStatus" class="small-muted" style="margin-top:8px;"></div>
           </div>
@@ -440,6 +550,35 @@
             </div>
             <div id="tableLoadStatus" class="small-muted" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
           </div>
+        </div>
+      </div>
+
+      <div class="card" id="tablePreviewCard">
+        <h2>Vorschau der Zuordnungstabelle (nur Ansicht, kein Export)</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
+            <button type="button" id="btnHideTableOriginals" style="display:none;">wieder verdecken</button>
+            <span class="small-muted" style="color:#fde68a;">Hinweis: Nicht bei Bildschirmfreigabe verwenden</span>
+          </div>
+          <div style="min-width:280px; flex:1; max-width:420px;">
+            <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original...">
+          </div>
+        </div>
+        <div id="tableCategoryCounts" class="stat-pills"></div>
+        <div style="max-height:380px; overflow:auto;">
+          <table class="report-table" id="mappingPreviewTable">
+            <thead>
+              <tr>
+                <th class="sortable-th" data-sort="category">Kategorie &#8597;</th>
+                <th class="sortable-th" data-sort="placeholder">Platzhalter &#8597;</th>
+                <th class="sortable-th" data-sort="original">Original &#8597;</th>
+              </tr>
+            </thead>
+            <tbody id="mappingPreviewTableBody">
+              <tr><td colspan="3" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -2114,6 +2253,402 @@
     return obj;
   }
 
+  const MAX_PREVIEW_CHARS = 200000; // 200 KB Vorschau-Limit im DOM verhindert Browser-Layout-Freeze bei 20-50 MB Show-Techs
+  function formatPreviewText(fullText) {
+    if (!fullText || fullText.length <= MAX_PREVIEW_CHARS) return fullText || "";
+    const totalKb = Math.round(fullText.length / 1024);
+    const shownKb = Math.round(MAX_PREVIEW_CHARS / 1024);
+    return fullText.slice(0, MAX_PREVIEW_CHARS) +
+      `\n\n================================================================================\n` +
+      `[VORSCHAU GEKÜRZT: Es werden die ersten ${shownKb} KB von insgesamt ${totalKb} KB angezeigt,\n` +
+      `damit der Browser flüssig bleibt. Im ZIP-Download ist die vollständige Datei enthalten!]\n` +
+      `================================================================================`;
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  const CUSTOM_PLACEHOLDER_REGEX = /^[A-Z0-9-]{1,32}$/;
+
+  function normalizeCustomInputRows(customInput) {
+    const inp = customInput || {};
+    let festeRows = [];
+    if (Array.isArray(inp.festeZuordnung)) {
+      festeRows = inp.festeZuordnung.map(r => ({
+        original: String(r && r.original != null ? r.original : ""),
+        placeholder: String(r && r.placeholder != null ? r.placeholder : "")
+      }));
+    } else if (inp.festeZuordnung && typeof inp.festeZuordnung === "object") {
+      for (const [orig, ph] of Object.entries(inp.festeZuordnung)) {
+        festeRows.push({ original: String(orig), placeholder: String(ph == null ? "" : ph) });
+      }
+    }
+    const rawFirmen = Array.isArray(inp.firmenUndStandorte)
+      ? inp.firmenUndStandorte
+      : (typeof inp.firmenUndStandorte === "string" ? inp.firmenUndStandorte.split(/\r?\n/) : []);
+    const rawDomains = Array.isArray(inp.interneDomains)
+      ? inp.interneDomains
+      : (typeof inp.interneDomains === "string" ? inp.interneDomains.split(/\r?\n/) : []);
+    return {
+      festeRows,
+      firmenList: rawFirmen.map(x => String(x == null ? "" : x)),
+      domainsList: rawDomains.map(x => String(x == null ? "" : x))
+    };
+  }
+
+  function validateAndMergeEigeneBegriffe(baseRules, customInput) {
+    const base = baseRules ? JSON.parse(JSON.stringify(baseRules)) : JSON.parse(JSON.stringify(DEFAULT_RULES));
+    if (!base.eigeneBegriffe || typeof base.eigeneBegriffe !== "object") {
+      base.eigeneBegriffe = { festeZuordnung: {}, firmenUndStandorte: [], interneDomains: [] };
+    }
+    if (!base.eigeneBegriffe.festeZuordnung || typeof base.eigeneBegriffe.festeZuordnung !== "object") {
+      base.eigeneBegriffe.festeZuordnung = {};
+    }
+    if (!Array.isArray(base.eigeneBegriffe.firmenUndStandorte)) {
+      base.eigeneBegriffe.firmenUndStandorte = [];
+    }
+    if (!Array.isArray(base.eigeneBegriffe.interneDomains)) {
+      base.eigeneBegriffe.interneDomains = [];
+    }
+
+    const { festeRows, firmenList, domainsList } = normalizeCustomInputRows(customInput);
+    const errors = [];
+
+    // 1. Alle echten Begriffe sammeln (aus Basisregeln + Eingabe), um Kollisionen Platzhalter <-> echter Begriff zu erkennen
+    const allRealTermsLower = new Set();
+    for (const origKey of Object.keys(base.eigeneBegriffe.festeZuordnung)) {
+      const t = origKey.trim();
+      if (t) allRealTermsLower.add(t.toLowerCase());
+    }
+    for (const f of base.eigeneBegriffe.firmenUndStandorte) {
+      const t = String(f || "").trim();
+      if (t) allRealTermsLower.add(t.toLowerCase());
+    }
+    for (const d of base.eigeneBegriffe.interneDomains) {
+      const t = String(d || "").trim();
+      if (t) allRealTermsLower.add(t.toLowerCase());
+    }
+
+    const nonEmptyFeste = [];
+    for (let i = 0; i < festeRows.length; i++) {
+      const origTrim = festeRows[i].original.trim();
+      const phTrim = festeRows[i].placeholder.trim();
+      if (!origTrim && !phTrim) continue; // leere Zeilen ignorieren
+      if (!origTrim && phTrim) {
+        errors.push(`festeZuordnung Zeile ${i + 1}: Originalbegriff fehlt für Platzhalter '${phTrim}'.`);
+        continue;
+      }
+      allRealTermsLower.add(origTrim.toLowerCase());
+      nonEmptyFeste.push({ origTrim, phTrim, line: i + 1 });
+    }
+
+    const cleanFirmen = [];
+    const seenFirmenLower = new Set();
+    for (let i = 0; i < firmenList.length; i++) {
+      const fTrim = firmenList[i].trim();
+      if (!fTrim) continue; // leere Zeilen ignorieren
+      const lower = fTrim.toLowerCase();
+      if (seenFirmenLower.has(lower)) {
+        errors.push(`Duplikat in firmenUndStandorte: '${fTrim}'`);
+        continue;
+      }
+      seenFirmenLower.add(lower);
+      allRealTermsLower.add(lower);
+      cleanFirmen.push(fTrim);
+    }
+
+    const cleanDomains = [];
+    const seenDomainsLower = new Set();
+    for (let i = 0; i < domainsList.length; i++) {
+      const dTrim = domainsList[i].trim();
+      if (!dTrim) continue; // leere Zeilen ignorieren
+      const lower = dTrim.toLowerCase();
+      if (seenDomainsLower.has(lower)) {
+        errors.push(`Duplikat in interneDomains: '${dTrim}'`);
+        continue;
+      }
+      seenDomainsLower.add(lower);
+      allRealTermsLower.add(lower);
+      cleanDomains.push(dTrim);
+    }
+
+    // 2. festeZuordnung validieren (Duplikate, Platzhalter-Syntax [A-Z0-9-]{1,32}, kein echter Begriff)
+    const seenOrigLower = new Set();
+    const seenExplicitPhUpper = new Set();
+    const usedPlaceholdersUpper = new Set();
+    for (const existingPh of Object.values(base.eigeneBegriffe.festeZuordnung)) {
+      const p = String(existingPh || "").trim().toUpperCase();
+      if (p) usedPlaceholdersUpper.add(p);
+    }
+    for (const item of nonEmptyFeste) {
+      if (item.phTrim) {
+        usedPlaceholdersUpper.add(item.phTrim.toUpperCase());
+      }
+    }
+
+    let autoIdx = 1;
+    const customFesteMap = {};
+    for (const item of nonEmptyFeste) {
+      const origLower = item.origTrim.toLowerCase();
+      if (seenOrigLower.has(origLower)) {
+        errors.push(`Duplikat in festeZuordnung (Original): '${item.origTrim}'`);
+        continue;
+      }
+      seenOrigLower.add(origLower);
+
+      let finalPh = item.phTrim;
+      if (finalPh) {
+        if (!CUSTOM_PLACEHOLDER_REGEX.test(finalPh)) {
+          errors.push(`Ungültiger Platzhalter '${finalPh}' für '${item.origTrim}': erlaubt sind nur [A-Z0-9-]{1,32}.`);
+          continue;
+        }
+        const phUpper = finalPh.toUpperCase();
+        if (seenExplicitPhUpper.has(phUpper)) {
+          errors.push(`Duplikat in festeZuordnung (Platzhalter): '${finalPh}'`);
+          continue;
+        }
+        seenExplicitPhUpper.add(phUpper);
+      } else {
+        while (
+          usedPlaceholdersUpper.has("SW-EIGEN-" + autoIdx) ||
+          allRealTermsLower.has(("SW-EIGEN-" + autoIdx).toLowerCase())
+        ) {
+          autoIdx++;
+        }
+        finalPh = "SW-EIGEN-" + autoIdx;
+        usedPlaceholdersUpper.add(finalPh);
+        autoIdx++;
+      }
+
+      if (allRealTermsLower.has(finalPh.toLowerCase())) {
+        errors.push(`Platzhalter '${finalPh}' darf nicht mit einem echten Begriff übereinstimmen.`);
+        continue;
+      }
+
+      customFesteMap[item.origTrim] = finalPh;
+    }
+
+    // Prüfen, ob ein neu hinzugefügter echter Begriff mit einem bestehenden Platzhalter aus baseRules kollidiert
+    for (const [baseOrig, basePh] of Object.entries(base.eigeneBegriffe.festeZuordnung)) {
+      const bp = String(basePh || "").trim();
+      if (bp && allRealTermsLower.has(bp.toLowerCase()) && ! Object.prototype.hasOwnProperty.call(customFesteMap, baseOrig)) {
+        errors.push(`Platzhalter '${bp}' darf nicht mit einem echten Begriff übereinstimmen.`);
+      }
+    }
+
+    // 3. Zusammenführen in mergedRules
+    for (const [orig, ph] of Object.entries(customFesteMap)) {
+      base.eigeneBegriffe.festeZuordnung[orig] = ph;
+    }
+
+    const existingFirmenLower = new Set(base.eigeneBegriffe.firmenUndStandorte.map(x => String(x).trim().toLowerCase()));
+    for (const f of cleanFirmen) {
+      if (!existingFirmenLower.has(f.toLowerCase())) {
+        base.eigeneBegriffe.firmenUndStandorte.push(f);
+        existingFirmenLower.add(f.toLowerCase());
+      }
+    }
+
+    const existingDomainsLower = new Set(base.eigeneBegriffe.interneDomains.map(x => String(x).trim().toLowerCase()));
+    for (const d of cleanDomains) {
+      if (!existingDomainsLower.has(d.toLowerCase())) {
+        base.eigeneBegriffe.interneDomains.push(d);
+        existingDomainsLower.add(d.toLowerCase());
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      mergedRules: base,
+      normalizedCustom: {
+        festeZuordnung: customFesteMap,
+        firmenUndStandorte: cleanFirmen,
+        interneDomains: cleanDomains
+      }
+    };
+  }
+
+  function exportLokaleBegriffeJson(customInput, baseRules) {
+    const res = validateAndMergeEigeneBegriffe(baseRules || DEFAULT_RULES, customInput);
+    if (!res.valid) {
+      throw new Error("Validierungsfehler in Eigene Begriffe: " + res.errors.join(" | "));
+    }
+    return JSON.stringify({
+      eigeneBegriffe: {
+        festeZuordnung: res.normalizedCustom.festeZuordnung,
+        firmenUndStandorte: res.normalizedCustom.firmenUndStandorte,
+        interneDomains: res.normalizedCustom.interneDomains
+      }
+    }, null, 2);
+  }
+
+  function importLokaleBegriffeJson(jsonStr) {
+    const parsed = JSON.parse(jsonStr);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Ungültiges JSON-Format für eigene Begriffe.");
+    }
+    const section = (parsed.eigeneBegriffe && typeof parsed.eigeneBegriffe === "object")
+      ? parsed.eigeneBegriffe
+      : parsed;
+    if (
+      section.festeZuordnung === undefined &&
+      section.firmenUndStandorte === undefined &&
+      section.interneDomains === undefined
+    ) {
+      throw new Error("JSON enthält keinen Abschnitt 'eigeneBegriffe'.");
+    }
+    const norm = normalizeCustomInputRows(section);
+    return {
+      festeZuordnung: norm.festeRows,
+      firmenUndStandorte: norm.firmenList.map(s => s.trim()).filter(Boolean),
+      interneDomains: norm.domainsList.map(s => s.trim()).filter(Boolean)
+    };
+  }
+
+  function preparePreviewCopy(processedResults, selectedIndex, mode, confirmFn) {
+    if (!Array.isArray(processedResults) || selectedIndex < 0 || selectedIndex >= processedResults.length) {
+      return { allowed: false, reason: "NO_FILE", statusMessage: "Keine Datei ausgewählt." };
+    }
+    const entry = processedResults[selectedIndex];
+    const isOriginal = mode === "original";
+    const fullText = isOriginal ? String(entry.originalText || "") : String(entry.anonText || "");
+    const truncated = fullText.length > MAX_PREVIEW_CHARS;
+    const kb = Math.max(1, Math.round(fullText.length / 1024));
+
+    if (isOriginal) {
+      const confirmMessage = "Enthält Echtdaten. Zwischenablage-Verlauf/Cloud-Sync können den Inhalt speichern.\n\nOriginaldaten wirklich in die Zwischenablage kopieren?";
+      const confirmed = typeof confirmFn === "function" ? Boolean(confirmFn(confirmMessage)) : false;
+      if (!confirmed) {
+        return { allowed: false, confirmed: false, confirmMessage, statusMessage: "Kopieren abgebrochen." };
+      }
+    } else {
+      const findingsCount = Array.isArray(entry.findings) ? entry.findings.length : 0;
+      if (findingsCount > 0) {
+        const confirmMessage = `Warnung: Die Prüfung für diese Datei ist nicht SAUBER (${findingsCount} Restfund(e) vorhanden).\n\nTrotzdem in die Zwischenablage kopieren?`;
+        const confirmed = typeof confirmFn === "function" ? Boolean(confirmFn(confirmMessage)) : false;
+        if (!confirmed) {
+          return { allowed: false, confirmed: false, findingsCount, confirmMessage, statusMessage: "Kopieren abgebrochen." };
+        }
+      }
+    }
+
+    const statusMessage = truncated
+      ? `vollständiger Inhalt kopiert (${kb} KB)`
+      : `Inhalt kopiert (${kb} KB)`;
+
+    return {
+      allowed: true,
+      confirmed: true,
+      text: fullText,
+      truncated,
+      kb,
+      statusMessage
+    };
+  }
+
+  function inferCategoryForMapping(placeholder, forwardPrefixMap) {
+    const upper = String(placeholder || "").toUpperCase();
+    if (forwardPrefixMap && forwardPrefixMap.has(upper)) {
+      return forwardPrefixMap.get(upper);
+    }
+    if (/^(?:NET-\d+|IP(?:-PRIV|-PUB|6|-6-PRIV|-6-PUB)?-\d+)/.test(upper)) return "IP";
+    if (/^MAC-\d+/.test(upper)) return "MAC";
+    if (/^HOST-\d+/.test(upper)) return "HOST";
+    if (/^DOMAIN-\d+/.test(upper)) return "DOMAIN";
+    if (/^USER-\d+/.test(upper)) return "USER";
+    if (/^SERIAL-\d+/.test(upper)) return "SERIAL";
+    if (/^(?:MAIL|URL)-\d+/.test(upper)) return "MAIL_URL";
+    if (/^FIRMA-\d+/.test(upper)) return "FIRMA";
+    if (/^(?:TEXT|ORT|KONTAKT|BANNER|PERSON)-\d+/.test(upper)) return "TEXT";
+    return "FESTE_ZUORDNUNG";
+  }
+
+  function extractMappingTableEntries(stateOrObj) {
+    const st = (stateOrObj instanceof AnonState) ? stateOrObj : AnonState.fromJSON(stateOrObj);
+    const forwardPrefixMap = new Map();
+    for (const [fk, token] of st.forward.entries()) {
+      const upperTok = String(token || "").toUpperCase();
+      const pipeIdx = fk.indexOf("|");
+      const rawCat = pipeIdx !== -1 ? fk.slice(0, pipeIdx).toLowerCase() : "";
+      let cat = "TEXT";
+      if (rawCat === "fixed") cat = "FESTE_ZUORDNUNG";
+      else if (rawCat === "domain") cat = "DOMAIN";
+      else if (rawCat === "firm") cat = "FIRMA";
+      else if (rawCat === "host") cat = "HOST";
+      else if (rawCat === "user") cat = "USER";
+      else if (rawCat === "serial") cat = "SERIAL";
+      else if (rawCat === "mail" || rawCat === "url") cat = "MAIL_URL";
+      else if (rawCat === "mac") cat = "MAC";
+      else if (rawCat.startsWith("ip")) cat = "IP";
+      else if (rawCat.startsWith("text")) cat = "TEXT";
+      forwardPrefixMap.set(upperTok, cat);
+    }
+
+    const entries = [];
+    const categoryCounts = {};
+    for (const [upperKey, originalVal] of st.reverse.entries()) {
+      const canonicalPlaceholder = st.reverseKeys.get(upperKey) || upperKey;
+      const category = inferCategoryForMapping(canonicalPlaceholder, forwardPrefixMap);
+      entries.push({
+        category,
+        placeholder: String(canonicalPlaceholder),
+        original: String(originalVal)
+      });
+      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    }
+
+    return { entries, categoryCounts };
+  }
+
+  function filterAndSortMappingEntries(entries, options) {
+    const opts = options || {};
+    const q = String(opts.search || "").trim().toLowerCase();
+    const sortBy = opts.sortBy || "category";
+    const sortDir = opts.sortDir === "desc" ? -1 : 1;
+
+    const filtered = (entries || []).filter(item => {
+      if (!q) return true;
+      return (
+        String(item.placeholder || "").toLowerCase().includes(q) ||
+        String(item.original || "").toLowerCase().includes(q) ||
+        String(item.category || "").toLowerCase().includes(q)
+      );
+    });
+
+    filtered.sort((a, b) => {
+      const fieldA = String(a[sortBy] != null ? a[sortBy] : a.placeholder);
+      const fieldB = String(b[sortBy] != null ? b[sortBy] : b.placeholder);
+      const cmp = fieldA.localeCompare(fieldB, "de", { numeric: true, sensitivity: "base" });
+      if (cmp !== 0) return cmp * sortDir;
+      return String(a.placeholder).localeCompare(String(b.placeholder), "de", { numeric: true, sensitivity: "base" }) * sortDir;
+    });
+
+    return filtered;
+  }
+
+  function renderMappingTableRowsHtml(entries, options) {
+    const showOriginals = Boolean(options && options.showOriginals);
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return `<tr><td colspan="3" class="small-muted">Keine Einträge vorhanden.</td></tr>`;
+    }
+    return entries.map(item => {
+      const catCell = escapeHtml(item.category);
+      const phCell = escapeHtml(item.placeholder);
+      // Wichtig: Wenn showOriginals false ist, stehen die Originale NICHT im DOM
+      const origCell = showOriginals
+        ? `<code>${escapeHtml(item.original)}</code>`
+        : `<span class="masked-val">••••</span>`;
+      return `<tr><td>${catCell}</td><td><code>${phCell}</code></td><td>${origCell}</td></tr>`;
+    }).join("");
+  }
+
   function buildReleaseZipEntries(processedResults) {
     const enc = new TextEncoder();
     // Wichtig (Befund 2): bericht.json wird NICHT ins Freigabe-ZIP gelegt, Pfade sind bereits anonymisiert.
@@ -2134,34 +2669,73 @@
     let skippedBinaryFiles = [];
     let lastReportObj = null;
 
+    // Zustand für Vorschau der Zuordnungstabelle
+    let tablePreviewShowOriginals = false;
+    let tablePreviewSortBy = "category";
+    let tablePreviewSortDir = "asc";
+
     const rulesTextarea = document.getElementById("rulesTextarea");
     rulesTextarea.value = JSON.stringify(currentRules, null, 2);
 
-    // Tab-Navigation
+    function maskTablePreviewOriginals() {
+      tablePreviewShowOriginals = false;
+      const btnShow = document.getElementById("btnShowTableOriginals");
+      const btnHide = document.getElementById("btnHideTableOriginals");
+      if (btnShow) btnShow.style.display = "";
+      if (btnHide) btnHide.style.display = "none";
+      renderTablePreviewUI();
+    }
+
+    function renderTablePreviewUI() {
+      const tbody = document.getElementById("mappingPreviewTableBody");
+      const countsEl = document.getElementById("tableCategoryCounts");
+      const searchEl = document.getElementById("tablePreviewSearch");
+      if (!tbody || !countsEl) return;
+
+      const { entries, categoryCounts } = extractMappingTableEntries(currentState);
+      countsEl.innerHTML = "";
+      const cats = Object.keys(categoryCounts).sort();
+      if (cats.length === 0) {
+        const pill = document.createElement("div");
+        pill.className = "stat-pill";
+        pill.textContent = "Gesamt: 0";
+        countsEl.appendChild(pill);
+      } else {
+        const totalPill = document.createElement("div");
+        totalPill.className = "stat-pill";
+        totalPill.textContent = `Gesamt: ${entries.length}`;
+        countsEl.appendChild(totalPill);
+        for (const c of cats) {
+          const pill = document.createElement("div");
+          pill.className = "stat-pill";
+          pill.textContent = `${c}: ${categoryCounts[c]}`;
+          countsEl.appendChild(pill);
+        }
+      }
+
+      const filtered = filterAndSortMappingEntries(entries, {
+        search: searchEl ? searchEl.value : "",
+        sortBy: tablePreviewSortBy,
+        sortDir: tablePreviewSortDir
+      });
+      tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals });
+    }
+
+    // Tab-Navigation (verdeckt beim Tab-Wechsel automatisch wieder die Originale in der Zuordnungstabelle)
     document.querySelectorAll("nav.tabs button").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
         document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
         btn.classList.add("active");
         document.getElementById(btn.dataset.tab).classList.add("active");
+        maskTablePreviewOriginals();
       });
     });
 
     function updateTableStatusUI() {
       const el = document.getElementById("tableLoadStatus");
       if (el) el.textContent = `Aktuell aktive Zuordnungen im RAM: ${currentState.reverse.size}`;
-    }
-
-    const MAX_PREVIEW_CHARS = 200000; // 200 KB Vorschau-Limit im DOM verhindert Browser-Layout-Freeze bei 20-50 MB Show-Techs
-    function formatPreviewText(fullText) {
-      if (!fullText || fullText.length <= MAX_PREVIEW_CHARS) return fullText || "";
-      const totalKb = Math.round(fullText.length / 1024);
-      const shownKb = Math.round(MAX_PREVIEW_CHARS / 1024);
-      return fullText.slice(0, MAX_PREVIEW_CHARS) +
-        `\n\n================================================================================\n` +
-        `[VORSCHAU GEKÜRZT: Es werden die ersten ${shownKb} KB von insgesamt ${totalKb} KB angezeigt,\n` +
-        `damit der Browser flüssig bleibt. Im ZIP-Download ist die vollständige Datei enthalten!]\n` +
-        `================================================================================`;
+      renderTablePreviewUI();
     }
 
     function renderPreviewForIndex(idx) {
@@ -2170,6 +2744,248 @@
         document.getElementById("previewAnon").textContent = formatPreviewText(processedResults[idx].anonText);
       }
     }
+
+    async function writeTextToClipboard(text) {
+      if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } finally {
+        ta.remove();
+      }
+    }
+
+    async function handlePreviewCopy(mode) {
+      const sel = document.getElementById("previewFileSelect");
+      const idx = sel ? parseInt(sel.value, 10) : -1;
+      const statusEl = document.getElementById(mode === "original" ? "copyOriginalStatus" : "copyAnonStatus");
+      const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg));
+      if (!prep.allowed) {
+        if (statusEl && prep.reason === "NO_FILE") {
+          statusEl.textContent = "Keine Datei geladen.";
+        }
+        return;
+      }
+      try {
+        await writeTextToClipboard(prep.text);
+        if (statusEl) {
+          statusEl.textContent = prep.statusMessage;
+          setTimeout(() => {
+            if (statusEl.textContent === prep.statusMessage) statusEl.textContent = "";
+          }, 4000);
+        }
+      } catch (err) {
+        alert("Kopieren in die Zwischenablage fehlgeschlagen: " + err.message);
+      }
+    }
+
+    document.getElementById("btnCopyOriginal").addEventListener("click", () => handlePreviewCopy("original"));
+    document.getElementById("btnCopyAnon").addEventListener("click", () => handlePreviewCopy("anon"));
+
+    // Eigene Begriffe UI-Zeilenverwaltung
+    function addFesteRowUI(originalVal = "", placeholderVal = "") {
+      const container = document.getElementById("festeZuordnungRows");
+      const row = document.createElement("div");
+      row.className = "terms-list-row feste-row";
+      const inpOrig = document.createElement("input");
+      inpOrig.type = "text";
+      inpOrig.className = "feste-orig-input";
+      inpOrig.placeholder = "Original (z. B. sw-core-01)";
+      inpOrig.value = originalVal;
+      const inpPh = document.createElement("input");
+      inpPh.type = "text";
+      inpPh.className = "feste-ph-input";
+      inpPh.placeholder = "Platzhalter (optional)";
+      inpPh.value = placeholderVal;
+      inpPh.style.maxWidth = "155px";
+      const btnDel = document.createElement("button");
+      btnDel.type = "button";
+      btnDel.className = "btn-sm danger";
+      btnDel.textContent = "×";
+      btnDel.title = "Zeile löschen";
+      btnDel.addEventListener("click", () => {
+        row.remove();
+        refreshCustomTermsValidationUI();
+      });
+      inpOrig.addEventListener("input", refreshCustomTermsValidationUI);
+      inpPh.addEventListener("input", refreshCustomTermsValidationUI);
+      row.append(inpOrig, inpPh, btnDel);
+      container.appendChild(row);
+    }
+
+    function addSimpleTermRowUI(containerId, inputClass, placeholderText, value = "") {
+      const container = document.getElementById(containerId);
+      const row = document.createElement("div");
+      row.className = "terms-list-row";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = inputClass;
+      inp.placeholder = placeholderText;
+      inp.value = value;
+      const btnDel = document.createElement("button");
+      btnDel.type = "button";
+      btnDel.className = "btn-sm danger";
+      btnDel.textContent = "×";
+      btnDel.title = "Zeile löschen";
+      btnDel.addEventListener("click", () => {
+        row.remove();
+        refreshCustomTermsValidationUI();
+      });
+      inp.addEventListener("input", refreshCustomTermsValidationUI);
+      row.append(inp, btnDel);
+      container.appendChild(row);
+    }
+
+    function readCustomTermsFromUI() {
+      const festeZuordnung = [];
+      document.querySelectorAll("#festeZuordnungRows .feste-row").forEach(row => {
+        const orig = row.querySelector(".feste-orig-input");
+        const ph = row.querySelector(".feste-ph-input");
+        festeZuordnung.push({
+          original: orig ? orig.value : "",
+          placeholder: ph ? ph.value : ""
+        });
+      });
+      const firmenUndStandorte = [];
+      document.querySelectorAll("#firmenUndStandorteRows .firma-input").forEach(inp => {
+        firmenUndStandorte.push(inp.value);
+      });
+      const interneDomains = [];
+      document.querySelectorAll("#interneDomainsRows .domain-input").forEach(inp => {
+        interneDomains.push(inp.value);
+      });
+      return { festeZuordnung, firmenUndStandorte, interneDomains };
+    }
+
+    function populateCustomTermsUI(data) {
+      const fContainer = document.getElementById("festeZuordnungRows");
+      const fiContainer = document.getElementById("firmenUndStandorteRows");
+      const dContainer = document.getElementById("interneDomainsRows");
+      fContainer.innerHTML = "";
+      fiContainer.innerHTML = "";
+      dContainer.innerHTML = "";
+
+      const norm = normalizeCustomInputRows(data || {});
+      if (norm.festeRows.length === 0) {
+        addFesteRowUI("", "");
+      } else {
+        norm.festeRows.forEach(r => addFesteRowUI(r.original, r.placeholder));
+      }
+      if (norm.firmenList.length === 0) {
+        addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "");
+      } else {
+        norm.firmenList.forEach(v => addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", v));
+      }
+      if (norm.domainsList.length === 0) {
+        addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "");
+      } else {
+        norm.domainsList.forEach(v => addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", v));
+      }
+      refreshCustomTermsValidationUI();
+    }
+
+    function refreshCustomTermsValidationUI() {
+      const msgEl = document.getElementById("customTermsValidationMsg");
+      if (!msgEl) return null;
+      let base = currentRules;
+      try {
+        base = JSON.parse(rulesTextarea.value);
+      } catch (_) {}
+      const custom = readCustomTermsFromUI();
+      const res = validateAndMergeEigeneBegriffe(base, custom);
+      if (!res.valid) {
+        msgEl.style.color = "#fca5a5";
+        msgEl.textContent = "Validierungsfehler: " + res.errors.join(" | ");
+      } else {
+        const countFeste = Object.keys(res.normalizedCustom.festeZuordnung).length;
+        const countFirmen = res.normalizedCustom.firmenUndStandorte.length;
+        const countDomains = res.normalizedCustom.interneDomains.length;
+        msgEl.style.color = "#86efac";
+        msgEl.textContent = `Eigene Begriffe gültig (${countFeste} feste Zuordnungen, ${countFirmen} Firmen/Standorte, ${countDomains} Domains) – aktiv für den nächsten Lauf.`;
+      }
+      return res;
+    }
+
+    document.getElementById("btnAddFesteRow").addEventListener("click", () => addFesteRowUI("", ""));
+    document.getElementById("btnAddFirmaRow").addEventListener("click", () =>
+      addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "")
+    );
+    document.getElementById("btnAddDomainRow").addEventListener("click", () =>
+      addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "")
+    );
+
+    document.getElementById("btnDownloadLocalTerms").addEventListener("click", () => {
+      try {
+        let base = currentRules;
+        try { base = JSON.parse(rulesTextarea.value); } catch (_) {}
+        const jsonOut = exportLokaleBegriffeJson(readCustomTermsFromUI(), base);
+        triggerDownload(jsonOut, "anon-regeln.lokal.json", "application/json");
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById("btnLoadLocalTerms").addEventListener("click", () => {
+      document.getElementById("inputLocalTermsFile").click();
+    });
+
+    document.getElementById("inputLocalTermsFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const txt = await f.text();
+        const loaded = importLokaleBegriffeJson(txt);
+        populateCustomTermsUI(loaded);
+      } catch (err) {
+        alert("Fehler beim Laden von anon-regeln.lokal.json: " + err.message);
+      } finally {
+        e.target.value = "";
+      }
+    });
+
+    document.getElementById("btnClearLocalTerms").addEventListener("click", () => {
+      populateCustomTermsUI({});
+    });
+
+    // Initiale leere Zeilen für Eigene Begriffe bereitstellen
+    populateCustomTermsUI({});
+
+    // Tabellen-Vorschau Steuerung (Tab 3)
+    document.getElementById("btnShowTableOriginals").addEventListener("click", () => {
+      tablePreviewShowOriginals = true;
+      document.getElementById("btnShowTableOriginals").style.display = "none";
+      document.getElementById("btnHideTableOriginals").style.display = "";
+      renderTablePreviewUI();
+    });
+
+    document.getElementById("btnHideTableOriginals").addEventListener("click", () => {
+      maskTablePreviewOriginals();
+    });
+
+    document.getElementById("tablePreviewSearch").addEventListener("input", () => {
+      renderTablePreviewUI();
+    });
+
+    document.querySelectorAll("#mappingPreviewTable th.sortable-th").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.sort || "category";
+        if (tablePreviewSortBy === col) {
+          tablePreviewSortDir = tablePreviewSortDir === "asc" ? "desc" : "asc";
+        } else {
+          tablePreviewSortBy = col;
+          tablePreviewSortDir = "asc";
+        }
+        renderTablePreviewUI();
+      });
+    });
 
     async function ingestFileList(fileList) {
       if (!fileList || fileList.length === 0) return;
@@ -2295,6 +3111,14 @@
         return;
       }
 
+      const mergeRes = validateAndMergeEigeneBegriffe(currentRules, readCustomTermsFromUI());
+      refreshCustomTermsValidationUI();
+      if (!mergeRes.valid) {
+        alert("Fehler in 'Eigene Begriffe':\n" + mergeRes.errors.join("\n"));
+        return;
+      }
+      const effectiveRules = mergeRes.mergedRules;
+
       const btnAnon = document.getElementById("btnRunAnon");
       const btnProbe = document.getElementById("btnRunProbe");
       btnAnon.disabled = true;
@@ -2303,7 +3127,7 @@
       try {
         const activeCats = new Set();
         document.querySelectorAll(".cat-toggle:checked").forEach(cb => activeCats.add(cb.value));
-        const cfg = buildEngineConfig(currentRules, {
+        const cfg = buildEngineConfig(effectiveRules, {
           netzerhaltend: document.getElementById("optNetzerhaltend").checked,
           ipPrivatOeffentlichTrennen: document.getElementById("optIpPrivPub").checked,
           kategorien: activeCats
@@ -2453,6 +3277,7 @@
       document.getElementById("fileCountInfo").textContent = "Arbeitsspeicher vollständig geleert.";
       document.getElementById("btnDownloadZip").disabled = true;
       document.getElementById("btnDownloadReport").disabled = true;
+      maskTablePreviewOriginals();
       updateTableStatusUI();
     });
 
@@ -2486,11 +3311,13 @@
       const txt = await f.text();
       rulesTextarea.value = txt;
       document.getElementById("rulesStatus").textContent = `Regeldatei '${f.name}' geladen.`;
+      refreshCustomTermsValidationUI();
     });
     document.getElementById("btnApplyRules").addEventListener("click", () => {
       try {
         currentRules = JSON.parse(rulesTextarea.value);
         document.getElementById("rulesStatus").textContent = "Regeln erfolgreich geprüft und im RAM aktiviert.";
+        refreshCustomTermsValidationUI();
       } catch (e) {
         alert("Ungültiges JSON: " + e.message);
       }
@@ -2502,9 +3329,10 @@
       currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
       rulesTextarea.value = JSON.stringify(currentRules, null, 2);
       document.getElementById("rulesStatus").textContent = "Standardregeln wiederhergestellt.";
+      refreshCustomTermsValidationUI();
     });
 
-    // Zuordnungstabelle-Aktionen
+    // Zuordnungstabelle-Aktionen (Export nur verschlüsselt über diesen Weg)
     document.getElementById("btnExportEncryptedTable").addEventListener("click", async () => {
       const pass = document.getElementById("tableSavePass").value;
       const passConfirm = document.getElementById("tableSavePassConfirm").value;
@@ -2520,11 +3348,6 @@
       const encrypted = await encryptTableWebCrypto(plain, pass);
       triggerDownload(encrypted, "zuordnungstabelle.anon-tab", "application/json");
       document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (PBKDF2 600.000 Iterationen) heruntergeladen.";
-    });
-
-    document.getElementById("btnExportPlainTable").addEventListener("click", () => {
-      const plain = JSON.stringify(currentState.toJSON(), null, 2);
-      triggerDownload(plain, "zuordnungstabelle.json", "application/json");
     });
 
     document.getElementById("btnLoadTableFile").addEventListener("click", () => document.getElementById("inputTableFile").click());
@@ -2548,6 +3371,7 @@
         }
         const obj = await decryptTableWebCrypto(raw, pass);
         currentState = AnonState.fromJSON(obj);
+        maskTablePreviewOriginals();
         updateTableStatusUI();
         alert(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge).`);
       } catch (err) {
@@ -2557,6 +3381,7 @@
 
     document.getElementById("btnResetTableState").addEventListener("click", () => {
       currentState = new AnonState();
+      maskTablePreviewOriginals();
       updateTableStatusUI();
     });
 
@@ -2589,7 +3414,16 @@
       decryptTableWebCrypto,
       encryptTableAes256V2,
       decryptTableAes256V2,
-      MIN_PASSWORD_LENGTH
+      MIN_PASSWORD_LENGTH,
+      MAX_PREVIEW_CHARS,
+      formatPreviewText,
+      validateAndMergeEigeneBegriffe,
+      exportLokaleBegriffeJson,
+      importLokaleBegriffeJson,
+      preparePreviewCopy,
+      extractMappingTableEntries,
+      filterAndSortMappingEntries,
+      renderMappingTableRowsHtml
     };
   }
   </script>
