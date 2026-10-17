@@ -165,7 +165,16 @@ Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen
 4. **Reiter „3. Zuordnungstabelle (AES-GCM)“:**
    - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt herunterzuladen.
    - Zum Laden einer verschlüsselten Tabelle tragen Sie das Passwort **vor** dem Auswählen der Datei in das verdeckte Passwortfeld (`type="password"`) ein (es wird kein `prompt()`-Dialog verwendet, damit das Passwort nicht im Klartext auf dem Bildschirm erscheint).
-5. **Reiter „4. Rückübersetzen“:**
+5. **Reiter „4. Text (Datenschutz)“ (Nur Web / Browser):**
+   > **Wichtiger Hinweis:** Text-Reiter nur Web, in `anon.ps1` nicht enthalten. Die Parität zwischen PowerShell und Web gilt für diesen Reiter nicht.
+   - Dient der offlinebasierten Pseudonymisierung beliebiger Texte (E-Mails, Briefe, Notizen, Berichte, Tickets).
+   - **Dreistufiges Modell:**
+     - **ROT (automatisch aktiv):** E-Mail-Adressen, IBAN (Mod 97), Steuer-ID (Mod 11,10), KVNR (Mod 10), Telefon mit Vorwahl, Geburtsdatum mit Signalwort, IPv4/IPv6/URL, Personalausweis (Mod 10).
+     - **GELB (Kandidaten zur Sichtprüfung):** Namen (Anrede, Listen, Grußzeilen), Straße+Nr, PLZ+Ort, Kfz-Kennzeichen, übrige Daten, RVNR (§ 147 SGB VI), LANR (KBV-Prüfziffer), BSNR (Signalwort), Fall-/Patientennummern, Station/Zimmer.
+     - **Interaktive Farbvorschau:** Klick auf einen Treffer schaltet ihn aus bzw. an.
+   - **Modi:** Strukturierte Token (`[NAME-1]`, `[IBAN-1]`) oder Schwärzung (`████████`).
+   - **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein unkritisches `SAUBER`).
+6. **Reiter „5. Rückübersetzen“:**
    - Fügen Sie die Antwort der KI ein und klicken Sie auf **„Jetzt rückübersetzen“**. Alles bleibt ausschließlich im RAM des Browsers.
 
 ---

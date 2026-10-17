@@ -1,0 +1,78 @@
+{
+  "beschreibung": "Synthetische Testfälle für core/text Text-Pseudonymisierung (reine Kunstdaten)",
+  "faelle": [
+    {
+      "id": "rechnung_finanzen_rot",
+      "beschreibung": "Rechnung mit offizieller Test-IBAN, Steuer-ID, Telefon, E-Mail und Datum",
+      "text": "Rechnung Nr. 2026-991\nBitte überweisen Sie den Betrag an DE89 3704 0044 0532 0130 00.\nSteuer-ID: 86095742719\nKontakt: buchhaltung@beispiel-firma.de oder Telefon 030 12345678.\nFällig zum 30.11.2026.",
+      "erwarteRotKategorien": ["IBAN", "STEUER_ID", "EMAIL", "TELEFON"],
+      "erwarteGelbKategorien": ["DATUM"]
+    },
+    {
+      "id": "brief_adresse_rot_gelb",
+      "beschreibung": "Brief mit Anschrift, Herr/Frau, Straße, PLZ/Ort, Kennzeichen und Geburtsdatum",
+      "text": "Sehr geehrter Herr Markus Becker,\ngeboren am: 15.04.1985\nwohnhaft in der Hauptstraße 42, 10115 Berlin.\nIhr Fahrzeug mit dem Kennzeichen B-MW 1234 wurde registriert.\nMit freundlichen Grüßen\nThomas Müller",
+      "erwarteRotKategorien": ["GEBURTSDATUM"],
+      "erwarteGelbKategorien": ["NAME", "STRASSE_NR", "PLZ_ORT", "KFZ"]
+    },
+    {
+      "id": "arztbrief_gesundheit",
+      "beschreibung": "Arztbrief mit KVNR, LANR, BSNR, Patientennummer, ICD-10 und OPS (ICD und OPS müssen erhalten bleiben)",
+      "text": "Arztbrief Ambulanz\nPatient: Herr Julian Koch, KVNR: A123456780, Fall-Nr: F-2026-8812\nBehandelnder Arzt: LANR 123456601, BSNR: 123456789\nDiagnose: Gesichert ICD-10 J45.0 (Asthma bronchiale), OPS: 5-820.0\nStation 4, Zimmer 12.",
+      "erwarteRotKategorien": ["KVNR"],
+      "erwarteGelbKategorien": ["NAME", "LANR", "BSNR", "FALL_PATIENT", "STATION_ZIMMER"],
+      "erhalteUnveraendert": ["J45.0", "5-820.0"]
+    },
+    {
+      "id": "personalausweis_pruefziffer",
+      "beschreibung": "Offiziell formatierter Personalausweis mit Signalwort und Prüfziffer",
+      "text": "Ausweis-Nr.: T220001293 vorgelegt von Frau Sabine Weber.",
+      "erwarteRotKategorien": ["PERSONALAUSWEIS"],
+      "erwarteGelbKategorien": ["NAME"]
+    },
+    {
+      "id": "rentenversicherung_rvnr",
+      "beschreibung": "Rentenversicherungsnummer mit Prüfziffer nach § 147 SGB VI",
+      "text": "Versicherter: Herr Stefan Schmidt, RVNR: 12150785M041, Akte geschlossen.",
+      "erwarteGelbKategorien": ["NAME", "RVNR"]
+    },
+    {
+      "id": "negativ_ungueltige_pruefziffern",
+      "beschreibung": "Ungültige IBAN, Steuer-ID und KVNR dürfen NIEMALS als ROT erkannt werden",
+      "text": "Falsche IBAN: DE89 3704 0044 0532 0130 99\nFalsche Steuer-ID: 11111111111\nFalsche KVNR: Z999999999",
+      "darfNichtRotSein": ["DE89 3704 0044 0532 0130 99", "11111111111", "Z999999999"]
+    },
+    {
+      "id": "negativ_netzwerk_muster",
+      "beschreibung": "Netzwerk-Artefakte wie Versionen, Portnamen und Seriennummern dürfen nicht als Telefon, PLZ oder Kennzeichen gematcht werden",
+      "text": "interface Ethernet1/1/10\n description Uplink Core\n ip address 10.20.30.40 255.255.255.0\n switchport trunk allowed vlan 10,20\n serial CZ12345678 version 10.13.1020",
+      "darfNichtKategorieSein": {
+        "1/1/10": ["TELEFON", "DATUM"],
+        "10.13.1020": ["TELEFON", "DATUM"],
+        "255.255.255.0": ["TELEFON"],
+        "CZ12345678": ["KFZ", "PLZ_ORT"]
+      }
+    },
+    {
+      "id": "xss_sicherheit",
+      "beschreibung": "XSS-Vektoren im Text müssen sicher bleiben und dürfen keine Scripts ausführen",
+      "text": "Sehr geehrter Herr <script>alert('xss')</script>,\nbitte melden Sie sich unter info@domain.de <img src=x onerror=alert(1)>.",
+      "erwarteRotKategorien": ["EMAIL"]
+    },
+    {
+      "id": "email_header_zitat_signatur",
+      "beschreibung": "E-Mail mit RFC-Kopfzeilen, Message-ID, zitiertem Antwortblock und Signatur",
+      "text": "From: \"Max Mustermann\" <max@beispiel-firma.de>\nTo: Erika Musterfrau <erika@beispiel-firma.de>\nDate: 14.10.2024\nSubject: Terminabsprache Projektstatus\nMessage-ID: <20241014.abc1234@mail.beispiel-firma.de>\n\nHallo Erika,\n\n> Am 12.10.2024 um 10:00 Uhr schrieb Sabine Weber <sabine@extern-partner.de>:\n> Bitte senden Sie mir die Unterlagen zu.\n\nAnbei die Unterlagen.\n\n-- \nMusterfirma GmbH\nAmtsgericht Frankfurt HRB 123456\nTelefon: 069 12345678",
+      "erwarteRotKategorien": ["NAME", "EMAIL", "EMAIL_HEADER", "TELEFON"],
+      "erwarteGelbKategorien": ["FIRMA", "REGISTER"]
+    },
+    {
+      "id": "datumsverschiebung_fall",
+      "beschreibung": "Fall mit mehreren Datumsangaben zur Prüfung der konsistenten Datumsverschiebung",
+      "text": "Stationäre Aufnahme am 10.05.2024. Die Operation erfolgte am 13.05.2024. Entlassung geplant für den 20.05.2024.",
+      "erwarteGelbKategorien": ["DATUM"],
+      "testVerschiebungTage": 14,
+      "erwarteVerschobeneDaten": ["24.05.2024", "27.05.2024", "03.06.2024"]
+    }
+  ]
+}
