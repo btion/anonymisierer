@@ -45,7 +45,7 @@
     {
       "id": "negativ_netzwerk_muster",
       "beschreibung": "Netzwerk-Artefakte wie Versionen, Portnamen und Seriennummern dürfen nicht als Telefon, PLZ oder Kennzeichen gematcht werden",
-      "text": "interface Ethernet1/1/10\n description Uplink Core\n ip address 10.20.30.40 255.255.255.0\n switchport trunk allowed vlan 10,20\n serial CZ12345678 version 10.13.1020",
+      "text": "interface Ethernet1/1/10\n description Uplink Core\n ip address 192.0.2.40 255.255.255.0\n switchport trunk allowed vlan 10,20\n serial CZ12345678 version 10.13.1020",
       "darfNichtKategorieSein": {
         "1/1/10": ["TELEFON", "DATUM"],
         "10.13.1020": ["TELEFON", "DATUM"],

@@ -142,7 +142,7 @@
       "TACACS"
     ],
     "erlaubtMuster": [
-      "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP(?:-PRIV|-PUB|6|-6-PRIV|-6-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|(?:CORE|TOR|FW|DC|SW)-[A-Z0-9-]+)$",
+      "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP6?(?:-PRIV|-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|SW-EIGEN-\\d+)$",
       "(?i)^(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)$",
       "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}$",
       "^v?\\d+\\.\\d+\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?$"
@@ -247,7 +247,7 @@
     {
       "name": "Interface Description / Alias (CLI)",
       "kategorie": "TEXT",
-      "suche": "(?im)^([ \\t]*(?:description|alias)[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+      "suche": "(?im)^([ \\t]*(?:description|alias)(?:[ \\t]*:[ \\t]*|[ \\t]+))([^ \\t\\r\\n:][^\\r\\n]*)(?=\\r?$)"
     },
     {
       "name": "VLAN-Namen (CLI)",
@@ -296,7 +296,7 @@
     }
   ],
   "seriennummerMuster": [
-    "(?i)(\\b(?:Serial[ \\t-]*Number|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+Number|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
+    "(?i)(\\b(?:Serial[ \\t-]*(?:Number|Nbr|No|Num)\\.?|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+(?:Number|Nbr|No|Num)\\.?|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
     "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
   ],
   "benutzerMuster": [
@@ -313,6 +313,102 @@
     "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
     "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
-    "(?i)\\b((?:rz\\d|sv|sw|tsw|back|lwl)-[A-Za-z0-9-]+)\\b"
+    "(?i)(?<![A-Za-z0-9_-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9_-])"
+  ],
+  "tabellenSpalten": [
+    {
+      "name": "Aruba AOS-CX show interface brief (letzte Spalte Description)",
+      "kopf": [
+        "Port",
+        "Mode",
+        "Type",
+        "Enabled",
+        "Status",
+        "Description"
+      ],
+      "spalten": [
+        {
+          "name": "Description",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "Aruba AOS-CX show lldp neighbor-info (PORT-DESC, SYS-NAME)",
+      "kopf": [
+        "LOCAL-PORT",
+        "CHASSIS-ID",
+        "PORT-ID",
+        "PORT-DESC",
+        "SYS-NAME"
+      ],
+      "spalten": [
+        {
+          "name": "PORT-DESC",
+          "kategorie": "TEXT"
+        },
+        {
+          "name": "SYS-NAME",
+          "kategorie": "HOST"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show interfaces description",
+      "kopf": [
+        "Interface",
+        "Status",
+        "Protocol",
+        "Description"
+      ],
+      "spalten": [
+        {
+          "name": "Description",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "HPE Comware display interface brief",
+      "kopf": [
+        "Interface",
+        "Link",
+        "Description"
+      ],
+      "spalten": [
+        {
+          "name": "Description",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show cdp neighbors (Device ID)",
+      "kopf": [
+        "Device ID",
+        "Local Intrfce",
+        "Port ID"
+      ],
+      "spalten": [
+        {
+          "name": "Device ID",
+          "kategorie": "HOST"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show lldp neighbors (Device ID)",
+      "kopf": [
+        "Device ID",
+        "Local Intf",
+        "Port ID"
+      ],
+      "spalten": [
+        {
+          "name": "Device ID",
+          "kategorie": "HOST"
+        }
+      ]
+    }
   ]
 }

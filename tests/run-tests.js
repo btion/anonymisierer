@@ -107,8 +107,11 @@ for (const tc of cases) {
   }
   assert(match, `${tc.id} (LF): ${tc.name} (Ausgabe exakt wie erwartet)`);
 
-  const findings = core.auditText(actual, tc.id + ".txt", cfg);
+  const findings = core.auditText(actual, tc.id + ".txt", cfg, state);
   const isClean = findings.length === 0;
+  if (isClean !== tc.sauber) {
+    console.error(`  [${tc.id} LF] Prüfbefunde: ${JSON.stringify(findings.map(f => f.kategorie + ":" + f.zeile))}`);
+  }
   assert(
     isClean === tc.sauber,
     `${tc.id} (LF): Prüfmodus (-Pruefen) erwartet sauber=${tc.sauber}, erhalten=${isClean}`
@@ -125,11 +128,17 @@ for (const tc of cases) {
   }
   assert(matchCrlf, `${tc.id} (CRLF): ${tc.name} (CRLF-Ausgabe exakt wie erwartet)`);
 
-  const findingsCrlf = core.auditText(actualCrlf, tc.id + ".txt", cfg);
+  const findingsCrlf = core.auditText(actualCrlf, tc.id + ".txt", cfg, stateCrlf);
   assert(
     (findingsCrlf.length === 0) === tc.sauber,
     `${tc.id} (CRLF): Prüfmodus (-Pruefen) bei CRLF erwartet sauber=${tc.sauber}`
   );
+
+  // Bekannte Lücken: Der Prüfmodus muss die Rohdaten (ohne Anonymisierung) beanstanden
+  if (tc.pruefeRoh) {
+    const rawFindings = core.auditText(tc.eingabe, tc.id + ".txt", cfg);
+    assert(rawFindings.length > 0, `${tc.id}: Prüfmodus meldet die Lücke in den Rohdaten (${rawFindings.length} Treffer)`);
+  }
 
   if (tc.jsonValid) {
     let validJson = false;
@@ -193,8 +202,8 @@ const sonicAnon = fs.readFileSync(path.join(ERWARTET_DIR, "02-sonic-config_db.js
 const ciscoAnon = fs.readFileSync(path.join(ERWARTET_DIR, "03-cisco-fortigate-syslog.log"), "utf8");
 
 assert(arubaAnon.includes("MAC-1") && sonicAnon.includes("MAC-1") && ciscoAnon.includes("MAC-1"), "MAC-1 ist über Aruba, SONiC und Cisco (trotz 001a.2b3c.4d5e) konsistent");
-assert(arubaAnon.includes("NET-1.H2") && ciscoAnon.includes("NET-1.H2"), "10.20.30.1 hat in Aruba und Syslog denselben Platzhalter NET-1.H2");
-assert(sonicAnon.includes("NET-1.H3/24") && ciscoAnon.includes("NET-1.H3"), "10.20.30.254 hat in SONiC und Cisco HSRP denselben Platzhalter NET-1.H3");
+assert(arubaAnon.includes("NET-1.H2") && ciscoAnon.includes("NET-1.H2"), "192.0.2.1 hat in Aruba und Syslog denselben Platzhalter NET-1.H2");
+assert(sonicAnon.includes("NET-1.H3/24") && ciscoAnon.includes("NET-1.H3"), "192.0.2.254 hat in SONiC und Cisco HSRP denselben Platzhalter NET-1.H3");
 
 console.log("=== 5. Explizite Tests für die 11 Code-Review-Befunde ===");
 
@@ -209,7 +218,7 @@ assert(rxDescProbe.test("description Test\r\nx"), "Befund 1 Gegenprobe: Multilin
 // Befund 2: Dateinamen/Pfade durch Engine schicken, Pfade in Prüfung aufnehmen, bericht.json nicht im Freigabe-ZIP
 const pathCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
 const pathState = new core.AnonState();
-const origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-tsw-halle2-01_10.20.30.1.txt";
+const origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-acc-halle2-01_192.0.2.1.txt";
 const anonRelPath = core.processPath(origRelPath, pathCfg, pathState);
 assert(
   anonRelPath === "FIRMA-1/CORE-A/show-tech-HOST-1_NET-1.H1.txt",
@@ -238,7 +247,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   );
 
   // Befund 3: Zeichenkodierung (UTF-8-BOM, UTF-16 LE BOM, UTF-16 BE BOM) -> Ausgabe UTF-8 ohne BOM
-  const eventLogText = "EventID=4624 IpAddress=10.40.50.60 ClientMAC=00:1a:2b:3c:4d:5e";
+  const eventLogText = "EventID=4624 IpAddress=203.0.113.60 ClientMAC=00:1a:2b:3c:4d:5e";
   // UTF-16 LE mit BOM (0xFF 0xFE)
   const utf16LeBody = Buffer.from(eventLogText, "utf16le");
   const utf16LeBom = new Uint8Array(2 + utf16LeBody.length);
@@ -387,7 +396,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   };
   const minCfg = core.buildEngineConfig(minimalRules, {});
   const minState = new core.AnonState();
-  const minOut = core.processText("hostname sw-minimal-01 ip 10.1.2.3", minCfg, minState);
+  const minOut = core.processText("hostname sw-minimal-01 ip 198.51.100.3", minCfg, minState);
   const minAudit = core.auditText(minOut, "min.txt", minCfg);
   assert(
     minOut === "hostname MIN-1 ip NET-1.H1" && Array.isArray(minAudit),
@@ -399,7 +408,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   const boundState = new core.AnonState();
   const boundOut = core.processText("rz1-tor-01 und rz1-tor-010", boundCfg, boundState);
   assert(
-    boundOut === "TOR-A und HOST-1" && !boundOut.includes("TOR-A0"),
+    boundOut === "TOR-A und rz1-tor-010" && !boundOut.includes("TOR-A0"),
     `Befund 8: 'rz1-tor-01' macht 'rz1-tor-010' nicht zu 'TOR-A0' (Ergebnis: ${boundOut})`
   );
 
@@ -439,18 +448,18 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   ];
   for (let i = 1; i <= 5000; i++) {
     const vId = (i % 400) + 10;
-    const o3 = (i % 200) + 1;
     const o4 = (i % 250) + 1;
     const hex = (i & 0xff).toString(16).padStart(2, "0");
+    const net = ["192.0.2", "198.51.100", "203.0.113"][i % 3];
     showTechChunks.push(
       `vlan ${vId}`,
       `    nameMuster_${vId}`,
-      `    nameKD_${vId}_10.${o3}.0.0-24`,
+      `    nameKD_${vId}_${net}.0-24`,
       `interface 1/1/${(i % 48) + 1}`,
-      `    description Uplink_${i} zu tsw-dist-${(i % 30) + 1} (Musterfirma GmbH)`,
-      `    ip address 10.${o3}.${o4}.1/24`,
-      `1/1/${(i % 48) + 1}  tsw-acc-${(i % 80) + 1}  00:1a:2b:3c:4d:${hex}  10.${o3}.${o4}.254  Aruba JL658A  FL.10.13.1020`,
-      `2026-10-16T14:22:${(i % 59).toString().padStart(2, "0")}.123Z rz1-sw-core01 hpe-routing[${i}]: Event on sn link state up for 10.${o3}.${o4}.1`
+      `    description Uplink_${i} zu dist-sw${(i % 30) + 1} (Musterfirma GmbH)`,
+      `    ip address ${net}.${o4}/24`,
+      `1/1/${(i % 48) + 1}  acc-sw${(i % 80) + 1}  00:1a:2b:3c:4d:${hex}  ${net}.254  Aruba JL658A  FL.10.13.1020`,
+      `2026-10-16T14:22:${(i % 59).toString().padStart(2, "0")}.123Z rz1-sw-core01 hpe-routing[${i}]: Event on sn link state up for ${net}.${o4}`
     );
   }
   const largeShowTech = showTechChunks.join("\r\n");
@@ -496,7 +505,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       "/interface bridge add name=bridge1",
       "/interface vlan add interface=bridge1 name=VLAN10_Intern vlan-id=10",
       "/interface bridge port add bridge=bridge1 interface=ether1 comment=\"Port_Halle_1\"",
-      "/ip address add address=10.10.10.1/24 interface=VLAN10_Intern"
+      "/ip address add address=203.0.113.1/24 interface=VLAN10_Intern"
     ].join(eol);
     const mtAnon = core.processText(mtInput, mtCfg, mtState);
     assert(mtAnon.includes("/system identity set name=HOST-1"), `MikroTik (${label}): /system identity set name=... wird als HOST-1 ersetzt`);
@@ -910,10 +919,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   const editSampleText = [
     "hostname rz1-sw-core01",
     "vlan 100",
-    "   name WAN_GUEST_10.20.30.0",
+    "   name WAN_GUEST_192.0.2.0",
     "interface 1/1/1",
     "   description Uplink Praxis Dr Weber",
-    "   ip address 10.50.60.1/24"
+    "   ip address 198.51.100.1/24"
   ].join("\n");
   const editCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
   const editAnon1 = core.processText(editSampleText, editCfg, editState);
@@ -945,7 +954,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(!mappingAfterRename.entries.some(e => e.placeholder === oldTextPh), "Aktive Tabelle blendet alten Alias-Platzhalter aus");
 
   // 17.3 Eintrag entfernen ("wird nicht anonymisiert")
-  const vlanRow = mappingAfterRename.entries.find(e => e.original === "WAN_GUEST_10.20.30.0");
+  const vlanRow = mappingAfterRename.entries.find(e => e.original === "WAN_GUEST_192.0.2.0");
   assert(Boolean(vlanRow), "VLAN-Name in Tabelle vorhanden");
   const oldVlanPh = vlanRow.placeholder;
 
@@ -964,7 +973,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   localCustomTerms = removeRes.customTerms;
 
   assert(
-    localCustomTerms.exakteWoerter.includes("WAN_GUEST_10.20.30.0"),
+    localCustomTerms.exakteWoerter.includes("WAN_GUEST_192.0.2.0"),
     "Entfernter Originalwert wurde in 'ausnahmen.exakteWoerter' aufgenommen"
   );
 
@@ -979,13 +988,13 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(reprocessRes.ok === true, "reprocessFilesWithState erfolgreich");
   const reprocessedText = reprocessRes.results[0].anonText;
   assert(
-    reprocessedText.includes("name WAN_GUEST_10.20.30.0"),
+    reprocessedText.includes("name WAN_GUEST_192.0.2.0"),
     "Entfernter Begriff steht im Klartext in der neu anonymisierten Ausgabe"
   );
 
   // Rückübersetzung alter Texte mit dem alten Platzhalter funktioniert weiterhin
   const deanomRemovedOld = core.deanonymizeText(`Konfiguriere ${oldVlanPh}`, editState);
-  assert(deanomRemovedOld.includes("WAN_GUEST_10.20.30.0"), "Alte KI-Antworten mit entferntem Platzhalter bleiben rückübersetzbar");
+  assert(deanomRemovedOld.includes("WAN_GUEST_192.0.2.0"), "Alte KI-Antworten mit entferntem Platzhalter bleiben rückübersetzbar");
 
   // 17.4 Eintrag hinzufügen (addMappingTableEntry)
   const addRes = core.addMappingTableEntry(
@@ -1039,7 +1048,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       ausnahmen: {
         exakteWoerter: [
           "Rechenzentrum-Nord Raum 2.04",
-          "10.99.88.77"
+          "198.51.100.77"
         ]
       }
     }, null, 2);
@@ -1049,7 +1058,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       "hostname sw-core-lokal01",
       "snmp-server location Rechenzentrum-Nord Raum 2.04",
       "interface 1/1/1",
-      "   ip address 10.99.88.77/24",
+      "   ip address 198.51.100.77/24",
       "   description Uplink zu Server"
     ].join("\n");
     fs.writeFileSync(testInputPath, sampleParityInput, "utf8");
@@ -1080,7 +1089,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       "Parität: Freitext-Ausnahme aus ausnahmen.exakteWoerter bleibt in beiden Engines im Klartext"
     );
     assert(
-      jsAnonOut.includes("10.99.88.77") && psAnonOut.includes("10.99.88.77"),
+      jsAnonOut.includes("198.51.100.77") && psAnonOut.includes("198.51.100.77"),
       "Parität: IP-Ausnahme aus ausnahmen.exakteWoerter bleibt in beiden Engines im Klartext"
     );
     assert(
@@ -1089,6 +1098,74 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     );
 
     fs.rmSync(tmpParityDir, { recursive: true, force: true });
+  }
+
+  // 17.8 Lokale Muster (eigeneHostnamenMuster, seriennummerMuster, tabellenSpalten) aus anon-regeln.lokal.json, Parität A == B
+  {
+    const lokalMusterJson = JSON.stringify({
+      eigeneHostnamenMuster: ["(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"],
+      seriennummerMuster: ["(?i)((?<![A-Za-z0-9_])Inventar-Nr[ \\t]*:[ \\t]*)([A-Za-z0-9-]{5,24})()"],
+      tabellenSpalten: [{ name: "Beispiel Nachbartabelle", kopf: ["Nachbar", "Schnittstelle"], spalten: [{ name: "Nachbar", kategorie: "HOST" }] }]
+    }, null, 2);
+    const lokalMusterInput = [
+      "Peer XY1-SW03 is reachable",
+      "uplink xy2-dist11 up, backup xy2-dist11_alt",
+      "Inventar-Nr: INV-0042-77",
+      "",
+      "Nachbar        Schnittstelle",
+      "nb-lager-ost   1/1/7",
+      ""
+    ].join("\n");
+    const lokalMusterExpected = [
+      "Peer HOST-2 is reachable",
+      "uplink HOST-3 up, backup xy2-dist11_alt",
+      "Inventar-Nr: SERIAL-1",
+      "",
+      "Nachbar        Schnittstelle",
+      "HOST-1         1/1/7",
+      ""
+    ].join("\n");
+
+    const loadedMuster = core.importLokaleBegriffeJson(lokalMusterJson);
+    assert(Array.isArray(loadedMuster.muster.eigeneHostnamenMuster) && loadedMuster.muster.eigeneHostnamenMuster.length === 1,
+      "Lokale Muster: importLokaleBegriffeJson übernimmt eigeneHostnamenMuster");
+    const mergedMuster = core.validateAndMergeEigeneBegriffe(diskRules, loadedMuster);
+    assert(mergedMuster.valid, `Lokale Muster: Zusammenführung gültig (${mergedMuster.errors.join(" | ")})`);
+    assert(mergedMuster.mergedRules.hostnamenMuster.length === diskRules.hostnamenMuster.length,
+      "Lokale Muster: hostnamenMuster der Basis bleibt unverändert, eigeneHostnamenMuster separat");
+    const musterCfg = core.buildEngineConfig(mergedMuster.mergedRules, { netzerhaltend: true });
+    const musterState = new core.AnonState();
+    const jsMusterOut = core.processText(lokalMusterInput, musterCfg, musterState);
+    if (jsMusterOut !== lokalMusterExpected) console.error("    Erhalten: " + JSON.stringify(jsMusterOut));
+    assert(jsMusterOut === lokalMusterExpected, "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (JS)");
+    const musterFindings = core.auditText(jsMusterOut, "lokal.txt", musterCfg, musterState);
+    assert(musterFindings.length === 1 && musterFindings[0].kategorie === "Rest-Bekannt",
+      `Lokale Muster: Prüfmodus meldet nur den Rest 'xy2-dist11_alt' (${JSON.stringify(musterFindings.map(f => f.kategorie + ":" + f.fund))})`);
+    const rawMusterFindings = core.auditText(lokalMusterInput, "lokal.txt", musterCfg);
+    assert(rawMusterFindings.some(f => f.kategorie === "Rest-Hostname") && rawMusterFindings.some(f => f.kategorie === "Rest-Seriennummer") && rawMusterFindings.some(f => f.kategorie === "Rest-Tabellenfeld"),
+      "Lokale Muster: Prüfmodus meldet Rohdaten über lokale Muster (Hostname, Seriennummer, Tabellenfeld)");
+    const exportedMuster = JSON.parse(core.exportLokaleBegriffeJson(loadedMuster, diskRules));
+    assert(Array.isArray(exportedMuster.eigeneHostnamenMuster) && Array.isArray(exportedMuster.tabellenSpalten),
+      "Lokale Muster: Export von anon-regeln.lokal.json enthält die Muster wieder");
+    const badMerge = core.validateAndMergeEigeneBegriffe(diskRules, { muster: { eigeneHostnamenMuster: ["(ungueltig"] } });
+    assert(!badMerge.valid, "Lokale Muster: Ungültiger regulärer Ausdruck wird abgewiesen");
+
+    if (pwshCheck.status === 0) {
+      const tmpMusterDir = fs.mkdtempSync(path.join(os.tmpdir(), "anon-lokal-muster-"));
+      const lokalMusterPath = path.join(tmpMusterDir, "anon-regeln.lokal.json");
+      const musterInPath = path.join(tmpMusterDir, "eingabe.txt");
+      const musterOutDir = path.join(tmpMusterDir, "out");
+      const musterTabPath = path.join(tmpMusterDir, "tab.json");
+      fs.writeFileSync(lokalMusterPath, lokalMusterJson, "utf8");
+      fs.writeFileSync(musterInPath, lokalMusterInput, "utf8");
+      const esc = (p) => p.replace(/\\/g, "\\\\");
+      const psMusterCmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(musterInPath)}" -Ausgabe "${esc(musterOutDir)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lokalMusterPath)}" -TabellenPfad "${esc(musterTabPath)}" -Unverschluesselt > $null; exit $LASTEXITCODE`;
+      const psMusterRun = spawnSync("pwsh", ["-NoProfile", "-Command", psMusterCmd], { encoding: "utf8" });
+      assert(psMusterRun.status === 2, `anon.ps1 mit lokalen Mustern meldet den Rest und endet mit Exit-Code 2 (${psMusterRun.status})`);
+      const psMusterOut = fs.readFileSync(path.join(musterOutDir, "anonym", "eingabe.txt"), "utf8");
+      assert(psMusterOut === jsMusterOut, "Parität: Lokale Muster liefern in anonymisierer.html und anon.ps1 identische Ausgabe");
+      fs.rmSync(tmpMusterDir, { recursive: true, force: true });
+    }
   }
 
   // --- 18. Prüfe Text-Pseudonymisierungs-Engine (core/text) ---

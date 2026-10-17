@@ -118,6 +118,23 @@ function New-TestConfig {
     foreach ($x in $RulesObj.seriennummerMuster) { $cfg.SeriennummerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.benutzerMuster) { $cfg.BenutzerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.hostnamenMuster) { $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
+    if ($null -ne $RulesObj.PSObject.Properties["eigeneHostnamenMuster"]) {
+        foreach ($x in $RulesObj.eigeneHostnamenMuster) { $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
+    }
+    if ($null -ne $RulesObj.PSObject.Properties["tabellenSpalten"]) {
+        foreach ($tr in $RulesObj.tabellenSpalten) {
+            $rule = New-Object AnonTool.TableRule
+            $rule.Name = [string]$tr.name
+            foreach ($k in $tr.kopf) { $rule.Kopf.Add([string]$k) }
+            foreach ($sp in $tr.spalten) {
+                $col = New-Object AnonTool.TableColumnSpec
+                $col.Name = [string]$sp.name
+                $col.Kategorie = [string]$sp.kategorie
+                $rule.Spalten.Add($col)
+            }
+            $cfg.TabellenSpalten.Add($rule)
+        }
+    }
     return $cfg
 }
 
@@ -136,7 +153,7 @@ foreach ($tc in $cases) {
     }
     Assert-True $isEqual "$($tc.id) (LF): $($tc.name) (PS1 == Erwartet)"
 
-    $findings = [AnonTool.AnonEngine]::AuditText($actual, "$($tc.id).txt", $cfg)
+    $findings = [AnonTool.AnonEngine]::AuditText($actual, "$($tc.id).txt", $cfg, $st)
     $isClean = ($findings.Count -eq 0)
     Assert-True ($isClean -eq [bool]$tc.sauber) "$($tc.id) (LF): Prüfmodus sauber=$isClean (erwartet $($tc.sauber))"
 
@@ -152,8 +169,14 @@ foreach ($tc in $cases) {
     }
     Assert-True $isEqualCrlf "$($tc.id) (CRLF): $($tc.name) (PS1 CRLF == Erwartet CRLF)"
 
-    $findingsCrlf = [AnonTool.AnonEngine]::AuditText($actualCrlf, "$($tc.id).txt", $cfg)
+    $findingsCrlf = [AnonTool.AnonEngine]::AuditText($actualCrlf, "$($tc.id).txt", $cfg, $stCrlf)
     Assert-True (($findingsCrlf.Count -eq 0) -eq [bool]$tc.sauber) "$($tc.id) (CRLF): Prüfmodus sauber=$($findingsCrlf.Count -eq 0)"
+
+    # Bekannte Lücken: Der Prüfmodus muss die Rohdaten (ohne Anonymisierung) beanstanden
+    if ($null -ne $tc.PSObject.Properties["pruefeRoh"] -and [bool]$tc.pruefeRoh) {
+        $rawFindings = [AnonTool.AnonEngine]::AuditText([string]$tc.eingabe, "$($tc.id).txt", $cfg)
+        Assert-True ($rawFindings.Count -gt 0) "$($tc.id): Prüfmodus meldet die Lücke in den Rohdaten ($($rawFindings.Count) Treffer)"
+    }
 
     if ($null -ne $tc.PSObject.Properties["jsonValid"] -and [bool]$tc.jsonValid) {
         $validJson = $false
@@ -231,7 +254,7 @@ Assert-True ([regex]::IsMatch("description Test`r`nx", $probePattern)) "Befund 1
 # ----------------------------------------------------------------------------
 $pathCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
 $pathState = New-Object AnonTool.AnonState
-$origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-tsw-halle2-01_10.20.30.1.txt"
+$origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-acc-halle2-01_192.0.2.1.txt"
 $anonRelPath = [AnonTool.AnonEngine]::ProcessPath($origRelPath, $pathCfg, $pathState)
 Assert-True ($anonRelPath -ceq "FIRMA-1/CORE-A/show-tech-HOST-1_NET-1.H1.txt") "Befund 2: ProcessPath anonymisiert jeden Pfadbestandteil ($anonRelPath)"
 
@@ -246,11 +269,11 @@ $pathInDir = Join-Path $tempRunRoot "pfad_in"
 $pathOutDir = Join-Path $tempRunRoot "pfad_out"
 $pathTabFile = Join-Path $tabDir "pfad-tab.json"
 [void](New-Item -ItemType Directory -Path $pathInDir -Force)
-[System.IO.File]::WriteAllText((Join-Path $pathInDir "show-tech-rz1-sw-core01_10.20.30.1.txt"), "hostname rz1-sw-core01`r`n", [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText((Join-Path $pathInDir "show-tech-rz1-sw-core01_192.0.2.1.txt"), "hostname rz1-sw-core01`r`n", [System.Text.Encoding]::UTF8)
 [System.IO.File]::WriteAllBytes((Join-Path $pathInDir "firmware-rz1-sw-core01.bin"), [byte[]]@(0, 1, 2, 0, 255, 0, 42))
 & $anonScript -Eingabe $pathInDir -Ausgabe $pathOutDir -Regeln $rulesPath -TabellenPfad $pathTabFile -Unverschluesselt > $null
 Assert-True (Test-Path -LiteralPath (Join-Path (Join-Path $pathOutDir "anonym") "show-tech-CORE-A_NET-1.H1.txt")) "Befund 2: Ausgabedatei in anonym\ trägt anonymisierten Namen (show-tech-CORE-A_NET-1.H1.txt)"
-Assert-True (-not (Test-Path -LiteralPath (Join-Path (Join-Path $pathOutDir "anonym") "show-tech-rz1-sw-core01_10.20.30.1.txt"))) "Befund 2: Originaldateiname mit Hostname existiert NICHT in anonym\"
+Assert-True (-not (Test-Path -LiteralPath (Join-Path (Join-Path $pathOutDir "anonym") "show-tech-rz1-sw-core01_192.0.2.1.txt"))) "Befund 2: Originaldateiname mit Hostname existiert NICHT in anonym\"
 $pathBericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $pathOutDir "bericht.json"), [System.Text.Encoding]::UTF8))
 Assert-True ($pathBericht.uebersprungeneBinaer[0] -ceq "firmware-CORE-A.bin") "Befund 2: Auch uebersprungeneBinaer im Bericht nutzt anonymisierten Pfad ($($pathBericht.uebersprungeneBinaer[0]))"
 
@@ -261,7 +284,7 @@ $bomInDir = Join-Path $tempRunRoot "bom_in"
 $bomOutDir = Join-Path $tempRunRoot "bom_out"
 $bomTabFile = Join-Path $tabDir "bom-tab.json"
 [void](New-Item -ItemType Directory -Path $bomInDir -Force)
-$evText = "EventID=4624 IpAddress=10.40.50.60 ClientMAC=00:1a:2b:3c:4d:5e`r`n"
+$evText = "EventID=4624 IpAddress=203.0.113.60 ClientMAC=00:1a:2b:3c:4d:5e`r`n"
 # Schreibe UTF-16 LE mit BOM, UTF-16 BE mit BOM und UTF-8 mit BOM
 [System.IO.File]::WriteAllText((Join-Path $bomInDir "ev-utf16le.log"), $evText, [System.Text.Encoding]::Unicode)
 [System.IO.File]::WriteAllText((Join-Path $bomInDir "ev-utf16be.log"), $evText, [System.Text.Encoding]::BigEndianUnicode)
@@ -292,7 +315,7 @@ $kiRueckPfad = Join-Path $tempRunRoot "ki-rueck.txt"
 [System.IO.File]::WriteAllText($kiAntwortPfad, "Bitte prüfen Sie auf CORE-A das Interface zu CORE-B mit IP NET-1.H2/24 und MAC MAC-1.", [System.Text.Encoding]::UTF8)
 & $anonScript -Zurueck -Eingabe $kiAntwortPfad -Ausgabe $kiRueckPfad -TabellenPfad $tabFile -PasswortSecure $secPass > $null
 $rueckText = [System.IO.File]::ReadAllText($kiRueckPfad, [System.Text.Encoding]::UTF8)
-Assert-True ($rueckText.Contains("rz1-sw-core01") -and $rueckText.Contains("rz2-sw-core02") -and $rueckText.Contains("10.20.30.1/24") -and $rueckText.Contains("00:1a:2b:3c:4d:5e")) "Befund 4: Rückübersetzung (-Zurueck) mit ANON-AES256-2 erfolgreich"
+Assert-True ($rueckText.Contains("rz1-sw-core01") -and $rueckText.Contains("rz2-sw-core02") -and $rueckText.Contains("192.0.2.1/24") -and $rueckText.Contains("00:1a:2b:3c:4d:5e")) "Befund 4: Rückübersetzung (-Zurueck) mit ANON-AES256-2 erfolgreich"
 
 # 6 Pflicht-Negativtests gegen ANON-AES256-2
 $tamperDir = Join-Path $tempRunRoot "tamper"
@@ -404,7 +427,7 @@ $minRulesPath = Join-Path $tempRunRoot "min-regeln.json"
 $minRulesContent = '{"eigeneBegriffe":{"festeZuordnung":{"rz1-sw-core01":"MIN-CORE-1"}}}'
 [System.IO.File]::WriteAllText($minRulesPath, $minRulesContent, [System.Text.Encoding]::UTF8)
 $minInFile = Join-Path $tempRunRoot "min-in.txt"
-[System.IO.File]::WriteAllText($minInFile, "hostname rz1-sw-core01`r`nip address 10.1.2.3/24`r`n", [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText($minInFile, "hostname rz1-sw-core01`r`nip address 198.51.100.3/24`r`n", [System.Text.Encoding]::UTF8)
 $minOutDir = Join-Path $tempRunRoot "min_out"
 $minTabFile = Join-Path $tabDir "min-tab.json"
 & $anonScript -Eingabe $minInFile -Ausgabe $minOutDir -Regeln $minRulesPath -TabellenPfad $minTabFile -Unverschluesselt > $null
@@ -417,7 +440,7 @@ Assert-True ($minResultText.Contains("MIN-CORE-1") -and $minResultText.Contains(
 # ----------------------------------------------------------------------------
 $bState = New-Object AnonTool.AnonState
 $bOut = [AnonTool.AnonEngine]::ProcessText("rz1-tor-01 und rz1-tor-010", $pathCfg, $bState)
-Assert-True ($bOut -ceq "TOR-A und HOST-1" -and (-not $bOut.Contains("TOR-A0"))) "Befund 8: Wort-/Namensgrenzen verhindern Teilwort-Ersetzung ('rz1-tor-010' -> 'HOST-1' statt 'TOR-A0')"
+Assert-True ($bOut -ceq "TOR-A und rz1-tor-010" -and (-not $bOut.Contains("TOR-A0"))) "Befund 8: Wort-/Namensgrenzen verhindern Teilwort-Ersetzung ('rz1-tor-010' -> 'HOST-1' statt 'TOR-A0')"
 
 # ----------------------------------------------------------------------------
 # Befund 9: Add-Type sauber nach PSEdition verzweigt ohne stillen Catch-Fallback
@@ -476,19 +499,19 @@ $sb = New-Object System.Text.StringBuilder (4 * 1024 * 1024)
 [void]$sb.AppendLine("user admin password ciphertext AQBapf92384719283749182374918273948172938471928374")
 for ($i = 1; $i -le 5000; $i++) {
     $vId = ($i % 400) + 10
-    $o3 = ($i % 200) + 1
     $o4 = ($i % 250) + 1
     $hex = ($i -band 0xFF).ToString("x2")
     $port = ($i % 48) + 1
     $dist = ($i % 30) + 1
     $acc = ($i % 80) + 1
+    $net = @("192.0.2", "198.51.100", "203.0.113")[$i % 3]
     [void]$sb.AppendLine("vlan $vId")
-    [void]$sb.AppendLine("    name KD_${vId}_10.${o3}.0.0-24")
+    [void]$sb.AppendLine("    name KD_${vId}_${net}.0-24")
     [void]$sb.AppendLine("interface 1/1/$port")
-    [void]$sb.AppendLine("    description Uplink_$i zu tsw-dist-$dist (Musterfirma GmbH)")
-    [void]$sb.AppendLine("    ip address 10.${o3}.${o4}.1/24")
-    [void]$sb.AppendLine("1/1/$port  tsw-acc-$acc  00:1a:2b:3c:4d:$hex  10.${o3}.${o4}.254  Aruba JL658A  FL.10.13.1020")
-    [void]$sb.AppendLine("2026-10-16T14:22:15.123Z rz1-sw-core01 hpe-routing[$i]: Event on sn link state up for 10.${o3}.${o4}.1")
+    [void]$sb.AppendLine("    description Uplink_$i zu dist-sw$dist (Musterfirma GmbH)")
+    [void]$sb.AppendLine("    ip address ${net}.${o4}/24")
+    [void]$sb.AppendLine("1/1/$port  acc-sw$acc  00:1a:2b:3c:4d:$hex  ${net}.254  Aruba JL658A  FL.10.13.1020")
+    [void]$sb.AppendLine("2026-10-16T14:22:15.123Z rz1-sw-core01 hpe-routing[$i]: Event on sn link state up for ${net}.${o4}")
 }
 $largeShowTech = $sb.ToString()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -570,7 +593,7 @@ foreach ($forbidden in @(
     @{ p = "mikrotik-routeros"; c = "/system reboot" },
     @{ p = "mikrotik-routeros"; c = "/system reset-configuration" },
     @{ p = "mikrotik-routeros"; c = "/file print" },
-    @{ p = "mikrotik-routeros"; c = "/tool fetch url=http://10.0.0.1/x" },
+    @{ p = "mikrotik-routeros"; c = "/tool fetch url=http://192.0.2.1/x" },
     @{ p = "mikrotik-routeros"; c = "/export verbose" },
     @{ p = "mikrotik-routeros"; c = "/export show-sensitive" },
     @{ p = "dell-os10";         c = "show running-configuration all" }
@@ -819,7 +842,7 @@ foreach ($cr in $cliInjectionRuns) {
 
 # Positivtests für gültige Geräte, MikroTik +ct Benutzer, IPv6, Sprungserver und Windows-Argument-Quoting
 Assert-True (Test-SammlerBenutzerName -Benutzer "admin+ct") "Befund 2 Positivtest: MikroTik Benutzer 'admin+ct' ist erlaubt"
-Assert-True (Test-SammlerHostNameOderIp -Wert "10.20.30.11") "Befund 2 Positivtest: Gültige IPv4-Adresse wird akzeptiert"
+Assert-True (Test-SammlerHostNameOderIp -Wert "192.0.2.11") "Befund 2 Positivtest: Gültige IPv4-Adresse wird akzeptiert"
 Assert-True (Test-SammlerHostNameOderIp -Wert "2001:db8::1") "Befund 2 Positivtest: Gültige IPv6-Adresse wird akzeptiert"
 $parsedJump = Test-SammlerSprungserver -Sprungserver "netadmin@jump-01.intern.local:2222"
 Assert-True ($parsedJump.benutzer -eq "netadmin" -and $parsedJump.host -eq "jump-01.intern.local" -and $parsedJump.port -eq 2222) "Befund 2 Positivtest: Sprungserver 'benutzer@host:port' wird korrekt geparst"
@@ -878,7 +901,7 @@ $lokalJsonContent = @'
   "ausnahmen": {
     "exakteWoerter": [
       "Rechenzentrum-Nord Raum 2.04",
-      "10.99.88.77"
+      "198.51.100.77"
     ]
   }
 }
@@ -889,7 +912,7 @@ $lokalInputText = @"
 hostname sw-core-lokal01
 snmp-server location Rechenzentrum-Nord Raum 2.04
 interface 1/1/1
-   ip address 10.99.88.77/24
+   ip address 198.51.100.77/24
    description Uplink zu Server
 "@
 [System.IO.File]::WriteAllText($lokalEingabeDatei, $lokalInputText, [System.Text.Encoding]::UTF8)
@@ -903,11 +926,37 @@ $lokalOutText = [System.IO.File]::ReadAllText($lokalOutFile, [System.Text.Encodi
 
 Assert-True ($lokalOutText.Contains("hostname CORE-LOKAL")) "festeZuordnung aus -LokaleRegeln wird korrekt angewendet ('CORE-LOKAL')"
 Assert-True ($lokalOutText.Contains("snmp-server location Rechenzentrum-Nord Raum 2.04")) "Freitext-Ausnahme aus ausnahmen.exakteWoerter bleibt im Klartext"
-Assert-True ($lokalOutText.Contains("10.99.88.77")) "IP-Ausnahme aus ausnahmen.exakteWoerter bleibt im Klartext"
+Assert-True ($lokalOutText.Contains("198.51.100.77")) "IP-Ausnahme aus ausnahmen.exakteWoerter bleibt im Klartext"
 
 # Prüfmodus auf der Ausgabedatei über CLI (-Pruefen)
 & $anonScript -Eingabe $lokalOutFile -Regeln $rulesPath -LokaleRegeln $lokalRegelnDatei -Pruefen > $null
 Assert-Equal $LASTEXITCODE 0 "Prüfmodus: Ausgabedatei mit ausnahmen.exakteWoerter ist SAUBER (Exit-Code 0)"
+
+# 8.1b Lokale Muster (eigeneHostnamenMuster, seriennummerMuster, tabellenSpalten) aus anon-regeln.lokal.json
+$musterTestDir = Join-Path $tempRunRoot "lokal_muster"
+[void](New-Item -ItemType Directory -Path $musterTestDir -Force)
+$musterRegeln = Join-Path $musterTestDir "anon-regeln.lokal.json"
+$musterEingabe = Join-Path $musterTestDir "eingabe.txt"
+$musterAusgabe = Join-Path $musterTestDir "ausgabe"
+$musterTabelle = Join-Path $musterTestDir "tabelle.json"
+$musterJson = @'
+{
+  "eigeneHostnamenMuster": ["(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"],
+  "seriennummerMuster": ["(?i)((?<![A-Za-z0-9_])Inventar-Nr[ \\t]*:[ \\t]*)([A-Za-z0-9-]{5,24})()"],
+  "tabellenSpalten": [{ "name": "Beispiel Nachbartabelle", "kopf": ["Nachbar", "Schnittstelle"], "spalten": [{ "name": "Nachbar", "kategorie": "HOST" }] }]
+}
+'@
+[System.IO.File]::WriteAllText($musterRegeln, $musterJson, (New-Object System.Text.UTF8Encoding($false)))
+$musterInput = "Peer XY1-SW03 is reachable`nuplink xy2-dist11 up, backup xy2-dist11_alt`nInventar-Nr: INV-0042-77`n`nNachbar        Schnittstelle`nnb-lager-ost   1/1/7`n"
+$musterExpected = "Peer HOST-2 is reachable`nuplink HOST-3 up, backup xy2-dist11_alt`nInventar-Nr: SERIAL-1`n`nNachbar        Schnittstelle`nHOST-1         1/1/7`n"
+[System.IO.File]::WriteAllText($musterEingabe, $musterInput, (New-Object System.Text.UTF8Encoding($false)))
+
+& $anonScript -Eingabe $musterEingabe -Ausgabe $musterAusgabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -TabellenPfad $musterTabelle -Unverschluesselt > $null
+Assert-Equal $LASTEXITCODE 2 "Lokale Muster: Rest 'xy2-dist11_alt' wird gemeldet (Exit-Code 2)"
+$musterOut = [System.IO.File]::ReadAllText((Join-Path (Join-Path $musterAusgabe "anonym") "eingabe.txt"), [System.Text.Encoding]::UTF8)
+Assert-True ($musterOut -ceq $musterExpected) "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (PS1)"
+& $anonScript -Eingabe $musterEingabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -Pruefen > $null
+Assert-Equal $LASTEXITCODE 2 "Lokale Muster: Prüfmodus beanstandet die Rohdaten (Exit-Code 2)"
 
 # 8.2 Zuordnungstabelle: Aliase werden beim Export/Import beibehalten und für Rückübersetzung genutzt
 $tabJson = [System.IO.File]::ReadAllText($lokalTabelleDatei, [System.Text.Encoding]::UTF8)

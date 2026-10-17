@@ -33,7 +33,7 @@ Kopieren Sie die Hauptdateien auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisie
 Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShell-Modul benötigt.
 
 > **Wichtiger Hinweis zur Trennung von Vorlage und echten Namen (`anon-regeln.lokal.json`):**
-> Die mitgelieferte Datei `anon-regeln.json` dient als geteilte Vorlage und enthält ausschließlich synthetische Beispielwerte. Kopieren Sie diese Datei auf Ihrer Admin-VM nach **`anon-regeln.lokal.json`** und tragen Sie Ihre echten Gerätenamen, Firmennamen, internen Domains und Namensschema-Präfixe **ausschließlich in `anon-regeln.lokal.json`** ein. Geben Sie `anon-regeln.lokal.json` niemals weiter und laden Sie sie nirgendwo hoch!
+> Die mitgelieferte Datei `anon-regeln.json` ist das Basisregelwerk und enthält ausschließlich synthetische Beispielwerte. Legen Sie auf Ihrer Admin-VM daneben eine **`anon-regeln.lokal.json`** an, die **nur Ihre Ergänzungen** enthält (echte Gerätenamen, Firmennamen, interne Domains, eigene Hostnamen-Muster), und übergeben Sie sie mit **`-LokaleRegeln`**. Die Basisregeln bleiben dabei aktiv. Geben Sie `anon-regeln.lokal.json` niemals weiter und laden Sie sie nirgendwo hoch!
 
 ---
 
@@ -46,7 +46,8 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
 1. **Sammeln:**
    Sammeln Sie die Switch-Ausgaben per `switch-sammler.ps1` (oder legen Sie bestehende Show-Tech-Ordner / `.zip`/`.tar.gz`-Archive in einem lokalen Eingabeordner ab).
 2. **Anonymisieren:**
-   Starten Sie `anon.ps1` mit Ihrer lokalen Regeldatei `-Regeln .\anon-regeln.lokal.json` (oder laden Sie die lokale Regeldatei in `anonymisierer.html`).
+   Starten Sie `anon.ps1` mit Ihrer lokalen Regeldatei `-LokaleRegeln .\anon-regeln.lokal.json` (oder laden Sie die lokale Regeldatei in `anonymisierer.html` unter „Eigene Begriffe“). `-Regeln` bleibt für das Basisregelwerk (`anon-regeln.json`, Standard im Skriptordner).
+   - Alle Dateien werden in zwei Durchläufen verarbeitet: Ein Hostname, der erst in Datei 3 erkannt wird, wird so auch in Datei 1 ersetzt.
    - Dateien mit UTF-8-BOM sowie UTF-16 LE/BE BOM (z. B. Windows-Eventlogs) werden automatisch anhand des BOM erkannt und immer als UTF-8 ohne BOM ausgegeben.
    - Auch alle Datei- und Ordnernamen im Ausgabepfad werden durch die Engine anonymisiert (z. B. `show-tech-rz1-sw-core01.txt` -> `show-tech-CORE-A.txt`).
    - Geheimnisse (Passwörter, Hashes, `ciphertext`, HPE Comware `password/key cipher|simple|hash`, MikroTik `private-key=`/`public-key=`, SNMP-Communities, PSKs, PEM-Blöcke) werden unwiderruflich durch `*****` entfernt.
@@ -54,7 +55,7 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
    - Die Zuordnungstabelle wird **außerhalb** des Ausgabeordners unter `%LOCALAPPDATA%\Anon\Tabellen\` abgelegt (geschützt per Windows-ACL auf Ihren Benutzer sowie standardmäßig unter Windows mit DPAPI oder per `-MitPasswort` mit `ANON-AES256-2` verschlüsselt).
    - Der temporäre Entpack-Ordner `<Ausgabe>\_arbeit\` wird nach dem Lauf automatisch gelöscht.
 3. **Prüfen (`-Pruefen`):**
-   Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen, E-Mail-Adressen, Sperrbegriffen, Hashes oder langen Hex/Base64-Blobs.
+   Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `_` oder `-` grenzen (z. B. `Uplink_XY1-SW01_P56`).
    - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **`SAUBER`** (Exit-Code `0`).
    - Werden Restfunde entdeckt (`RESTFUNDE_VORHANDEN`), beendet sich `anon.ps1` auch im Hauptlauf mit **Exit-Code `2`**. Ergänzen Sie in diesem Fall das fehlende Muster in Ihrer `anon-regeln.lokal.json` und starten Sie den Lauf erneut.
 4. **Sichtprüfung (Pflichtschritt vor jeder Weitergabe!):**
@@ -105,7 +106,7 @@ cd C:\Tools\anonymisierer
 # Einzelne Datei oder ganzen Show-Tech-Ordner / Archiv anonymisieren:
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang\show-tech.tar.gz" `
            -Ausgabe "C:\Faelle\Ausgang" `
-           -Regeln ".\anon-regeln.lokal.json"
+           -LokaleRegeln ".\anon-regeln.lokal.json"
 ```
 - **Freigegebene Ausgabe:** `C:\Faelle\Ausgang\anonym\`
 - **Bericht (mit anonymisierten Dateipfaden):** `C:\Faelle\Ausgang\bericht.json`
@@ -116,13 +117,13 @@ Passwörter müssen **mindestens 12 Zeichen** lang sein und werden sicher per `R
 ```powershell
 # Mit eigenem Passwort (mind. 12 Zeichen, zweimalige verdeckte Abfrage):
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang" -Ausgabe "C:\Faelle\Ausgang" `
-           -Regeln ".\anon-regeln.lokal.json" `
+           -LokaleRegeln ".\anon-regeln.lokal.json" `
            -TabellenPfad "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json" `
            -MitPasswort
 
 # Explizit unverschlüsselte Ablage der Tabelle (nur wenn ausdrücklich gewünscht):
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang" -Ausgabe "C:\Faelle\Ausgang" `
-           -Regeln ".\anon-regeln.lokal.json" `
+           -LokaleRegeln ".\anon-regeln.lokal.json" `
            -Unverschluesselt
 ```
 
@@ -130,17 +131,17 @@ Passwörter müssen **mindestens 12 Zeichen** lang sein und werden sicher per `R
 Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen, merkt sich `anon.ps1` deren Schutzart und behält sie beim Speichern automatisch bei – selbst wenn `-MitPasswort` oder `-Dpapi` beim Folgelauf nicht erneut angegeben wurde:
 ```powershell
 .\anon.ps1 -Eingabe "C:\Faelle\Nachlieferung.log" -Ausgabe "C:\Faelle\Ausgang2" `
-           -Regeln ".\anon-regeln.lokal.json" `
+           -LokaleRegeln ".\anon-regeln.lokal.json" `
            -Tabelle "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json"
 ```
 
 ### Trockenlauf (`-Probe`) und reiner Prüfmodus (`-Pruefen`)
 ```powershell
 # Trockenlauf: Zeigt nur Anzahl Ersetzungen je Kategorie, schreibt keine Dateien
-.\anon.ps1 -Eingabe "C:\Faelle\Eingang" -Regeln ".\anon-regeln.lokal.json" -Probe
+.\anon.ps1 -Eingabe "C:\Faelle\Eingang" -LokaleRegeln ".\anon-regeln.lokal.json" -Probe
 
 # Reiner Prüfmodus auf einem bereits anonymisierten Ordner (Exit-Code 0 = SAUBER, Exit-Code 2 = Restfunde)
-.\anon.ps1 -Eingabe "C:\Faelle\Ausgang\anonym" -Regeln ".\anon-regeln.lokal.json" -Pruefen
+.\anon.ps1 -Eingabe "C:\Faelle\Ausgang\anonym" -LokaleRegeln ".\anon-regeln.lokal.json" -Pruefen
 ```
 
 ### Rückübersetzen einer KI-Antwort (`-Zurueck`)
@@ -181,7 +182,18 @@ Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen
 
 ## 6. Lokale Regeldatei (`anon-regeln.lokal.json`) auf der Admin-VM pflegen
 
-Kopieren Sie `anon-regeln.json` nach `anon-regeln.lokal.json` und passen Sie dort folgende Bereiche an:
+`anon-regeln.lokal.json` enthält **nur Ergänzungen** zum Basisregelwerk `anon-regeln.json` und wird mit `-LokaleRegeln` (bzw. in `anonymisierer.html` über „anon-regeln.lokal.json laden“) übergeben. Beide Varianten führen die Dateien identisch zusammen: Begriffe werden ergänzt, Musterlisten werden **hinter** die Basismuster angehängt.
+
+Übernommen werden:
+
+| Bereich | Wirkung |
+|---|---|
+| `eigeneBegriffe.festeZuordnung`, `.firmenUndStandorte`, `.interneDomains` | eigene Begriffe, Rollen und Domains |
+| `ausnahmen.exakteWoerter`, `.versionKontext`, `.musterRegex` | Werte, die im Klartext bleiben |
+| `eigeneHostnamenMuster` | reguläre Ausdrücke für Ihr Namensschema (Treffer → `HOST-n`) |
+| `hostnamenMuster`, `seriennummerMuster`, `benutzerMuster`, `geheimnisMuster`, `freitextMuster` | zusätzliche Erkennungsmuster |
+| `tabellenSpalten` | zusätzliche Tabellen, deren Spalten ersetzt werden |
+| `pruefung.erlaubtListe`, `.erlaubtMuster` | zusätzliche Ausnahmen im Prüfmodus |
 
 ### A. Eigene Begriffe, Rollen & Domains (`eigeneBegriffe`)
 Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Namensgrenzen `(?<![A-Za-z0-9-])...(?![A-Za-z0-9-])` gesucht, sodass z. B. `"rz1-tor-01"` niemals versehentlich den Anfang von `"rz1-tor-010"` zu `"TOR-A0"` verfälscht:
@@ -204,18 +216,55 @@ Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Nam
 }
 ```
 
-### B. Gerätenamen in Tabellen (`hostnamenMuster`)
+### B. Eigenes Namensschema (`eigeneHostnamenMuster`)
+Das Basisregelwerk erkennt nur generische Beispielpräfixe (`sw-`, `core-`, `dist-`, `acc-` mit mindestens einer Ziffer). Ihr echtes Namensschema gehört in die lokale Datei. Gruppe 1 (oder der ganze Treffer) wird zu `HOST-n`:
+```json
+"eigeneHostnamenMuster": [
+  "(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"
+]
+```
+Einmal erkannte Hostnamen werden danach im gesamten Lauf ersetzt. Gesucht wird dabei mit den Grenzen `(?<![A-Za-z0-9_-])` und `(?![A-Za-z0-9_-])`, ein Name direkt an `_` oder `-` (z. B. `Uplink_XY1-SW01_P56`) wird also **nicht** ersetzt, aber vom Prüfmodus als `Rest-Bekannt` gemeldet.
+
+### C. Tabellenspalten (`tabellenSpalten`)
+Für Tabellen ohne Schlüsselwort pro Zeile (letzte Spalte von `show interface brief`, LLDP `PORT-DESC`/`SYS-NAME`, Cisco CDP `Device ID`) werden die Spaltengrenzen aus der Kopfzeile bestimmt. Eine Tabelle beginnt an einer Zeile, die alle Wörter aus `kopf` enthält, und endet an der nächsten Leerzeile. Werte nur aus Ziffern und Portnotation (`1/1/49`, `--`) bleiben stehen:
+```json
+"tabellenSpalten": [
+  {
+    "name": "Aruba AOS-CX show lldp neighbor-info",
+    "kopf": ["LOCAL-PORT", "CHASSIS-ID", "PORT-ID", "PORT-DESC", "SYS-NAME"],
+    "spalten": [
+      { "name": "PORT-DESC", "kategorie": "TEXT" },
+      { "name": "SYS-NAME", "kategorie": "HOST" }
+    ]
+  }
+]
+```
+
+### D. Gerätenamen in Konfigurationszeilen (`hostnamenMuster`)
 Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl bei LF- als auch bei Windows-CRLF-Dateien in .NET und JavaScript identisch greifen:
 ```json
 "hostnamenMuster": [
   "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
   "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
-  "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
-  "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
-  "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
-  "(?i)\\b((?:rz\\d|sv|sw|tsw|back|lwl)-[A-Za-z0-9-]+)\\b"
+  "(?i)(?<![A-Za-z0-9_-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9_-])"
 ]
 ```
+
+### E. Reihenfolge der Engine (identisch in `anon.ps1` und `anonymisierer.html`)
+0. Tabellenspalten (`tabellenSpalten`) über Spaltenpositionen der Kopfzeile
+1. Geheimnisse entfernen (`*****`)
+2. Ausnahmen schützen (Versionen wie `10.13.1020`, Portnamen, Masken, Uhrzeiten, `ausnahmen.musterRegex`)
+3. Freitext-Felder (`description`, `location`, Banner, ...) → `TEXT-n`, `ORT-n`, `KONTAKT-n`, `BANNER-n`
+4. Eigene Begriffe (`festeZuordnung`, `firmenUndStandorte`)
+5. Seriennummern → `SERIAL-n`
+6. Benutzer → `USER-n`
+7. E-Mail und URL → `MAIL-n`, `URL-n`
+8. MAC-Adressen (alle Schreibweisen) → `MAC-n`
+9. IPv6, danach IPv4 → `IP6-…`, `NET-n.Hm`
+10. Hostnamen (Muster, CLI-Prompt, im Lauf bekannte Hosts), FQDNs und interne Domains → `HOST-n`, `DOMAIN-n`
+11. Schutz-Marker linear auflösen
+
+Nicht ersetzt werden u. a. Versionen (`10.13.1020`), Portnamen, VLAN-IDs, Produktnamen (`ausnahmen.exakteWoerter`), Subnetz-/Wildcard-Masken, Uhrzeiten und das Wort `hash`.
 
 ---
 
@@ -234,7 +283,7 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 
 ## 8. Tests ausführen
 
-Der Ordner `tests\` enthält **53 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits-, Sammler- und Randfälle.
+Der Ordner `tests\` enthält **61 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits-, Sammler- und Randfälle.
 
 - **PowerShell-Testsuite starten:**
   ```powershell

@@ -2,23 +2,23 @@
   {
     "id": "TC01",
     "name": "Netzerhaltende IPv4 im selben /24 Subnetz",
-    "eingabe": "ip address 10.20.30.1/24\nip route 10.20.30.0/24 10.20.30.254",
+    "eingabe": "ip address 192.0.2.1/24\nip route 192.0.2.0/24 192.0.2.254",
     "erwartet": "ip address NET-1.H1/24\nip route NET-1.H0/24 NET-1.H2",
     "netzerhaltend": true,
     "sauber": true
   },
   {
     "id": "TC02",
-    "name": "Nicht-netzerhaltende IPv4 mit Privat/Öffentlich-Trennung",
-    "eingabe": "src=192.168.10.55 dst=8.8.8.8",
-    "erwartet": "src=IP-PRIV-1 dst=IP-PUB-1",
+    "name": "Nicht-netzerhaltende IPv4 mit Privat/Öffentlich-Trennung (nur Dokumentationsadressen, daher beide IP-PUB)",
+    "eingabe": "src=192.0.2.55 dst=198.51.100.8",
+    "erwartet": "src=IP-PUB-1 dst=IP-PUB-2",
     "netzerhaltend": false,
     "sauber": true
   },
   {
     "id": "TC03",
     "name": "IPv4 direkt an Unterstrich und Bindestrich-Maske (z.B. Objekt-/Routenname)",
-    "eingabe": "ip route static WAN_10.1.2.0-27 via 10.1.2.1/27",
+    "eingabe": "ip route static WAN_192.0.2.0-27 via 192.0.2.1/27",
     "erwartet": "ip route static WAN_NET-1.H0-27 via NET-1.H1/27",
     "netzerhaltend": true,
     "sauber": true
@@ -26,7 +26,7 @@
   {
     "id": "TC04",
     "name": "Subnetzmasken und 0.0.0.0 bleiben sichtbar",
-    "eingabe": "ip route 0.0.0.0 0.0.0.0 172.16.5.1\nmask 255.255.255.0 wildcard 0.0.0.255",
+    "eingabe": "ip route 0.0.0.0 0.0.0.0 192.0.2.1\nmask 255.255.255.0 wildcard 0.0.0.255",
     "erwartet": "ip route 0.0.0.0 0.0.0.0 NET-1.H1\nmask 255.255.255.0 wildcard 0.0.0.255",
     "netzerhaltend": true,
     "sauber": true
@@ -66,8 +66,8 @@
   {
     "id": "TC09",
     "name": "Versionsnummern wie 10.13.1020 und Aruba FL.10.13.1020 nicht als IP behandeln",
-    "eingabe": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 10.5.3.2",
-    "erwartet": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 10.5.3.2",
+    "eingabe": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 192.0.2.2",
+    "erwartet": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 192.0.2.2",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -98,7 +98,7 @@
   {
     "id": "TC13",
     "name": "Aruba AOS-S RADIUS und WPA-Passphrase entfernen",
-    "eingabe": "radius-server host 10.0.0.5 key ciphertext 998877665544332211\nwpa-passphrase SuperGeheimesWlanPasswort!",
+    "eingabe": "radius-server host 192.0.2.5 key ciphertext 998877665544332211\nwpa-passphrase SuperGeheimesWlanPasswort!",
     "erwartet": "radius-server host NET-1.H1 key ciphertext *****\nwpa-passphrase *****",
     "netzerhaltend": true,
     "sauber": true
@@ -219,7 +219,7 @@
   {
     "id": "TC28",
     "name": "Benutzernamen in Konfig und Syslog/Eventlog ersetzen (admin bleibt Ausnahme)",
-    "eingabe": "username jdoe privilege 15\nuser=mmustermann src=10.1.1.5\nSubjectUserName=kmayer\nusername admin privilege 15",
+    "eingabe": "username jdoe privilege 15\nuser=mmustermann src=192.0.2.5\nSubjectUserName=kmayer\nusername admin privilege 15",
     "erwartet": "username USER-1 privilege 15\nuser=USER-2 src=NET-1.H1\nSubjectUserName=USER-3\nusername admin privilege 15",
     "netzerhaltend": true,
     "sauber": true
@@ -283,7 +283,7 @@
   {
     "id": "TC36",
     "name": "Konsistenz derselben Werte innerhalb eines Laufs",
-    "eingabe": "ping 10.50.60.10 source 10.50.60.1\nreply from 10.50.60.10 to 10.50.60.1",
+    "eingabe": "ping 192.0.2.10 source 192.0.2.1\nreply from 192.0.2.10 to 192.0.2.1",
     "erwartet": "ping NET-1.H1 source NET-1.H2\nreply from NET-1.H1 to NET-1.H2",
     "netzerhaltend": true,
     "sauber": true
@@ -291,7 +291,7 @@
   {
     "id": "TC37",
     "name": "Rückübersetzung stellt netzerhaltende IPs, MACs und feste Rollen exakt wieder her",
-    "eingabe": "Route auf rz1-sw-core01 über 10.99.88.1/24 (MAC 00:aa:bb:cc:dd:ee) zu 10.99.88.50",
+    "eingabe": "Route auf rz1-sw-core01 über 192.0.2.1/24 (MAC 00:aa:bb:cc:dd:ee) zu 192.0.2.50",
     "erwartet": "Route auf CORE-A über NET-1.H1/24 (MAC MAC-1) zu NET-1.H2",
     "netzerhaltend": true,
     "sauber": true,
@@ -300,16 +300,19 @@
   {
     "id": "TC38",
     "name": "Einzelne Kategorie abschaltbar (z.B. MAC ausgeschaltet, IP eingeschaltet)",
-    "eingabe": "ip=10.1.1.1 mac=00:11:22:33:44:55",
+    "eingabe": "ip=192.0.2.1 mac=00:11:22:33:44:55",
     "erwartet": "ip=NET-1.H1 mac=00:11:22:33:44:55",
     "netzerhaltend": true,
-    "kategorien": ["ip", "geheimnisseEntfernen"],
+    "kategorien": [
+      "ip",
+      "geheimnisseEntfernen"
+    ],
     "sauber": false
   },
   {
     "id": "TC39",
     "name": "Broadcast- und Null-MACs (ff:ff:ff:ff:ff:ff, 00:00:00:00:00:00) bleiben unverändert und SAUBER",
-    "eingabe": "arp 10.0.0.1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
+    "eingabe": "arp 192.0.2.1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
     "erwartet": "arp NET-1.H1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
     "netzerhaltend": true,
     "sauber": true
@@ -333,7 +336,7 @@
   {
     "id": "TC42",
     "name": "Windows Eventlog Zeile mit Account, IP und Domain",
-    "eingabe": "EventID=4624 SubjectUserName=admin_mayer TargetUserName=svc_backup IpAddress=10.40.50.60 Domain=ad.firma.lan",
+    "eingabe": "EventID=4624 SubjectUserName=admin_mayer TargetUserName=svc_backup IpAddress=192.0.2.60 Domain=ad.firma.lan",
     "erwartet": "EventID=4624 SubjectUserName=USER-1 TargetUserName=USER-2 IpAddress=NET-1.H1 Domain=DOMAIN-1",
     "netzerhaltend": true,
     "sauber": true
@@ -358,7 +361,7 @@
   {
     "id": "TC45",
     "name": "Punkt 3: Gerätenamen in LLDP-/MAC-/ARP-Tabellen ohne 'System Name:' über Namensschema erkennen",
-    "eingabe": "1/1/1   tsw-halle2-01   00:1a:2b:3c:4d:5e   1/1/24\n1/1/2   lwl-ring-nord02 00:1a:2b:3c:4d:5f   1/1/2",
+    "eingabe": "1/1/1   acc-halle2-01   00:1a:2b:3c:4d:5e   1/1/24\n1/1/2   dist-ring-nord02 00:1a:2b:3c:4d:5f   1/1/2",
     "erwartet": "1/1/1   HOST-1   MAC-1   1/1/24\n1/1/2   HOST-2 MAC-2   1/1/2",
     "netzerhaltend": true,
     "sauber": true
@@ -374,7 +377,7 @@
   {
     "id": "TC47",
     "name": "Punkt 5: Platform in LLDP/CDP bleibt als wichtiger Gerätetyp unverändert erhalten",
-    "eingabe": "System Name: tsw-etage1-04\nPlatform: Aruba 8325-48Y8C\nPort Description: Uplink_Core",
+    "eingabe": "System Name: acc-etage1-04\nPlatform: Aruba 8325-48Y8C\nPort Description: Uplink_Core",
     "erwartet": "System Name: HOST-1\nPlatform: Aruba 8325-48Y8C\nPort Description: TEXT-1",
     "netzerhaltend": true,
     "sauber": true
@@ -383,7 +386,7 @@
     "id": "TC48",
     "name": "Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte (rz1-tor-01 macht rz1-tor-010 nicht zu TOR-A0)",
     "eingabe": "uplink rz1-tor-01 neighbor rz1-tor-010 site Rechenzentrum-Nord tag Rechenzentrum-Nord2",
-    "erwartet": "uplink TOR-A neighbor HOST-1 site FIRMA-1 tag Rechenzentrum-Nord2",
+    "erwartet": "uplink TOR-A neighbor rz1-tor-010 site FIRMA-1 tag Rechenzentrum-Nord2",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -398,7 +401,7 @@
   {
     "id": "TC50",
     "name": "MikroTik: interface=ether1 und name=bridge1 bleiben unverändert; name=VLAN10_Intern und interface=VLAN10_Intern erhalten denselben Platzhalter",
-    "eingabe": "/interface bridge\nadd name=bridge1\n/interface vlan\nadd interface=bridge1 name=VLAN10_Intern vlan-id=10\n/interface bridge port\nadd bridge=bridge1 interface=ether1\nadd bridge=bridge1 interface=sfp-sfpplus1\n/ip address\nadd address=10.10.10.1/24 interface=VLAN10_Intern",
+    "eingabe": "/interface bridge\nadd name=bridge1\n/interface vlan\nadd interface=bridge1 name=VLAN10_Intern vlan-id=10\n/interface bridge port\nadd bridge=bridge1 interface=ether1\nadd bridge=bridge1 interface=sfp-sfpplus1\n/ip address\nadd address=192.0.2.1/24 interface=VLAN10_Intern",
     "erwartet": "/interface bridge\nadd name=bridge1\n/interface vlan\nadd interface=bridge1 name=TEXT-1 vlan-id=10\n/interface bridge port\nadd bridge=bridge1 interface=ether1\nadd bridge=bridge1 interface=sfp-sfpplus1\n/ip address\nadd address=NET-1.H1/24 interface=TEXT-1",
     "netzerhaltend": true,
     "sauber": true
@@ -422,7 +425,7 @@
   {
     "id": "TC53",
     "name": "MikroTik: WireGuard public-key=/private-key=/preshared-key= als Geheimnis (*****) und DHCP-Lease host-name= als HOST-n",
-    "eingabe": "/interface wireguard\nadd listen-port=13231 name=wg_standort private-key=\"cGxhY2Vob2xkZXJfcHJpdmF0ZV9rZXlfMTIzNDU2Nzg=\"\n/interface wireguard peers\nadd interface=wg_standort public-key=\"cHVibGljX2tleV9leGFtcGxlX2Jhc2U2NF8xMjM0NTY=\" preshared-key=\"cHJlc2hhcmVkX2tleV9leGFtcGxlXzEyMzQ1Njc4OTA=\"\n/ip dhcp-server lease\nadd address=192.168.50.25 mac-address=AA:BB:CC:11:22:33 host-name=nb-mueller-01 active-host-name=\"nb-mueller-01\"",
+    "eingabe": "/interface wireguard\nadd listen-port=13231 name=wg_standort private-key=\"cGxhY2Vob2xkZXJfcHJpdmF0ZV9rZXlfMTIzNDU2Nzg=\"\n/interface wireguard peers\nadd interface=wg_standort public-key=\"cHVibGljX2tleV9leGFtcGxlX2Jhc2U2NF8xMjM0NTY=\" preshared-key=\"cHJlc2hhcmVkX2tleV9leGFtcGxlXzEyMzQ1Njc4OTA=\"\n/ip dhcp-server lease\nadd address=192.0.2.25 mac-address=AA:BB:CC:11:22:33 host-name=nb-mueller-01 active-host-name=\"nb-mueller-01\"",
     "erwartet": "/interface wireguard\nadd listen-port=13231 name=TEXT-1 private-key=*****\n/interface wireguard peers\nadd interface=TEXT-1 public-key=***** preshared-key=*****\n/ip dhcp-server lease\nadd address=NET-1.H1 mac-address=MAC-1 host-name=HOST-1 active-host-name=\"HOST-1\"",
     "netzerhaltend": true,
     "sauber": true
@@ -434,6 +437,71 @@
     "erwartet": "interface 1/1/10\n description TEXT-1\nsnmp-server system-location ORT-1\n/interface ethernet\nset [ find default-name=ether1 ] comment=\"TEXT-4\"\nvlan 20\n name TEXT-2\nSystem Description : TEXT-3\nSystem Description : ArubaOS-CX FL.10.13.1020",
     "netzerhaltend": true,
     "sauber": true
+  },
+  {
+    "id": "TC55",
+    "name": "Lücke 1: IPv4 am Satzende (Punkt danach) wird erkannt, OID und Version bleiben",
+    "eingabe": "Accepted connection from 192.0.2.40.\nRoute via 198.51.100.7. Done\noid 1.3.6.1.4.1.2011 version 10.13.1020",
+    "erwartet": "Accepted connection from NET-1.H1.\nRoute via NET-2.H1. Done\noid 1.3.6.1.4.1.2011 version 10.13.1020",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC56",
+    "name": "Lücke 2: MAC im Aruba-Format aabbcc-ddeeff, reine Ziffernfolge (Datum) bleibt",
+    "eingabe": "MAC Address : 0a1b2c-3d4e5f\nport-access client 0a1b2c-3d4e60 vlan 20\nlog-261017-231315 erstellt",
+    "erwartet": "MAC Address : MAC-1\nport-access client MAC-2 vlan 20\nlog-261017-231315 erstellt",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC57",
+    "name": "Lücke 3: MAC direkt nach Doppelpunkt ohne Leerzeichen, IPv6 mit 2er-Gruppen bleibt IPv6",
+    "eingabe": "Address:0a:1b:2c:3d:4e:5f\nChassis-Id:0a:1b:2c:3d:4e:60\nipv6 2001:db8:a:b:c:d:e:f",
+    "erwartet": "Address:MAC-1\nChassis-Id:MAC-2\nipv6 IP6-PUB-1",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC58",
+    "name": "Lücke 4: Chassis Serial Nbr und Serial No. werden als Seriennummer ersetzt",
+    "eingabe": "Chassis Serial Nbr : AB1CDE234F\nSerial No.: AB1CDE234F\nSerial Number : ZZ9XYZ876",
+    "erwartet": "Chassis Serial Nbr : SERIAL-1\nSerial No.: SERIAL-1\nSerial Number : SERIAL-2",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true
+  },
+  {
+    "id": "TC59",
+    "name": "Lücke 5: Gerätenamen in Beschreibungsfeldern (Description:, letzte Spalte show interface brief, LLDP PORT-DESC und SYS-NAME)",
+    "eingabe": "Description: Uplink_XY1-SW01_P56\n\nPort      Native  Mode   Type    Enabled Status  Reason   Speed   Description\n          VLAN                                            (Mb/s)\n------------------------------------------------------------------------------\n1/1/1     1       access 1GbT    yes     up               1000    Drucker Empfang\n1/1/49    10      trunk  SFP+    yes     up               10000   Uplink_XY1-SW01_P56\n1/1/50    10      trunk  SFP+    yes     down             --      --\n\nLOCAL-PORT  CHASSIS-ID         PORT-ID   PORT-DESC                  TTL     SYS-NAME\n------------------------------------------------------------------------------------\n1/1/49      0a:1b:2c:3d:4e:60  1/1/50    Uplink to XY1-SW01 Port 56 120     XY1-DIST07\n1/1/50      0a:1b:2c:3d:4e:61  1/1/49    1/1/49                     120     XY1-DIST08\n\nlldp neighbor XY1-DIST07 reachable",
+    "erwartet": "Description: TEXT-2\n\nPort      Native  Mode   Type    Enabled Status  Reason   Speed   Description\n          VLAN                                            (Mb/s)\n------------------------------------------------------------------------------\n1/1/1     1       access 1GbT    yes     up               1000    TEXT-1\n1/1/49    10      trunk  SFP+    yes     up               10000   TEXT-2\n1/1/50    10      trunk  SFP+    yes     down             --      --\n\nLOCAL-PORT  CHASSIS-ID         PORT-ID   PORT-DESC                  TTL     SYS-NAME\n------------------------------------------------------------------------------------\n1/1/49      MAC-1  1/1/50    TEXT-3                     120     HOST-1\n1/1/50      MAC-2  1/1/49    1/1/49                     120     HOST-2\n\nlldp neighbor HOST-1 reachable",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true
+  },
+  {
+    "id": "TC60",
+    "name": "Lücke 6: Generisches Namensschema (sw, core, dist, acc mit Ziffer), core-dump bleibt",
+    "eingabe": "neighbor dist-sw07 via core-r2 and acc-12a\ncore-dump enabled\nsw-image primary",
+    "erwartet": "neighbor HOST-1 via HOST-2 and HOST-3\ncore-dump enabled\nsw-image primary",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC61",
+    "name": "Bekannte Hosts: Grenzen ohne _ und - (edge7_alt, edge7-alt bleiben), Prüfmodus meldet die Reste",
+    "eingabe": "hostname edge7\nlink edge7 up\nlink edge7_alt\nlink edge7-alt",
+    "erwartet": "hostname HOST-1\nlink HOST-1 up\nlink edge7_alt\nlink edge7-alt",
+    "netzerhaltend": true,
+    "sauber": false
   }
 ]
-

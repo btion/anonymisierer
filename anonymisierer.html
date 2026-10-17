@@ -568,6 +568,12 @@
             <div id="exakteWoerterRows" style="max-height:260px; overflow:auto;"></div>
           </div>
         </div>
+        <div style="margin-top:12px;">
+          <strong>5. Eigene Hostnamen-Muster (eigeneHostnamenMuster)</strong>
+          <div class="small-muted" style="margin-bottom:6px;">Ein regulärer Ausdruck pro Zeile für Ihr Namensschema (z. B. <code>(?i)(?&lt;![A-Za-z0-9_-])(xy[0-9]-sw[0-9]{2})(?![A-Za-z0-9_-])</code>). Treffer werden zu <code>HOST-n</code>. Weitere Muster aus einer geladenen <code>anon-regeln.lokal.json</code> werden unverändert übernommen.</div>
+          <textarea id="eigeneHostnamenMusterInput" rows="4" spellcheck="false"></textarea>
+          <div class="small-muted" id="lokaleMusterInfo"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -1017,7 +1023,7 @@
         "TACACS"
       ],
       "erlaubtMuster": [
-        "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP(?:-PRIV|-PUB|6|-6-PRIV|-6-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|(?:CORE|TOR|FW|DC|SW)-[A-Z0-9-]+)$",
+        "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP6?(?:-PRIV|-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|SW-EIGEN-\\d+)$",
         "(?i)^(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)$",
         "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}$",
         "^v?\\d+\\.\\d+\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?$"
@@ -1122,7 +1128,7 @@
       {
         "name": "Interface Description / Alias (CLI)",
         "kategorie": "TEXT",
-        "suche": "(?im)^([ \\t]*(?:description|alias)[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+        "suche": "(?im)^([ \\t]*(?:description|alias)(?:[ \\t]*:[ \\t]*|[ \\t]+))([^ \\t\\r\\n:][^\\r\\n]*)(?=\\r?$)"
       },
       {
         "name": "VLAN-Namen (CLI)",
@@ -1171,7 +1177,7 @@
       }
     ],
     "seriennummerMuster": [
-      "(?i)(\\b(?:Serial[ \\t-]*Number|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+Number|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
+      "(?i)(\\b(?:Serial[ \\t-]*(?:Number|Nbr|No|Num)\\.?|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+(?:Number|Nbr|No|Num)\\.?|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
       "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
     ],
     "benutzerMuster": [
@@ -1188,7 +1194,103 @@
       "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
       "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
-      "(?i)\\b((?:rz\\d|sv|sw|tsw|back|lwl)-[A-Za-z0-9-]+)\\b"
+      "(?i)(?<![A-Za-z0-9_-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9_-])"
+    ],
+    "tabellenSpalten": [
+      {
+        "name": "Aruba AOS-CX show interface brief (letzte Spalte Description)",
+        "kopf": [
+          "Port",
+          "Mode",
+          "Type",
+          "Enabled",
+          "Status",
+          "Description"
+        ],
+        "spalten": [
+          {
+            "name": "Description",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "Aruba AOS-CX show lldp neighbor-info (PORT-DESC, SYS-NAME)",
+        "kopf": [
+          "LOCAL-PORT",
+          "CHASSIS-ID",
+          "PORT-ID",
+          "PORT-DESC",
+          "SYS-NAME"
+        ],
+        "spalten": [
+          {
+            "name": "PORT-DESC",
+            "kategorie": "TEXT"
+          },
+          {
+            "name": "SYS-NAME",
+            "kategorie": "HOST"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show interfaces description",
+        "kopf": [
+          "Interface",
+          "Status",
+          "Protocol",
+          "Description"
+        ],
+        "spalten": [
+          {
+            "name": "Description",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "HPE Comware display interface brief",
+        "kopf": [
+          "Interface",
+          "Link",
+          "Description"
+        ],
+        "spalten": [
+          {
+            "name": "Description",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show cdp neighbors (Device ID)",
+        "kopf": [
+          "Device ID",
+          "Local Intrfce",
+          "Port ID"
+        ],
+        "spalten": [
+          {
+            "name": "Device ID",
+            "kategorie": "HOST"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show lldp neighbors (Device ID)",
+        "kopf": [
+          "Device ID",
+          "Local Intf",
+          "Port ID"
+        ],
+        "spalten": [
+          {
+            "name": "Device ID",
+            "kategorie": "HOST"
+          }
+        ]
+      }
     ]
   };
 
@@ -1367,18 +1469,31 @@
       })),
       seriennummerMuster: ((rulesObj && rulesObj.seriennummerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
       benutzerMuster: ((rulesObj && rulesObj.benutzerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
-      hostnamenMuster: ((rulesObj && rulesObj.hostnamenMuster) || []).map(p => compileDotNetPatternToJS(p, true))
+      // Reihenfolge wie anon.ps1: hostnamenMuster, danach eigeneHostnamenMuster
+      hostnamenMuster: [
+        ...((rulesObj && rulesObj.hostnamenMuster) || []),
+        ...((rulesObj && rulesObj.eigeneHostnamenMuster) || [])
+      ].map(p => compileDotNetPatternToJS(p, true)),
+      tabellenSpalten: ((rulesObj && rulesObj.tabellenSpalten) || []).map(t => ({
+        name: t && t.name ? String(t.name) : "",
+        kopf: ((t && t.kopf) || []).filter(k => k != null).map(k => String(k)),
+        spalten: ((t && t.spalten) || []).filter(sp => sp != null).map(sp => ({
+          name: sp.name != null ? String(sp.name) : "",
+          kategorie: sp.kategorie != null ? String(sp.kategorie) : ""
+        }))
+      }))
     };
     return cfg;
   }
 
   const RxEmail = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b/g;
   const RxUrl = /\b(?:https?|ftp|tftp|scp|sftp|ldap|ldaps):\/\/[^\s"'<>]+/gi;
-  const RxMacColonDash = /(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:.])|(?<![0-9A-Fa-f.-])(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.-])/g;
+  const RxMacColonDash = /(?<![0-9A-Fa-f.])(?<!::)(?<!:[0-9A-Fa-f]{1,4}:)(?<!(?<![A-Za-z0-9])[0-9A-Fa-f]{1,4}:)(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.])(?!:[0-9A-Fa-f])|(?<![0-9A-Fa-f.-])(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.-])/g;
   const RxMacDot = /(?<![0-9A-Fa-f.])(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])/g;
-  const RxMacRawContext = /(\b(?:mac(?:-address|_address|\s+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)\b[\s":=]{1,6})([0-9A-Fa-f]{12})("?)(?![0-9A-Fa-f])/gi;
-  const RxIpv4 = /(?<![0-9.])(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:(?:\/|-)(?:3[0-2]|[12]?\d)(?![0-9]))?(?![0-9.])/g;
-  const RxIpv6 = /(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:\/(?:12[0-8]|1[01]\d|[1-9]?\d))?(?![0-9A-Fa-f:])/g;
+  const RxMacRawContext = /((?<![A-Za-z0-9_])(?:mac(?:-address|_address|[ \t]+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)(?![A-Za-z0-9_])[ \t":=]{1,6})([0-9A-Fa-f]{6}-?[0-9A-Fa-f]{6})("?)(?![0-9A-Fa-f])/gi;
+  const RxMacAruba = /(?<![0-9A-Za-z_.:-])[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}(?![0-9A-Za-z_.:-])/g;
+  const RxIpv4 = /(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:(?:\/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])/g;
+  const RxIpv6 = /(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])/g;
   const RxCliPrompt = /^([A-Za-z][A-Za-z0-9_-]{2,48})(\([A-Za-z0-9_-]+\))?([#>])[ \t]+/gm;
   const RxUnprotect = /\u0002PROT_(\d+)\u0003/g;
   const RxPathExt = /(\.(?:tar\.gz|tgz|zip|tar|txt|log|json|cfg|conf|xml|csv|out|bin|dump|bak|old))$/i;
@@ -1525,6 +1640,168 @@
     return token + suffix;
   }
 
+  // --------------------------------------------------------------------------
+  // Tabellenspalten (z. B. letzte Spalte "show interface brief", LLDP PORT-DESC / SYS-NAME)
+  // Spaltengrenzen aus der Kopfzeile; die Tabelle endet an einer Leerzeile (identisch zu anon.ps1)
+  // --------------------------------------------------------------------------
+  function isBlankCh(c) {
+    return c === " " || c === "\t";
+  }
+
+  function findHeaderWord(line, word) {
+    if (!word) return -1;
+    let from = 0;
+    while (from <= line.length - word.length) {
+      const i = line.indexOf(word, from);
+      if (i < 0) return -1;
+      const e = i + word.length;
+      const okLeft = i === 0 || isBlankCh(line[i - 1]);
+      const okRight = e === line.length || isBlankCh(line[e]);
+      if (okLeft && okRight) return i;
+      from = i + 1;
+    }
+    return -1;
+  }
+
+  function isTableSeparatorLine(line) {
+    let any = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === "-" || c === "=" || c === "+" || c === "|") any = true;
+      else if (!isBlankCh(c)) return false;
+    }
+    return any;
+  }
+
+  function findTableFields(text, cfg) {
+    const result = [];
+    if (!text || !cfg.tabellenSpalten || cfg.tabellenSpalten.length === 0) return result;
+    let cols = null;
+    let pos = 0;
+    let lineNo = 0;
+    while (pos <= text.length) {
+      const nl = text.indexOf("\n", pos);
+      const lineEnd = nl < 0 ? text.length : nl;
+      let contentEnd = lineEnd;
+      if (contentEnd > pos && text[contentEnd - 1] === "\r") contentEnd--;
+      const line = text.slice(pos, contentEnd);
+      lineNo++;
+
+      let isHeader = false;
+      for (const rule of cfg.tabellenSpalten) {
+        if (rule.kopf.length === 0 || rule.spalten.length === 0) continue;
+        if (!rule.kopf.every(w => findHeaderWord(line, w) >= 0)) continue;
+        const newCols = [];
+        for (const sp of rule.spalten) {
+          const s = findHeaderWord(line, sp.name);
+          if (s < 0) continue;
+          let e = -1;
+          for (let p = s + sp.name.length; p < line.length; p++) {
+            if (!isBlankCh(line[p]) && isBlankCh(line[p - 1])) { e = p; break; }
+          }
+          let ins = 0;
+          while (ins < newCols.length && newCols[ins].start <= s) ins++;
+          newCols.splice(ins, 0, { start: s, end: e, kategorie: sp.kategorie });
+        }
+        cols = newCols;
+        isHeader = true;
+        break;
+      }
+
+      if (!isHeader && cols) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("total")) {
+          cols = null;
+        } else if (!isTableSeparatorLine(line)) {
+          let lastEnd = 0;
+          for (const col of cols) {
+            let s = col.start;
+            if (s < lastEnd) s = lastEnd;
+            if (s >= line.length) continue;
+            while (s > 0 && s < line.length && !isBlankCh(line[s - 1])) s++;
+            while (s < line.length && isBlankCh(line[s])) s++;
+            const limit = col.end < 0 ? line.length : Math.min(col.end, line.length);
+            if (s >= limit) continue;
+            let e = limit;
+            if (col.end >= 0) {
+              while (e < line.length && !isBlankCh(line[e]) && !isBlankCh(line[e - 1])) e++;
+            }
+            while (e > s && isBlankCh(line[e - 1])) e--;
+            if (e <= s) continue;
+            result.push({
+              start: pos + s,
+              length: e - s,
+              zeile: lineNo,
+              kategorie: col.kategorie ? col.kategorie : "TEXT",
+              wert: line.slice(s, e)
+            });
+            lastEnd = e;
+          }
+        }
+      }
+
+      if (nl < 0) break;
+      pos = nl + 1;
+    }
+    return result;
+  }
+
+  function isFullMatch(rx, val) {
+    rx.lastIndex = 0;
+    const m = rx.exec(val);
+    rx.lastIndex = 0;
+    return Boolean(m) && m.index === 0 && m[0].length === val.length;
+  }
+
+  function isTableValueExempt(val, cfg) {
+    if (!val) return true;
+    if (/^[0-9\/:.-]+$/.test(val)) return true;
+    if (cfg.exakteAusnahmen.has(val.toLowerCase())) return true;
+    for (const r of cfg.versionKontextRegex) { if (isFullMatch(r, val)) return true; }
+    for (const r of cfg.ausnahmenRegex) { if (isFullMatch(r, val)) return true; }
+    const parts = val.split(/[ \t]+/).filter(Boolean);
+    for (const p of parts) {
+      if (!cfg.exakteAusnahmen.has(p.toLowerCase())) return false;
+    }
+    return true;
+  }
+
+  function isLineRestBlank(text, from) {
+    for (let i = from; i < text.length; i++) {
+      const c = text[i];
+      if (c === "\n" || c === "\r") return true;
+      if (!isBlankCh(c)) return false;
+    }
+    return true;
+  }
+
+  function hasHexLetter(val) {
+    return /[a-fA-F]/.test(val);
+  }
+
+  function compareLengthDescOrdinal(a, b) {
+    if (a.length !== b.length) return b.length - a.length;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  }
+
+  // Bekannte Hostnamen eines Laufs (Schlüssel "host|wert" in der Zuordnungstabelle)
+  function collectKnownHosts(state, extra, cfg) {
+    const map = new Map();
+    for (const h of (extra || [])) {
+      if (!h || h.length < 3) continue;
+      const k = h.toLowerCase();
+      if (!map.has(k)) map.set(k, state.getOrCreateToken("HOST", h, "HOST"));
+    }
+    for (const [key, tok] of state.forward.entries()) {
+      if (!key.startsWith("host|")) continue;
+      const v = key.slice(5).trim().toLowerCase();
+      if (v.length < 3 || cfg.exakteAusnahmen.has(v)) continue;
+      if (!map.has(v)) map.set(v, tok);
+    }
+    const keys = Array.from(map.keys()).sort(compareLengthDescOrdinal);
+    return { keys, map };
+  }
+
   function processText(input, cfg, state) {
     if (!input) return input;
     let text = input;
@@ -1558,6 +1835,38 @@
       }
       return true;
     };
+
+    // STUFE 0: Tabellenspalten (Beschreibungen, LLDP-Nachbarn) über Spaltenpositionen der Kopfzeile
+    if ((cfg.catFreitext || cfg.catHostnamen) && cfg.tabellenSpalten && cfg.tabellenSpalten.length > 0) {
+      const fields = findTableFields(text, cfg);
+      if (fields.length > 0) {
+        const parts = [];
+        let lastPos = 0;
+        for (const f of fields) {
+          if (isTableValueExempt(f.wert, cfg)) continue;
+          let rep = null;
+          if (f.kategorie === "HOST") {
+            if (!cfg.catHostnamen) continue;
+            state.addStat("hostnamen", 1);
+            rep = state.getOrCreateToken("HOST", f.wert, "HOST");
+          } else {
+            if (!cfg.catFreitext) continue;
+            state.addStat("freitext", 1);
+            rep = state.getOrCreateToken("FREITEXT_" + f.kategorie, f.wert, f.kategorie);
+          }
+          const fEnd = f.start + f.length;
+          // Spaltenausrichtung erhalten, außer am Zeilenende
+          if (rep.length < f.length && !isLineRestBlank(text, fEnd)) {
+            rep = rep + " ".repeat(f.length - rep.length);
+          }
+          parts.push(text.slice(lastPos, f.start));
+          parts.push(protect(rep));
+          lastPos = fEnd;
+        }
+        parts.push(text.slice(lastPos));
+        text = parts.join("");
+      }
+    }
 
     // STUFE 1: Geheimnisse ENTFERNEN (*****)
     if (cfg.catGeheimnisse) {
@@ -1716,6 +2025,18 @@
         return protect(tok);
       });
 
+      // Aruba-Format aabbcc-ddeeff (mindestens ein Hex-Buchstabe, sonst Datum/Zahlenbereich)
+      text = text.replace(RxMacAruba, (m) => {
+        if (!hasHexLetter(m)) return m;
+        const norm = normalizeMac(m);
+        if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        if (cfg.exakteAusnahmen.has(m.toLowerCase()) || cfg.exakteAusnahmen.has(norm)) return m;
+        state.addStat("mac", 1);
+        const key = cfg.macNormalisieren ? norm : m.toLowerCase();
+        const tok = state.getOrCreateToken("MAC", key, "MAC", m);
+        return protect(tok);
+      });
+
       text = text.replace(RxMacRawContext, (m, g1, g2, g3) => {
         const norm = normalizeMac(g2);
         if (norm === "000000000000" || norm === "ffffffffffff") return m;
@@ -1778,17 +2099,13 @@
         return protect(tok) + (g2 || "") + g3 + " ";
       });
 
-      const validDiscovered = discoveredHosts.filter(s => s && s.length >= 3).sort((a, b) => b.length - a.length);
-      if (validDiscovered.length > 0) {
-        const hostTokMap = new Map();
-        const escapedHosts = [];
-        for (const dh of validDiscovered) {
-          hostTokMap.set(dh.toLowerCase(), state.getOrCreateToken("HOST", dh, "HOST"));
-          escapedHosts.push(escapeRegExp(dh));
-        }
-        const combinedHostRx = new RegExp(`\\b(?:${escapedHosts.join("|")})\\b`, "gi");
+      // Entdeckte und im Lauf bereits bekannte Hostnamen überall ersetzen
+      // (Grenzen: kein Buchstabe, keine Ziffer, kein "_" und kein "-" direkt davor oder danach)
+      const known = collectKnownHosts(state, discoveredHosts, cfg);
+      if (known.keys.length > 0) {
+        const combinedHostRx = new RegExp(`(?<![A-Za-z0-9_-])(?:${known.keys.map(k => escapeRegExp(k)).join("|")})(?![A-Za-z0-9_-])`, "gi");
         text = text.replace(combinedHostRx, (m) => {
-          const tok = hostTokMap.get(m.toLowerCase());
+          const tok = known.map.get(m.toLowerCase());
           if (tok) {
             state.addStat("hostnamen", 1);
             return protect(tok);
@@ -1880,11 +2197,44 @@
     const lower = candidate.toLowerCase();
     if (cfg.pruefungErlaubtListe.has(lower)) return true;
     if (cfg.exakteAusnahmen.has(lower)) return true;
+    for (const v of Object.values(cfg.festeZuordnung)) {
+      if (String(v).toLowerCase() === lower) return true;
+    }
     for (const r of cfg.pruefungErlaubtMuster) {
       if (r.test(candidate)) return true;
     }
     return false;
   }
+
+  // Alle durch Leerraum getrennten Teile sind erlaubt (Platzhalter, Ausnahmen, *****)
+  function areAllPartsAllowed(val, cfg) {
+    const parts = val.split(/[ \t]+/).filter(Boolean);
+    for (const p of parts) {
+      if (!isAllowedAuditPart(p, cfg)) return false;
+    }
+    return true;
+  }
+
+  // Ein Teil ist unkritisch, wenn er erlaubt ist, keine Buchstaben/Ziffern enthält
+  // oder aus mit "." verbundenen erlaubten Platzhaltern besteht (z. B. HOST-3.DOMAIN-1)
+  function isAllowedAuditPart(p, cfg) {
+    if (isAllowedInAudit(p, cfg)) return true;
+    if (!/[0-9A-Za-z]/.test(p)) return true;
+    if (p.indexOf(".") > 0) {
+      return p.split(".").every(sg => sg.length > 0 && isAllowedInAudit(sg, cfg));
+    }
+    return false;
+  }
+
+  function pickGroupValue(m) {
+    if (m.length >= 3 && m[2] !== undefined) return m[2].trim();
+    if (m.length >= 2 && m[1] !== undefined) return m[1].trim();
+    return m[0].trim();
+  }
+
+  // Platzhalter in der Ausgabe (für die Suche nach bekannten Originalwerten ausblenden)
+  const RxPlaceholder = /(?<![A-Za-z0-9_-])(?:NET-[0-9]+(?:\.H[0-9]+)?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON)-[0-9]+)(?![A-Za-z0-9_])/g;
+  const KNOWN_VALUE_CATEGORIES = ["host|", "serial|", "user|", "mail|", "url|", "firma|", "domain|", "fixed|"];
 
   function getLineNumberFromIndex(lineStarts, charIndex) {
     let low = 0;
@@ -1899,7 +2249,8 @@
     return low;
   }
 
-  function auditText(text, fileName, cfg) {
+  // state (optional): zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+  function auditText(text, fileName, cfg, state) {
     const findings = [];
 
     // Vorab Sperrbegriffe und interne Domains kompilieren (für Pfad- und Inhaltsprüfung)
@@ -2000,20 +2351,24 @@
 
     // Maskiere erlaubte Versionskontexte und Ausnahmen längengleich mit Leerzeichen (Zeilenumbrüche bleiben erhalten)
     const spaceMasker = (m) => m.replace(/[^\r\n]/g, " ");
-    let cleanText = text;
-    for (const vr of cfg.versionKontextRegex) cleanText = cleanText.replace(vr, spaceMasker);
-    for (const ar of cfg.ausnahmenRegex) cleanText = cleanText.replace(ar, spaceMasker);
+    // Für die IPv4-Prüfung wird mit \u0002 maskiert (wie die Schutz-Marker der Engine), damit z. B.
+    // "1.3.6.1.<Version>" nicht als IPv4 am Satzende gilt; alle anderen Prüfungen sehen Leerzeichen.
+    const markMasker = (m) => m.replace(/[^\r\n]/g, "\u0002");
+    let ipCleanText = text;
+    for (const vr of cfg.versionKontextRegex) ipCleanText = ipCleanText.replace(vr, markMasker);
+    for (const ar of cfg.ausnahmenRegex) ipCleanText = ipCleanText.replace(ar, markMasker);
     const multiWordExempt = Array.from(cfg.exakteAusnahmen).filter(w => w && w.trim().indexOf(" ") >= 0).sort((a, b) => b.length - a.length);
     for (const mw of multiWordExempt) {
       const mwRx = new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(mw.trim())}(?![A-Za-z0-9-])`, "gi");
-      cleanText = cleanText.replace(mwRx, spaceMasker);
+      ipCleanText = ipCleanText.replace(mwRx, markMasker);
     }
+    const cleanText = ipCleanText.replace(/\u0002/g, " ");
 
     const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
     const rxCryptHash = /\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}/g;
 
     // 1. Prüfe auf verbliebene IPv4
-    for (const m of cleanText.matchAll(RxIpv4)) {
+    for (const m of ipCleanText.matchAll(RxIpv4)) {
       const val = m[0];
       const ipOnly = val.split(/[/-]/)[0];
       if (isAllowedInAudit(ipOnly, cfg)) continue;
@@ -2042,6 +2397,18 @@
       if (isAllowedInAudit(m[0], cfg)) continue;
       const ln = getLineNumberFromIndex(lineStarts, m.index);
       findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-MAC", fund: m[0], kontext: getLineCtx(ln) });
+    }
+    for (const m of cleanText.matchAll(RxMacAruba)) {
+      if (!hasHexLetter(m[0]) || isAllowedInAudit(m[0], cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-MAC", fund: m[0], kontext: getLineCtx(ln) });
+    }
+    for (const m of cleanText.matchAll(RxMacRawContext)) {
+      const rawHex = m[2];
+      const norm = normalizeMac(rawHex);
+      if (norm === "000000000000" || norm === "ffffffffffff" || isAllowedInAudit(rawHex, cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index + m[1].length);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-MAC", fund: rawHex, kontext: getLineCtx(ln) });
     }
 
     // 4. Prüfe auf verbliebene E-Mail-Adressen
@@ -2079,6 +2446,78 @@
       if (isAllowedInAudit(m[0], cfg)) continue;
       const ln = getLineNumberFromIndex(lineStarts, m.index);
       findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Geheimnis-Blob", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
+    // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
+    const patternGroups = [
+      ["Rest-Hostname", cfg.hostnamenMuster],
+      ["Rest-Seriennummer", cfg.seriennummerMuster],
+      ["Rest-Benutzer", cfg.benutzerMuster]
+    ];
+    for (const [kat, list] of patternGroups) {
+      for (const rx of list) {
+        for (const m of cleanText.matchAll(rx)) {
+          const val = pickGroupValue(m);
+          if (!val || val.indexOf("\u0002") >= 0 || isAllowedInAudit(val, cfg) || areAllPartsAllowed(val, cfg)) continue;
+          const ln = getLineNumberFromIndex(lineStarts, m.index);
+          findings.push({ datei: fileName, zeile: ln, kategorie: kat, fund: val, kontext: getLineCtx(ln) });
+        }
+      }
+    }
+
+    // 8. Freitext-Felder (description, location, ...) müssen ersetzt oder vollständig erlaubt sein
+    for (const fRule of cfg.freitextMuster) {
+      for (const m of cleanText.matchAll(fRule.compiled)) {
+        const gIdx = (fRule.category === "BANNER" && m.length >= 5) ? 3 : 2;
+        if (m.length <= gIdx || m[gIdx] === undefined) continue;
+        const body = m[gIdx].trim();
+        if (!body || isAllowedInAudit(body, cfg) || areAllPartsAllowed(body, cfg)) continue;
+        let offset = m.index;
+        for (let gi = 1; gi < gIdx; gi++) offset += (m[gi] || "").length;
+        const ln = getLineNumberFromIndex(lineStarts, offset);
+        findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-Freitext", fund: body, kontext: getLineCtx(ln) });
+      }
+    }
+
+    // 9. Tabellenspalten (Beschreibungen, LLDP-Nachbarn)
+    for (const f of findTableFields(cleanText, cfg)) {
+      const val = f.wert.trim();
+      if (isTableValueExempt(val, cfg) || isAllowedInAudit(val, cfg)) continue;
+      // Nach Ersetzungen verschobene Spalten: Zahlen/Portnotation neben Platzhaltern sind unkritisch
+      const allOk = val.split(/[ \t]+/).filter(Boolean).every(part => /^[0-9\/:.-]+$/.test(part) || isAllowedAuditPart(part, cfg));
+      if (allOk) continue;
+      findings.push({ datei: fileName, zeile: f.zeile, kategorie: "Rest-Tabellenfeld", fund: val, kontext: getLineCtx(f.zeile) });
+    }
+
+    // 10. Im Lauf erkannte Originalwerte (aus der Zuordnungstabelle) dürfen nirgends mehr vorkommen
+    if (state) {
+      const known = [];
+      const seenKnown = new Set();
+      for (const key of state.forward.keys()) {
+        for (const cat of KNOWN_VALUE_CATEGORIES) {
+          if (!key.startsWith(cat)) continue;
+          const v = key.slice(cat.length).trim().toLowerCase();
+          if (v.length >= 3 && !isAllowedInAudit(v, cfg) && !seenKnown.has(v)) {
+            seenKnown.add(v);
+            known.push(v);
+          }
+          break;
+        }
+      }
+      if (known.length > 0) {
+        known.sort(compareLengthDescOrdinal);
+        const rxKnown = new RegExp(`(?<![A-Za-z0-9])(?:${known.map(k => escapeRegExp(k)).join("|")})(?![A-Za-z0-9])`, "gi");
+        let knownText = cleanText.replace(RxPlaceholder, spaceMasker);
+        for (const v of Object.values(cfg.festeZuordnung)) {
+          if (!v || !String(v).trim()) continue;
+          const phRx = new RegExp(`(?<![A-Za-z0-9_-])${escapeRegExp(String(v).trim())}(?![A-Za-z0-9_-])`, "gi");
+          knownText = knownText.replace(phRx, spaceMasker);
+        }
+        for (const m of knownText.matchAll(rxKnown)) {
+          const ln = getLineNumberFromIndex(lineStarts, m.index);
+          findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-Bekannt", fund: m[0], kontext: getLineCtx(ln) });
+        }
+      }
     }
 
     if (findings.length > 1) {
@@ -2614,6 +3053,63 @@
     };
   }
 
+  // Musterlisten, die aus anon-regeln.lokal.json an die Basisregeln angehängt werden (identisch zu anon.ps1)
+  const LOKALE_MUSTER_LISTEN = [
+    ["", "hostnamenMuster"],
+    ["", "eigeneHostnamenMuster"],
+    ["", "seriennummerMuster"],
+    ["", "benutzerMuster"],
+    ["", "geheimnisMuster"],
+    ["", "freitextMuster"],
+    ["", "tabellenSpalten"],
+    ["ausnahmen", "versionKontext"],
+    ["ausnahmen", "musterRegex"],
+    ["pruefung", "erlaubtListe"],
+    ["pruefung", "erlaubtMuster"]
+  ];
+
+  function extractLokaleMuster(parsed) {
+    const muster = {};
+    if (!parsed || typeof parsed !== "object") return muster;
+    for (const [section, name] of LOKALE_MUSTER_LISTEN) {
+      const container = section ? parsed[section] : parsed;
+      if (container && typeof container === "object" && Array.isArray(container[name]) && container[name].length > 0) {
+        muster[(section ? section + "." : "") + name] = JSON.parse(JSON.stringify(container[name]));
+      }
+    }
+    return muster;
+  }
+
+  function mergeLokaleMuster(base, muster, errors) {
+    if (!muster || typeof muster !== "object") return;
+    for (const [section, name] of LOKALE_MUSTER_LISTEN) {
+      const key = (section ? section + "." : "") + name;
+      const list = muster[key];
+      if (!Array.isArray(list) || list.length === 0) continue;
+      const cleanList = [];
+      for (const item of list) {
+        if (item == null) continue;
+        if (typeof item === "string") {
+          const t = item.trim();
+          if (!t) continue;
+          if (name !== "erlaubtListe") {
+            try { compileDotNetPatternToJS(t, true); } catch (e) { errors.push(`Ungültiges Muster in ${key}: ${e.message}`); continue; }
+          }
+          cleanList.push(t);
+        } else {
+          cleanList.push(item);
+        }
+      }
+      if (cleanList.length === 0) continue;
+      let container = base;
+      if (section) {
+        if (!base[section] || typeof base[section] !== "object") base[section] = {};
+        container = base[section];
+      }
+      container[name] = (Array.isArray(container[name]) ? container[name] : []).concat(cleanList);
+    }
+  }
+
   function validateAndMergeEigeneBegriffe(baseRules, customInput) {
     const base = baseRules ? JSON.parse(JSON.stringify(baseRules)) : JSON.parse(JSON.stringify(DEFAULT_RULES));
     if (!base.eigeneBegriffe || typeof base.eigeneBegriffe !== "object") {
@@ -2802,6 +3298,9 @@
       }
     }
 
+    const lokaleMuster = (customInput && customInput.muster && typeof customInput.muster === "object") ? customInput.muster : {};
+    mergeLokaleMuster(base, lokaleMuster, errors);
+
     return {
       valid: errors.length === 0,
       errors,
@@ -2810,7 +3309,8 @@
         festeZuordnung: customFesteMap,
         firmenUndStandorte: cleanFirmen,
         interneDomains: cleanDomains,
-        exakteWoerter: cleanExakt
+        exakteWoerter: cleanExakt,
+        muster: lokaleMuster
       }
     };
   }
@@ -2820,7 +3320,7 @@
     if (!res.valid) {
       throw new Error("Validierungsfehler in Eigene Begriffe: " + res.errors.join(" | "));
     }
-    return JSON.stringify({
+    const out = {
       eigeneBegriffe: {
         festeZuordnung: res.normalizedCustom.festeZuordnung,
         firmenUndStandorte: res.normalizedCustom.firmenUndStandorte,
@@ -2829,7 +3329,20 @@
       ausnahmen: {
         exakteWoerter: res.normalizedCustom.exakteWoerter
       }
-    }, null, 2);
+    };
+    // Lokale Muster (z. B. eigeneHostnamenMuster) mit exportieren
+    for (const [key, list] of Object.entries(res.normalizedCustom.muster || {})) {
+      if (!Array.isArray(list) || list.length === 0) continue;
+      const dot = key.indexOf(".");
+      if (dot > 0) {
+        const section = key.slice(0, dot);
+        if (!out[section]) out[section] = {};
+        out[section][key.slice(dot + 1)] = list;
+      } else {
+        out[key] = list;
+      }
+    }
+    return JSON.stringify(out, null, 2);
   }
 
   function importLokaleBegriffeJson(jsonStr) {
@@ -2841,11 +3354,13 @@
       ? parsed.eigeneBegriffe
       : parsed;
     const hasAusnahmen = parsed.ausnahmen && typeof parsed.ausnahmen === "object" && parsed.ausnahmen.exakteWoerter !== undefined;
+    const muster = extractLokaleMuster(parsed);
     if (
       section.festeZuordnung === undefined &&
       section.firmenUndStandorte === undefined &&
       section.interneDomains === undefined &&
-      !hasAusnahmen
+      !hasAusnahmen &&
+      Object.keys(muster).length === 0
     ) {
       throw new Error("JSON enthält keinen Abschnitt 'eigeneBegriffe'.");
     }
@@ -2855,7 +3370,8 @@
       festeZuordnung: norm.festeRows,
       firmenUndStandorte: norm.firmenList.map(s => s.trim()).filter(Boolean),
       interneDomains: norm.domainsList.map(s => s.trim()).filter(Boolean),
-      exakteWoerter: exaktNorm.map(s => s.trim()).filter(Boolean)
+      exakteWoerter: exaktNorm.map(s => s.trim()).filter(Boolean),
+      muster
     };
   }
 
@@ -3052,7 +3568,8 @@
       festeZuordnung: norm.festeRows.map(r => ({ original: r.original, placeholder: r.placeholder })),
       firmenUndStandorte: norm.firmenList.slice(),
       interneDomains: norm.domainsList.slice(),
-      exakteWoerter: norm.exakteList.slice()
+      exakteWoerter: norm.exakteList.slice(),
+      muster: JSON.parse(JSON.stringify((customTerms && customTerms.muster) || {}))
     };
   }
 
@@ -3220,12 +3737,22 @@
       return { ok: false, errors: mergeRes.errors, results: [], findings: [], skipped: [] };
     }
     const cfg = buildEngineConfig(mergeRes.mergedRules, opts.overrides || {});
-    state.stats = new Map();
     const results = [];
     const findingsAll = [];
     const skipped = [];
-    for (const item of (inputFiles || [])) {
-      const bytes = item.bytes || (typeof item.text === "string" ? new TextEncoder().encode(item.text) : new Uint8Array(0));
+    const files = inputFiles || [];
+    const bytesOf = (item) => item.bytes || (typeof item.text === "string" ? new TextEncoder().encode(item.text) : new Uint8Array(0));
+    // Durchlauf 1: Hostnamen aus späteren Dateien auch in früheren Dateien ersetzen (Ausgabe verwerfen)
+    for (const item of files) {
+      processPath(item.path, cfg, state);
+      const bytes = bytesOf(item);
+      if (isBinaryBytes(bytes)) continue;
+      processText(typeof item.text === "string" ? item.text : decodeBytesWithBom(bytes), cfg, state);
+    }
+    state.stats = new Map();
+    // Durchlauf 2: endgültige Ausgabe
+    for (const item of files) {
+      const bytes = bytesOf(item);
       if (isBinaryBytes(bytes)) {
         skipped.push(processPath(item.path, cfg, state));
         continue;
@@ -3233,9 +3760,12 @@
       const origText = typeof item.text === "string" ? item.text : decodeBytesWithBom(bytes);
       const anonRelPath = processPath(item.path, cfg, state);
       const anonText = processText(origText, cfg, state);
-      const findings = auditText(anonText, anonRelPath, cfg);
-      for (const f of findings) findingsAll.push(f);
-      results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings });
+      results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
+    }
+    // Prüfung mit allen im Lauf erkannten Werten
+    for (const r of results) {
+      r.findings = auditText(r.anonText, r.path, cfg, state);
+      for (const f of r.findings) findingsAll.push(f);
     }
     return { ok: true, errors: [], results, findings: findingsAll, skipped, cfg, mergedRules: mergeRes.mergedRules };
   }
@@ -4316,7 +4846,8 @@
     // Bearbeitungszustand der Zuordnungstabelle
     let tableHasPendingChanges = false;   // Änderungen noch nicht per "Neu anonymisieren" angewendet
     let unsavedTableChanges = false;      // Zuordnungstabelle seit letzter Änderung nicht exportiert
-    let unsavedLocalTermsChanges = false; // anon-regeln.lokal.json seit letzter Änderung nicht exportiert
+    let unsavedLocalTermsChanges = false;
+    let loadedLocalMuster = {}; // Musterlisten aus anon-regeln.lokal.json (außer eigeneHostnamenMuster, das editierbar ist) // anon-regeln.lokal.json seit letzter Änderung nicht exportiert
     let openInlineEdit = null;            // { ph, input, initial }
 
     const rulesTextarea = document.getElementById("rulesTextarea");
@@ -4548,7 +5079,12 @@
       document.querySelectorAll("#exakteWoerterRows .exakt-input").forEach(inp => {
         exakteWoerter.push(inp.value);
       });
-      return { festeZuordnung, firmenUndStandorte, interneDomains, exakteWoerter };
+      const muster = JSON.parse(JSON.stringify(loadedLocalMuster));
+      const hostMusterEl = document.getElementById("eigeneHostnamenMusterInput");
+      const hostMuster = hostMusterEl ? hostMusterEl.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) : [];
+      if (hostMuster.length > 0) muster.eigeneHostnamenMuster = hostMuster;
+      else delete muster.eigeneHostnamenMuster;
+      return { festeZuordnung, firmenUndStandorte, interneDomains, exakteWoerter, muster };
     }
 
     function populateCustomTermsUI(data) {
@@ -4556,6 +5092,18 @@
       const fiContainer = document.getElementById("firmenUndStandorteRows");
       const dContainer = document.getElementById("interneDomainsRows");
       const eContainer = document.getElementById("exakteWoerterRows");
+      const lokaleMuster = (data && data.muster && typeof data.muster === "object") ? JSON.parse(JSON.stringify(data.muster)) : {};
+      const hostMusterEl = document.getElementById("eigeneHostnamenMusterInput");
+      if (hostMusterEl) hostMusterEl.value = (lokaleMuster.eigeneHostnamenMuster || []).join("\n");
+      delete lokaleMuster.eigeneHostnamenMuster;
+      loadedLocalMuster = lokaleMuster;
+      const musterInfoEl = document.getElementById("lokaleMusterInfo");
+      if (musterInfoEl) {
+        const keys = Object.keys(loadedLocalMuster);
+        musterInfoEl.textContent = keys.length > 0
+          ? "Zusätzlich aus der lokalen Datei übernommen: " + keys.map(k => `${k} (${loadedLocalMuster[k].length})`).join(", ")
+          : "";
+      }
       fContainer.innerHTML = "";
       fiContainer.innerHTML = "";
       dContainer.innerHTML = "";
@@ -4609,6 +5157,7 @@
     }
 
     document.getElementById("btnAddFesteRow").addEventListener("click", () => addFesteRowUI("", ""));
+    document.getElementById("eigeneHostnamenMusterInput").addEventListener("input", refreshCustomTermsValidationUI);
     document.getElementById("btnAddFirmaRow").addEventListener("click", () =>
       addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "")
     );
@@ -4867,10 +5416,10 @@
         "snmp-server contact Max Mustermann (netze@intern.musterfirma.de)",
         "interface 1/1/10",
         "   description Uplink zu rz2-sw-core02 (Musterfirma GmbH)",
-        "   ip address 10.20.30.1/24",
+        "   ip address 192.0.2.1/24",
         "   ipv6 address 2001:db8:abcd:10::1/64",
         "vlan 100",
-        "   name WAN_10.20.30.0-24",
+        "   name WAN_192.0.2.0-24",
         "lldp neighbor-info 1/1/10",
         "   Chassis ID : 00:1a:2b:3c:4d:5e",
         "   System Name : sw-access-04.intern.musterfirma.de",
@@ -4888,7 +5437,7 @@
           }
         },
         "VLAN_INTERFACE": {
-          "Vlan100|10.20.30.254/24": {}
+          "Vlan100|192.0.2.254/24": {}
         },
         "TACPLUS": {
           "global": {
@@ -4952,6 +5501,16 @@
         const progressStatus = document.getElementById("progressStatus");
         const tStart = performance.now();
 
+        // Durchlauf 1: Hostnamen aus späteren Dateien auch in früheren Dateien ersetzen (Ausgabe verwerfen)
+        progressStatus.textContent = "Erkenne Werte über alle Dateien...";
+        await new Promise(r => setTimeout(r, 15));
+        for (const item of loadedInputFiles) {
+          processPath(item.path, cfg, runState);
+          if (isBinaryBytes(item.bytes)) continue;
+          processText(decodeBytesWithBom(item.bytes), cfg, runState);
+        }
+        runState.stats = new Map();
+
         for (let i = 0; i < loadedInputFiles.length; i++) {
           const item = loadedInputFiles[i];
           const pct = Math.round(((i + 0.2) / loadedInputFiles.length) * 100);
@@ -4971,11 +5530,12 @@
           // Befund 2: Jeden Pfadbestandteil durch die Engine schicken und in Prüfung aufnehmen
           const anonRelPath = processPath(item.path, cfg, runState);
           const anonText = processText(origText, cfg, runState);
-          const findings = auditText(anonText, anonRelPath, cfg);
-          for (let fIdx = 0; fIdx < findings.length; fIdx++) {
-            allFindings.push(findings[fIdx]);
-          }
-          processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings });
+          processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
+        }
+        // Prüfung mit allen im Lauf erkannten Werten
+        for (const res of processedResults) {
+          res.findings = auditText(res.anonText, res.path, cfg, runState);
+          for (const f of res.findings) allFindings.push(f);
         }
 
         const elapsedSec = ((performance.now() - tStart) / 1000).toFixed(2);
@@ -5554,6 +6114,7 @@
       removeMappingTableEntry,
       addMappingTableEntry,
       reprocessFilesWithState,
+      findTableFields,
       REMOVE_CONFIRM_HINT,
       TextPseudonymizer
     };

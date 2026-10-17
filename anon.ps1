@@ -194,6 +194,28 @@ namespace AnonTool
         public Regex Compiled;
     }
 
+    public class TableColumnSpec
+    {
+        public string Name;
+        public string Kategorie;
+    }
+
+    public class TableRule
+    {
+        public string Name;
+        public List<string> Kopf = new List<string>();
+        public List<TableColumnSpec> Spalten = new List<TableColumnSpec>();
+    }
+
+    public class TableField
+    {
+        public int Start;
+        public int Length;
+        public int Zeile;
+        public string Kategorie;
+        public string Wert;
+    }
+
     public class AuditFinding
     {
         public string Datei;
@@ -233,6 +255,7 @@ namespace AnonTool
         public List<Regex> SeriennummerMuster = new List<Regex>();
         public List<Regex> BenutzerMuster = new List<Regex>();
         public List<Regex> HostnamenMuster = new List<Regex>();
+        public List<TableRule> TabellenSpalten = new List<TableRule>();
     }
 
     public static class TarGzHelper
@@ -411,17 +434,20 @@ namespace AnonTool
 
         // MAC-Formate:
         // 1. aa:bb:cc:dd:ee:ff oder aa-bb-cc-dd-ee-ff (nicht Teil von IPv6 oder Zeitstempel)
-        private static readonly Regex RxMacColonDash = new Regex(@"(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:.])|(?<![0-9A-Fa-f.-])(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.-])", RegexOptions.Compiled, RxTimeout);
+        //    Ein Doppelpunkt direkt davor ist erlaubt (z.B. "Address:0a:1b:2c:3d:4e:5f"), nicht aber als Teil einer längeren Hex-Kette (IPv6)
+        private static readonly Regex RxMacColonDash = new Regex(@"(?<![0-9A-Fa-f.])(?<!::)(?<!:[0-9A-Fa-f]{1,4}:)(?<!(?<![A-Za-z0-9])[0-9A-Fa-f]{1,4}:)(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.])(?!:[0-9A-Fa-f])|(?<![0-9A-Fa-f.-])(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.-])", RegexOptions.Compiled, RxTimeout);
         // 2. Cisco/Aruba Punktformat: aabb.ccdd.eeff
         private static readonly Regex RxMacDot = new Regex(@"(?<![0-9A-Fa-f.])(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])", RegexOptions.Compiled, RxTimeout);
         // 3. 12 Hex-Zeichen am Stück mit MAC-Kontext davor
-        private static readonly Regex RxMacRawContext = new Regex(@"(?i)(\b(?:mac(?:-address|_address|\s+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)\b[\s"":=]{1,6})([0-9A-Fa-f]{12})(""?)(?![0-9A-Fa-f])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxMacRawContext = new Regex(@"(?i)((?<![A-Za-z0-9_])(?:mac(?:-address|_address|[ \t]+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)(?![A-Za-z0-9_])[ \t"":=]{1,6})([0-9A-Fa-f]{6}-?[0-9A-Fa-f]{6})(""?)(?![0-9A-Fa-f])", RegexOptions.Compiled, RxTimeout);
+        // 4. Aruba-Format aabbcc-ddeeff (nur mit mindestens einem Hex-Buchstaben, reine Ziffern nur mit MAC-Kontext)
+        private static readonly Regex RxMacAruba = new Regex(@"(?<![0-9A-Za-z_.:-])[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}(?![0-9A-Za-z_.:-])", RegexOptions.Compiled, RxTimeout);
 
-        // IPv4 inkl. Direktangrenzung an _ oder Buchstaben (z.B. WAN_10.1.2.0-27 oder 10.1.2.0/24)
-        private static readonly Regex RxIpv4 = new Regex(@"(?<![0-9.])(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:(?:/|-)(?:3[0-2]|[12]?\d)(?![0-9]))?(?![0-9.])", RegexOptions.Compiled, RxTimeout);
+        // IPv4 inkl. Direktangrenzung an _ oder Buchstaben (z.B. WAN_192.0.2.0-27 oder 192.0.2.0/24) und Satzende (z.B. "von 192.0.2.40.")
+        private static readonly Regex RxIpv4 = new Regex(@"(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:(?:/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])", RegexOptions.Compiled, RxTimeout);
 
         // IPv6 (Standard, komprimiert ::, fe80::, 2001:db8:: usw., keine einfachen Uhrzeiten wie 12:34:56)
-        private static readonly Regex RxIpv6 = new Regex(@"(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:/(?:12[0-8]|1[01]\d|[1-9]?\d))?(?![0-9A-Fa-f:])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxIpv6 = new Regex(@"(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])", RegexOptions.Compiled, RxTimeout);
 
         // CLI-Prompt am Zeilenanfang (z.B. rz1-sw-core01# oder fw-edge01(config-if)#)
         private static readonly Regex RxCliPrompt = new Regex(@"(?m)^([A-Za-z][A-Za-z0-9_-]{2,48})(\([A-Za-z0-9_-]+\))?([#>])[ \t]+", RegexOptions.Compiled, RxTimeout);
@@ -603,6 +629,232 @@ namespace AnonTool
             return token + suffix;
         }
 
+        // ----------------------------------------------------------------
+        // Tabellenspalten (z.B. letzte Spalte "show interface brief", LLDP PORT-DESC / SYS-NAME)
+        // Spaltengrenzen werden aus der Kopfzeile bestimmt; die Tabelle endet an einer Leerzeile.
+        // ----------------------------------------------------------------
+        private static bool IsBlank(char c)
+        {
+            return c == ' ' || c == '\t';
+        }
+
+        private static int FindHeaderWord(string line, string word)
+        {
+            if (string.IsNullOrEmpty(word)) return -1;
+            int from = 0;
+            while (from <= line.Length - word.Length)
+            {
+                int i = line.IndexOf(word, from, StringComparison.Ordinal);
+                if (i < 0) return -1;
+                int e = i + word.Length;
+                bool okLeft = (i == 0) || IsBlank(line[i - 1]);
+                bool okRight = (e == line.Length) || IsBlank(line[e]);
+                if (okLeft && okRight) return i;
+                from = i + 1;
+            }
+            return -1;
+        }
+
+        private static bool IsTableSeparatorLine(string line)
+        {
+            bool any = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '-' || c == '=' || c == '+' || c == '|') any = true;
+                else if (!IsBlank(c)) return false;
+            }
+            return any;
+        }
+
+        public static List<TableField> FindTableFields(string text, EngineConfig cfg)
+        {
+            List<TableField> result = new List<TableField>();
+            if (string.IsNullOrEmpty(text) || cfg.TabellenSpalten.Count == 0) return result;
+
+            List<int[]> cols = null;
+            List<string> kats = null;
+            int pos = 0;
+            int lineNo = 0;
+            while (pos <= text.Length)
+            {
+                int nl = text.IndexOf('\n', pos);
+                int lineEnd = nl < 0 ? text.Length : nl;
+                int contentEnd = lineEnd;
+                if (contentEnd > pos && text[contentEnd - 1] == '\r') contentEnd--;
+                string line = text.Substring(pos, contentEnd - pos);
+                lineNo++;
+
+                bool isHeader = false;
+                foreach (TableRule rule in cfg.TabellenSpalten)
+                {
+                    if (rule.Kopf.Count == 0 || rule.Spalten.Count == 0) continue;
+                    bool all = true;
+                    foreach (string w in rule.Kopf)
+                    {
+                        if (FindHeaderWord(line, w) < 0) { all = false; break; }
+                    }
+                    if (!all) continue;
+
+                    List<int[]> newCols = new List<int[]>();
+                    List<string> newKats = new List<string>();
+                    foreach (TableColumnSpec sp in rule.Spalten)
+                    {
+                        int s = FindHeaderWord(line, sp.Name);
+                        if (s < 0) continue;
+                        int e = -1;
+                        for (int p = s + sp.Name.Length; p < line.Length; p++)
+                        {
+                            if (!IsBlank(line[p]) && IsBlank(line[p - 1])) { e = p; break; }
+                        }
+                        // aufsteigend nach Spaltenbeginn einsortieren
+                        int ins = 0;
+                        while (ins < newCols.Count && newCols[ins][0] <= s) ins++;
+                        newCols.Insert(ins, new int[] { s, e });
+                        newKats.Insert(ins, sp.Kategorie);
+                    }
+                    cols = newCols;
+                    kats = newKats;
+                    isHeader = true;
+                    break;
+                }
+
+                if (!isHeader && cols != null)
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith("Total", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cols = null;
+                        kats = null;
+                    }
+                    else if (!IsTableSeparatorLine(line))
+                    {
+                        int lastEnd = 0;
+                        for (int ci = 0; ci < cols.Count; ci++)
+                        {
+                            int s = cols[ci][0];
+                            if (s < lastEnd) s = lastEnd;
+                            if (s >= line.Length) continue;
+                            // Wert der vorigen Spalte ragt hinein: bis zum nächsten Leerraum weiterrücken
+                            while (s > 0 && s < line.Length && !IsBlank(line[s - 1])) s++;
+                            while (s < line.Length && IsBlank(line[s])) s++;
+                            int limit = cols[ci][1] < 0 ? line.Length : Math.Min(cols[ci][1], line.Length);
+                            if (s >= limit) continue;
+                            int e = limit;
+                            if (cols[ci][1] >= 0)
+                            {
+                                // Wert ragt in die nächste Spalte: bis zum nächsten Leerraum verlängern
+                                while (e < line.Length && !IsBlank(line[e]) && !IsBlank(line[e - 1])) e++;
+                            }
+                            while (e > s && IsBlank(line[e - 1])) e--;
+                            if (e <= s) continue;
+                            TableField f = new TableField();
+                            f.Start = pos + s;
+                            f.Length = e - s;
+                            f.Zeile = lineNo;
+                            f.Kategorie = string.IsNullOrEmpty(kats[ci]) ? "TEXT" : kats[ci];
+                            f.Wert = line.Substring(s, e - s);
+                            result.Add(f);
+                            lastEnd = e;
+                        }
+                    }
+                }
+
+                if (nl < 0) break;
+                pos = nl + 1;
+            }
+            return result;
+        }
+
+        private static bool IsFullMatch(Regex r, string val)
+        {
+            Match m = r.Match(val);
+            return m.Success && m.Index == 0 && m.Length == val.Length;
+        }
+
+        // Nur Ziffern und Portnotation (z.B. 1/1/49, 120, --)
+        private static bool IsTrivialTableValue(string val)
+        {
+            if (string.IsNullOrEmpty(val)) return false;
+            for (int i = 0; i < val.Length; i++)
+            {
+                char c = val[i];
+                if (!((c >= '0' && c <= '9') || c == '/' || c == ':' || c == '.' || c == '-')) return false;
+            }
+            return true;
+        }
+
+        // Tabellenwerte, die keine Information tragen (Portnummern, "--") oder ausdrücklich erlaubt sind
+        public static bool IsTableValueExempt(string val, EngineConfig cfg)
+        {
+            if (string.IsNullOrEmpty(val)) return true;
+            if (IsTrivialTableValue(val)) return true;
+            if (cfg.ExakteAusnahmen.Contains(val)) return true;
+            foreach (Regex r in cfg.VersionKontextRegex) { if (IsFullMatch(r, val)) return true; }
+            foreach (Regex r in cfg.AusnahmenRegex) { if (IsFullMatch(r, val)) return true; }
+            string[] parts = val.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string p in parts)
+            {
+                if (!cfg.ExakteAusnahmen.Contains(p)) return false;
+            }
+            return true;
+        }
+
+        private static bool IsLineRestBlank(string text, int from)
+        {
+            for (int i = from; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '\n' || c == '\r') return true;
+                if (!IsBlank(c)) return false;
+            }
+            return true;
+        }
+
+        private static bool HasHexLetter(string val)
+        {
+            for (int i = 0; i < val.Length; i++)
+            {
+                char c = val[i];
+                if ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) return true;
+            }
+            return false;
+        }
+
+        // Bekannte Hostnamen eines Laufs (Schlüssel "HOST|wert" in der Zuordnungstabelle)
+        public static SortedDictionary<string, string> CollectKnownHosts(AnonState state, IEnumerable<string> extra, EngineConfig cfg)
+        {
+            Dictionary<string, string> map = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (extra != null)
+            {
+                foreach (string h in extra)
+                {
+                    if (string.IsNullOrEmpty(h) || h.Length < 3) continue;
+                    string k = h.ToLowerInvariant();
+                    if (!map.ContainsKey(k)) map[k] = state.GetOrCreateToken("HOST", h, "HOST");
+                }
+            }
+            foreach (KeyValuePair<string, string> kv in state.Forward)
+            {
+                if (!kv.Key.StartsWith("HOST|", StringComparison.OrdinalIgnoreCase)) continue;
+                string v = kv.Key.Substring(5).Trim().ToLowerInvariant();
+                if (v.Length < 3 || cfg.ExakteAusnahmen.Contains(v)) continue;
+                if (!map.ContainsKey(v)) map[v] = kv.Value;
+            }
+            SortedDictionary<string, string> sorted = new SortedDictionary<string, string>(new LengthDescOrdinal());
+            foreach (KeyValuePair<string, string> kv in map) sorted[kv.Key] = kv.Value;
+            return sorted;
+        }
+
+        public class LengthDescOrdinal : IComparer<string>
+        {
+            public int Compare(string a, string b)
+            {
+                if (a.Length != b.Length) return b.Length - a.Length;
+                return string.CompareOrdinal(a, b);
+            }
+        }
+
         public static string ProcessText(string input, EngineConfig cfg, AnonState state)
         {
             if (string.IsNullOrEmpty(input)) return input;
@@ -645,6 +897,45 @@ namespace AnonTool
                 }
                 return true;
             };
+
+            // ----------------------------------------------------------------
+            // STUFE 0: Tabellenspalten (Beschreibungen, LLDP-Nachbarn) über Spaltenpositionen der Kopfzeile
+            // ----------------------------------------------------------------
+            if ((cfg.CatFreitext || cfg.CatHostnamen) && cfg.TabellenSpalten.Count > 0)
+            {
+                List<TableField> fields = FindTableFields(text, cfg);
+                if (fields.Count > 0)
+                {
+                    StringBuilder sbTab = new StringBuilder(text.Length);
+                    int lastPos = 0;
+                    foreach (TableField f in fields)
+                    {
+                        if (IsTableValueExempt(f.Wert, cfg)) continue;
+                        string rep = null;
+                        if (f.Kategorie == "HOST")
+                        {
+                            if (!cfg.CatHostnamen) continue;
+                            state.AddStat("hostnamen", 1);
+                            rep = state.GetOrCreateToken("HOST", f.Wert, "HOST");
+                        }
+                        else
+                        {
+                            if (!cfg.CatFreitext) continue;
+                            state.AddStat("freitext", 1);
+                            rep = state.GetOrCreateToken("FREITEXT_" + f.Kategorie, f.Wert, f.Kategorie);
+                        }
+                        int fEnd = f.Start + f.Length;
+                        // Spaltenausrichtung erhalten, außer am Zeilenende
+                        if (rep.Length < f.Length && !IsLineRestBlank(text, fEnd))
+                            rep = rep + new string(' ', f.Length - rep.Length);
+                        sbTab.Append(text, lastPos, f.Start - lastPos);
+                        sbTab.Append(protect(rep));
+                        lastPos = fEnd;
+                    }
+                    sbTab.Append(text, lastPos, text.Length - lastPos);
+                    text = sbTab.ToString();
+                }
+            }
 
             // ----------------------------------------------------------------
             // STUFE 1: Geheimnisse ENTFERNEN (*****)
@@ -846,7 +1137,20 @@ namespace AnonTool
                     return protect(tok);
                 });
 
-                // 8c: 12 Hex-Zeichen mit Kontext (z.B. mac=001122334455)
+                // 8c: Aruba-Format aabbcc-ddeeff (mindestens ein Hex-Buchstabe, sonst Datum/Zahlenbereich)
+                text = RxMacAruba.Replace(text, (Match m) =>
+                {
+                    if (!HasHexLetter(m.Value)) return m.Value;
+                    string norm = NormalizeMac(m.Value);
+                    if (norm == "000000000000" || norm == "ffffffffffff") return m.Value;
+                    if (cfg.ExakteAusnahmen.Contains(m.Value) || cfg.ExakteAusnahmen.Contains(norm)) return m.Value;
+                    state.AddStat("mac", 1);
+                    string key = cfg.MacNormalisieren ? norm : m.Value.ToLowerInvariant();
+                    string tok = state.GetOrCreateToken("MAC", key, "MAC", m.Value);
+                    return protect(tok);
+                });
+
+                // 8d: 12 Hex-Zeichen mit Kontext (z.B. mac=001122334455 oder mac 001122-334455)
                 text = RxMacRawContext.Replace(text, (Match m) =>
                 {
                     string rawHex = m.Groups[2].Value;
@@ -927,22 +1231,18 @@ namespace AnonTool
                     return protect(tok) + m.Groups[2].Value + m.Groups[3].Value + " ";
                 });
 
-                // Entdeckte Hostnamen überall im restlichen Text in einem einzigen Durchlauf ersetzen
-                var validDiscovered = discoveredHosts.Where(s => s != null && s.Length >= 3).OrderByDescending(s => s.Length).ToList();
-                if (validDiscovered.Count > 0)
+                // Entdeckte und im Lauf bereits bekannte Hostnamen überall im restlichen Text in einem Durchlauf ersetzen
+                // (Grenzen: kein Buchstabe, keine Ziffer, kein "_" und kein "-" direkt davor oder danach)
+                SortedDictionary<string, string> knownHosts = CollectKnownHosts(state, discoveredHosts, cfg);
+                if (knownHosts.Count > 0)
                 {
-                    Dictionary<string, string> hostTokMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    List<string> escapedHosts = new List<string>(validDiscovered.Count);
-                    foreach (string dh in validDiscovered)
-                    {
-                        hostTokMap[dh] = state.GetOrCreateToken("HOST", dh, "HOST");
-                        escapedHosts.Add(Regex.Escape(dh));
-                    }
-                    string combinedHostPat = @"\b(?:" + string.Join("|", escapedHosts.ToArray()) + @")\b";
+                    List<string> escapedHosts = new List<string>(knownHosts.Count);
+                    foreach (string kh in knownHosts.Keys) escapedHosts.Add(Regex.Escape(kh));
+                    string combinedHostPat = "(?<![A-Za-z0-9_-])(?:" + string.Join("|", escapedHosts.ToArray()) + ")(?![A-Za-z0-9_-])";
                     text = Regex.Replace(text, combinedHostPat, (Match m) =>
                     {
                         string tok;
-                        if (hostTokMap.TryGetValue(m.Value, out tok))
+                        if (knownHosts.TryGetValue(m.Value.ToLowerInvariant(), out tok))
                         {
                             state.AddStat("hostnamen", 1);
                             return protect(tok);
@@ -1086,12 +1386,62 @@ namespace AnonTool
             if (candidate == "*****") return true;
             if (cfg.PruefungErlaubtListe.Contains(candidate)) return true;
             if (cfg.ExakteAusnahmen.Contains(candidate)) return true;
+            foreach (KeyValuePair<string, string> kv in cfg.FesteZuordnung)
+            {
+                if (string.Equals(kv.Value, candidate, StringComparison.OrdinalIgnoreCase)) return true;
+            }
             foreach (Regex r in cfg.PruefungErlaubtMuster)
             {
                 if (r.IsMatch(candidate)) return true;
             }
             return false;
         }
+
+        // Alle durch Leerraum getrennten Teile sind erlaubt (Platzhalter, Ausnahmen, *****)
+        private static bool AreAllPartsAllowed(string val, EngineConfig cfg)
+        {
+            string[] parts = val.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string p in parts)
+            {
+                if (!IsAllowedAuditPart(p, cfg)) return false;
+            }
+            return true;
+        }
+
+        // Ein Teil ist unkritisch, wenn er erlaubt ist, keine Buchstaben/Ziffern enthält
+        // oder aus mit "." verbundenen erlaubten Platzhaltern besteht (z.B. HOST-3.DOMAIN-1)
+        private static bool IsAllowedAuditPart(string p, EngineConfig cfg)
+        {
+            if (IsAllowedInAudit(p, cfg)) return true;
+            bool hasAlnum = false;
+            for (int i = 0; i < p.Length; i++)
+            {
+                char c = p[i];
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) { hasAlnum = true; break; }
+            }
+            if (!hasAlnum) return true;
+            if (p.IndexOf('.') > 0)
+            {
+                string[] segs = p.Split('.');
+                foreach (string sg in segs)
+                {
+                    if (sg.Length == 0 || !IsAllowedInAudit(sg, cfg)) return false;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        private static string PickGroupValue(Match m)
+        {
+            if (m.Groups.Count >= 3 && m.Groups[2].Success) return m.Groups[2].Value.Trim();
+            if (m.Groups.Count >= 2 && m.Groups[1].Success) return m.Groups[1].Value.Trim();
+            return m.Value.Trim();
+        }
+
+        // Platzhalter in der Ausgabe (für die Suche nach bekannten Originalwerten ausblenden)
+        private static readonly Regex RxPlaceholder = new Regex(@"(?<![A-Za-z0-9_-])(?:NET-[0-9]+(?:\.H[0-9]+)?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON)-[0-9]+)(?![A-Za-z0-9_])", RegexOptions.Compiled, RxTimeout);
+        private static readonly string[] KnownValueCategories = new string[] { "HOST|", "SERIAL|", "USER|", "MAIL|", "URL|", "FIRMA|", "DOMAIN|", "FIXED|" };
 
         private static int GetLineNumber(List<int> lineStarts, int charIndex)
         {
@@ -1100,6 +1450,12 @@ namespace AnonTool
         }
 
         public static List<AuditFinding> AuditText(string text, string fileName, EngineConfig cfg)
+        {
+            return AuditText(text, fileName, cfg, null);
+        }
+
+        // state != null: zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+        public static List<AuditFinding> AuditText(string text, string fileName, EngineConfig cfg, AnonState state)
         {
             List<AuditFinding> findings = new List<AuditFinding>();
 
@@ -1238,23 +1594,36 @@ namespace AnonTool
                 return new string(arr);
             };
 
-            string cleanText = text;
+            // Für die IPv4-Prüfung wird mit \u0002 maskiert (wie die Schutz-Marker der Engine), damit z.B.
+            // "1.3.6.1.<Version>" nicht als IPv4 am Satzende gilt; alle anderen Prüfungen sehen Leerzeichen.
+            MatchEvaluator markMasker = (Match m) =>
+            {
+                char[] arr = m.Value.ToCharArray();
+                for (int i = 0; i < arr.Length; i++)
+                {
+                    if (arr[i] != '\r' && arr[i] != '\n') arr[i] = '\u0002';
+                }
+                return new string(arr);
+            };
+
+            string ipCleanText = text;
             foreach (Regex vr in cfg.VersionKontextRegex)
-                cleanText = vr.Replace(cleanText, spaceMasker);
+                ipCleanText = vr.Replace(ipCleanText, markMasker);
             foreach (Regex ar in cfg.AusnahmenRegex)
-                cleanText = ar.Replace(cleanText, spaceMasker);
+                ipCleanText = ar.Replace(ipCleanText, markMasker);
             var multiWordExempt = cfg.ExakteAusnahmen.Where(w => !string.IsNullOrWhiteSpace(w) && w.Trim().IndexOf(' ') >= 0).OrderByDescending(w => w.Length).ToList();
             foreach (string mw in multiWordExempt)
             {
                 Regex mwRx = new Regex("(?<![A-Za-z0-9-])" + Regex.Escape(mw.Trim()) + "(?![A-Za-z0-9-])", RegexOptions.IgnoreCase, RxTimeout);
-                cleanText = mwRx.Replace(cleanText, spaceMasker);
+                ipCleanText = mwRx.Replace(ipCleanText, markMasker);
             }
+            string cleanText = ipCleanText.Replace('\u0002', ' ');
 
             Regex rxSuspiciousLongHexOrB64 = new Regex(@"\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b", RegexOptions.Compiled, RxTimeout);
             Regex rxCryptHash = new Regex(@"\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}", RegexOptions.Compiled, RxTimeout);
 
             // 1. Prüfe auf verbliebene IPv4
-            foreach (Match m in RxIpv4.Matches(cleanText))
+            foreach (Match m in RxIpv4.Matches(ipCleanText))
             {
                 string val = m.Value;
                 string ipOnly = val.Split('/', '-')[0];
@@ -1291,6 +1660,20 @@ namespace AnonTool
                 if (IsAllowedInAudit(m.Value, cfg)) continue;
                 int ln = GetLineNumber(lineStarts, m.Index);
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-MAC", Fund = m.Value, Kontext = getLineCtx(ln) });
+            }
+            foreach (Match m in RxMacAruba.Matches(cleanText))
+            {
+                if (!HasHexLetter(m.Value) || IsAllowedInAudit(m.Value, cfg)) continue;
+                int ln = GetLineNumber(lineStarts, m.Index);
+                findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-MAC", Fund = m.Value, Kontext = getLineCtx(ln) });
+            }
+            foreach (Match m in RxMacRawContext.Matches(cleanText))
+            {
+                string rawHex = m.Groups[2].Value;
+                string norm = NormalizeMac(rawHex);
+                if (norm == "000000000000" || norm == "ffffffffffff" || IsAllowedInAudit(rawHex, cfg)) continue;
+                int ln = GetLineNumber(lineStarts, m.Groups[2].Index);
+                findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-MAC", Fund = rawHex, Kontext = getLineCtx(ln) });
             }
 
             // 4. Prüfe auf verbliebene E-Mail-Adressen
@@ -1337,6 +1720,89 @@ namespace AnonTool
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Geheimnis-Blob", Fund = m.Value, Kontext = getLineCtx(ln) });
             }
 
+            // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
+            List<KeyValuePair<string, List<Regex>>> patternGroups = new List<KeyValuePair<string, List<Regex>>>();
+            patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Hostname", cfg.HostnamenMuster));
+            patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Seriennummer", cfg.SeriennummerMuster));
+            patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Benutzer", cfg.BenutzerMuster));
+            foreach (KeyValuePair<string, List<Regex>> pg in patternGroups)
+            {
+                foreach (Regex rx in pg.Value)
+                {
+                    foreach (Match m in rx.Matches(cleanText))
+                    {
+                        string val = PickGroupValue(m);
+                        if (string.IsNullOrEmpty(val) || val.IndexOf('\u0002') >= 0 || IsAllowedInAudit(val, cfg) || AreAllPartsAllowed(val, cfg)) continue;
+                        int ln = GetLineNumber(lineStarts, m.Index);
+                        findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = pg.Key, Fund = val, Kontext = getLineCtx(ln) });
+                    }
+                }
+            }
+
+            // 8. Freitext-Felder (description, location, ...) müssen ersetzt oder vollständig erlaubt sein
+            foreach (FreeTextRule fRule in cfg.FreitextMuster)
+            {
+                foreach (Match m in fRule.Compiled.Matches(cleanText))
+                {
+                    int gIdx = (fRule.Category == "BANNER" && m.Groups.Count >= 5) ? 3 : 2;
+                    if (m.Groups.Count <= gIdx || !m.Groups[gIdx].Success) continue;
+                    string body = m.Groups[gIdx].Value.Trim();
+                    if (string.IsNullOrEmpty(body) || IsAllowedInAudit(body, cfg) || AreAllPartsAllowed(body, cfg)) continue;
+                    int ln = GetLineNumber(lineStarts, m.Groups[gIdx].Index);
+                    findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-Freitext", Fund = body, Kontext = getLineCtx(ln) });
+                }
+            }
+
+            // 9. Tabellenspalten (Beschreibungen, LLDP-Nachbarn)
+            foreach (TableField f in FindTableFields(cleanText, cfg))
+            {
+                string val = f.Wert.Trim();
+                if (IsTableValueExempt(val, cfg) || IsAllowedInAudit(val, cfg)) continue;
+                // Nach Ersetzungen verschobene Spalten: Zahlen/Portnotation neben Platzhaltern sind unkritisch
+                bool allOk = true;
+                foreach (string part in val.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!IsTrivialTableValue(part) && !IsAllowedAuditPart(part, cfg)) { allOk = false; break; }
+                }
+                if (allOk) continue;
+                findings.Add(new AuditFinding { Datei = fileName, Zeile = f.Zeile, Kategorie = "Rest-Tabellenfeld", Fund = val, Kontext = getLineCtx(f.Zeile) });
+            }
+
+            // 10. Im Lauf erkannte Originalwerte (aus der Zuordnungstabelle) dürfen nirgends mehr vorkommen
+            if (state != null)
+            {
+                List<string> known = new List<string>();
+                HashSet<string> seenKnown = new HashSet<string>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, string> kv in state.Forward)
+                {
+                    foreach (string cat in KnownValueCategories)
+                    {
+                        if (!kv.Key.StartsWith(cat, StringComparison.OrdinalIgnoreCase)) continue;
+                        string v = kv.Key.Substring(cat.Length).Trim().ToLowerInvariant();
+                        if (v.Length >= 3 && !IsAllowedInAudit(v, cfg) && seenKnown.Add(v)) known.Add(v);
+                        break;
+                    }
+                }
+                if (known.Count > 0)
+                {
+                    known.Sort(new LengthDescOrdinal());
+                    List<string> esc = new List<string>(known.Count);
+                    foreach (string k in known) esc.Add(Regex.Escape(k));
+                    Regex rxKnown = new Regex("(?<![A-Za-z0-9])(?:" + string.Join("|", esc.ToArray()) + ")(?![A-Za-z0-9])", RegexOptions.IgnoreCase, RxTimeout);
+                    string knownText = RxPlaceholder.Replace(cleanText, spaceMasker);
+                    foreach (KeyValuePair<string, string> kv in cfg.FesteZuordnung)
+                    {
+                        if (string.IsNullOrWhiteSpace(kv.Value)) continue;
+                        knownText = Regex.Replace(knownText, "(?<![A-Za-z0-9_-])" + Regex.Escape(kv.Value.Trim()) + "(?![A-Za-z0-9_-])", spaceMasker, RegexOptions.IgnoreCase, RxTimeout);
+                    }
+                    foreach (Match m in rxKnown.Matches(knownText))
+                    {
+                        int ln = GetLineNumber(lineStarts, m.Index);
+                        findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-Bekannt", Fund = m.Value, Kontext = getLineCtx(ln) });
+                    }
+                }
+            }
+
             if (findings.Count > 1)
                 findings = findings.OrderBy(f => f.Zeile).ToList();
 
@@ -1371,6 +1837,23 @@ function Get-JsonProp {
     return $null
 }
 
+# Liste aus Basisregeln, danach dieselbe Liste aus der lokalen Regeldatei (gleiche Reihenfolge wie anonymisierer.html)
+function Get-MergedRuleList {
+    param($BaseObj, $LokalObj, [string]$Section, [string]$Name)
+    $out = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($src in @($BaseObj, $LokalObj)) {
+        if ($null -eq $src) { continue }
+        $container = $src
+        if (-not [string]::IsNullOrEmpty($Section)) { $container = Get-JsonProp $src $Section }
+        $list = Get-JsonProp $container $Name
+        if ($null -eq $list) { continue }
+        foreach ($item in @($list)) {
+            if ($null -ne $item) { $out.Add($item) }
+        }
+    }
+    return $out.ToArray()
+}
+
 function Load-EngineConfig {
     param(
         [string]$RegelDatei,
@@ -1383,6 +1866,16 @@ function Load-EngineConfig {
     }
     $rawJson = [AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $RegelDatei).Path))
     $jsonObj = ConvertFrom-Json -InputObject $rawJson
+
+    # Optional: Lokale Regeldatei (anon-regeln.lokal.json) früh einlesen; Begriffe UND Muster werden übernommen
+    $lokalObj = $null
+    if (-not [string]::IsNullOrEmpty($LokaleRegelDatei)) {
+        if (-not (Test-Path -LiteralPath $LokaleRegelDatei)) {
+            throw "Lokale Regeldatei nicht gefunden (Parameter -LokaleRegeln)."
+        }
+        $rawLokal = [AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $LokaleRegelDatei).Path))
+        $lokalObj = ConvertFrom-Json -InputObject $rawLokal
+    }
 
     $cfg = New-Object AnonTool.EngineConfig
     $rxTimeout = [TimeSpan]::FromSeconds(5)
@@ -1472,28 +1965,16 @@ function Load-EngineConfig {
                 [void]$cfg.ExakteAusnahmen.Add([string]$w)
             }
         }
-        $vK = Get-JsonProp $aus "versionKontext"
-        if ($null -ne $vK) {
-            foreach ($pat in $vK) {
-                $cfg.VersionKontextRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
-            }
-        }
-        $mR = Get-JsonProp $aus "musterRegex"
-        if ($null -ne $mR) {
-            foreach ($pat in $mR) {
-                $cfg.AusnahmenRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
-            }
-        }
+    }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "ausnahmen" "versionKontext")) {
+        $cfg.VersionKontextRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
+    }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "ausnahmen" "musterRegex")) {
+        $cfg.AusnahmenRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
 
-    # Optional: Lokale Regeldatei (anon-regeln.lokal.json) zusammenführen (eigeneBegriffe + ausnahmen.exakteWoerter)
-    $effLokaleDatei = $LokaleRegelDatei
-    if (-not [string]::IsNullOrEmpty($effLokaleDatei)) {
-        if (-not (Test-Path -LiteralPath $effLokaleDatei)) {
-            throw "Lokale Regeldatei nicht gefunden: $effLokaleDatei"
-        }
-        $rawLokal = [AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $effLokaleDatei).Path))
-        $lokalObj = ConvertFrom-Json -InputObject $rawLokal
+    # Lokale Regeldatei: eigeneBegriffe + ausnahmen.exakteWoerter zusammenführen (Muster siehe Get-MergedRuleList)
+    if ($null -ne $lokalObj) {
         $lokEig = Get-JsonProp $lokalObj "eigeneBegriffe"
         if ($null -eq $lokEig) { $lokEig = $lokalObj }
         if ($null -ne $lokEig) {
@@ -1540,65 +2021,59 @@ function Load-EngineConfig {
         }
     }
 
-    $prf = Get-JsonProp $jsonObj "pruefung"
-    if ($null -ne $prf) {
-        $erlL = Get-JsonProp $prf "erlaubtListe"
-        if ($null -ne $erlL) {
-            foreach ($w in $erlL) {
-                [void]$cfg.PruefungErlaubtListe.Add([string]$w)
-            }
-        }
-        $erlM = Get-JsonProp $prf "erlaubtMuster"
-        if ($null -ne $erlM) {
-            foreach ($pat in $erlM) {
-                $cfg.PruefungErlaubtMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
-            }
-        }
+    foreach ($w in (Get-MergedRuleList $jsonObj $lokalObj "pruefung" "erlaubtListe")) {
+        [void]$cfg.PruefungErlaubtListe.Add([string]$w)
+    }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "pruefung" "erlaubtMuster")) {
+        $cfg.PruefungErlaubtMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
 
-    $gehList = Get-JsonProp $jsonObj "geheimnisMuster"
-    if ($null -ne $gehList) {
-        foreach ($gm in $gehList) {
-            $sr = New-Object AnonTool.SecretRule
-            $sr.Name = [string](Get-JsonProp $gm "name")
-            $sr.Pattern = [string](Get-JsonProp $gm "suche")
-            $sr.Replacement = [string](Get-JsonProp $gm "ersetzen")
-            $sr.Compiled = New-Object System.Text.RegularExpressions.Regex ($sr.Pattern, $rxCompiled, $rxTimeout)
-            $cfg.GeheimnisMuster.Add($sr)
-        }
+    foreach ($gm in (Get-MergedRuleList $jsonObj $lokalObj "" "geheimnisMuster")) {
+        $sr = New-Object AnonTool.SecretRule
+        $sr.Name = [string](Get-JsonProp $gm "name")
+        $sr.Pattern = [string](Get-JsonProp $gm "suche")
+        $sr.Replacement = [string](Get-JsonProp $gm "ersetzen")
+        $sr.Compiled = New-Object System.Text.RegularExpressions.Regex ($sr.Pattern, $rxCompiled, $rxTimeout)
+        $cfg.GeheimnisMuster.Add($sr)
     }
 
-    $freiList = Get-JsonProp $jsonObj "freitextMuster"
-    if ($null -ne $freiList) {
-        foreach ($fm in $freiList) {
-            $fr = New-Object AnonTool.FreeTextRule
-            $fr.Name = [string](Get-JsonProp $fm "name")
-            $fr.Category = [string](Get-JsonProp $fm "kategorie")
-            $fr.Pattern = [string](Get-JsonProp $fm "suche")
-            $fr.Compiled = New-Object System.Text.RegularExpressions.Regex ($fr.Pattern, $rxCompiled, $rxTimeout)
-            $cfg.FreitextMuster.Add($fr)
-        }
+    foreach ($fm in (Get-MergedRuleList $jsonObj $lokalObj "" "freitextMuster")) {
+        $fr = New-Object AnonTool.FreeTextRule
+        $fr.Name = [string](Get-JsonProp $fm "name")
+        $fr.Category = [string](Get-JsonProp $fm "kategorie")
+        $fr.Pattern = [string](Get-JsonProp $fm "suche")
+        $fr.Compiled = New-Object System.Text.RegularExpressions.Regex ($fr.Pattern, $rxCompiled, $rxTimeout)
+        $cfg.FreitextMuster.Add($fr)
     }
 
-    $serList = Get-JsonProp $jsonObj "seriennummerMuster"
-    if ($null -ne $serList) {
-        foreach ($pat in $serList) {
-            $cfg.SeriennummerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
-        }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "" "seriennummerMuster")) {
+        $cfg.SeriennummerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
 
-    $benList = Get-JsonProp $jsonObj "benutzerMuster"
-    if ($null -ne $benList) {
-        foreach ($pat in $benList) {
-            $cfg.BenutzerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
-        }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "" "benutzerMuster")) {
+        $cfg.BenutzerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
 
-    $hostList = Get-JsonProp $jsonObj "hostnamenMuster"
-    if ($null -ne $hostList) {
-        foreach ($pat in $hostList) {
-            $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
+    # Reihenfolge wie in anonymisierer.html: hostnamenMuster (Basis, lokal), danach eigeneHostnamenMuster (Basis, lokal)
+    $hostPats = @(Get-MergedRuleList $jsonObj $lokalObj "" "hostnamenMuster") + @(Get-MergedRuleList $jsonObj $lokalObj "" "eigeneHostnamenMuster")
+    foreach ($pat in $hostPats) {
+        $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
+    }
+
+    foreach ($tr in (Get-MergedRuleList $jsonObj $lokalObj "" "tabellenSpalten")) {
+        $rule = New-Object AnonTool.TableRule
+        $rule.Name = [string](Get-JsonProp $tr "name")
+        foreach ($k in @(Get-JsonProp $tr "kopf")) {
+            if ($null -ne $k) { $rule.Kopf.Add([string]$k) }
         }
+        foreach ($sp in @(Get-JsonProp $tr "spalten")) {
+            if ($null -eq $sp) { continue }
+            $col = New-Object AnonTool.TableColumnSpec
+            $col.Name = [string](Get-JsonProp $sp "name")
+            $col.Kategorie = [string](Get-JsonProp $sp "kategorie")
+            $rule.Spalten.Add($col)
+        }
+        $cfg.TabellenSpalten.Add($rule)
     }
 
     return $cfg
@@ -2248,6 +2723,18 @@ try {
     $dateiBerichte = New-Object 'System.Collections.Generic.List[psobject]'
     $allePruefFunde = New-Object 'System.Collections.Generic.List[AnonTool.AuditFinding]'
 
+    # Durchlauf 1: Alle Dateien einmal verarbeiten, damit Hostnamen aus späteren Dateien
+    # (z.B. "hostname X" in Datei 3) auch in früheren Dateien ersetzt werden. Ausgabe wird verworfen.
+    foreach ($eintrag in $dateiListe) {
+        [void][AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
+        $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
+        if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
+        [void][AnonTool.AnonEngine]::ProcessText([AnonTool.TarGzHelper]::DecodeTextWithBom($bytes), $cfg, $state)
+    }
+    $state.Stats = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    # Durchlauf 2: Endgültige Ausgabe mit vollständiger Zuordnungstabelle
+    $anonErgebnisse = New-Object 'System.Collections.Generic.List[psobject]'
     foreach ($eintrag in $dateiListe) {
         $anonRelPfad = [AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
         $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
@@ -2273,10 +2760,6 @@ try {
             }
         }
 
-        # Automatische Nachprüfung jeder anonymisierten Datei inkl. Dateipfad
-        $funde = [AnonTool.AnonEngine]::AuditText($anonText, $anonRelPfad, $cfg)
-        foreach ($fd in $funde) { $allePruefFunde.Add($fd) }
-
         if (-not $Probe) {
             $osRelPath = $anonRelPfad -replace '/', [System.IO.Path]::DirectorySeparatorChar
             $zielDatei = Join-Path $anonymOrdner $osRelPath
@@ -2287,10 +2770,22 @@ try {
             [System.IO.File]::WriteAllText($zielDatei, $anonText, (New-Object System.Text.UTF8Encoding($false)))
         }
 
+        $anonErgebnisse.Add([pscustomobject]@{
+            Pfad      = $anonRelPfad
+            Text      = $anonText
+            DateiStat = $dateiStat
+            Gesamt    = $gesamtInDatei
+        })
+    }
+
+    # Automatische Nachprüfung jeder anonymisierten Datei inkl. Dateipfad, mit allen im Lauf erkannten Werten
+    foreach ($erg in $anonErgebnisse) {
+        $funde = [AnonTool.AnonEngine]::AuditText($erg.Text, $erg.Pfad, $cfg, $state)
+        foreach ($fd in $funde) { $allePruefFunde.Add($fd) }
         $dateiBerichte.Add([pscustomobject][ordered]@{
-            datei        = ($anonRelPfad -replace '\\', '/')
-            ersetzungen  = $gesamtInDatei
-            kategorien   = $dateiStat
+            datei        = ($erg.Pfad -replace '\\', '/')
+            ersetzungen  = $erg.Gesamt
+            kategorien   = $erg.DateiStat
             pruefTreffer = $funde.Count
         })
     }
