@@ -1,0 +1,18 @@
+# Echte Daten - niemals committen
+anon-regeln.lokal.json
+*.lokal.json
+*.anon-tab
+*.anontab
+tabellen/
+Tabellen/
+roh/
+anonym/
+bericht.json
+
+# Testläufe
+tests/_tmp*/
+
+# System
+.DS_Store
+Thumbs.db
+node_modules/

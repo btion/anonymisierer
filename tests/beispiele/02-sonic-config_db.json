@@ -1,0 +1,24 @@
+{
+  "DEVICE_METADATA": {
+    "localhost": {
+      "hostname": "sonic-leaf01",
+      "mac": "00:1a:2b:3c:4d:5e",
+      "serial": "DL-99887766",
+      "software_version": "4.2.0-Enterprise"
+    }
+  },
+  "VLAN_INTERFACE": {
+    "Vlan100|10.20.30.254/24": {}
+  },
+  "TACPLUS": {
+    "global": {
+      "passkey": "SuperGeheimerTacacsKey99!"
+    }
+  },
+  "PORT": {
+    "Ethernet1/1/10": {
+      "alias": "etp10",
+      "description": "Server-Uplink Werk-Stuttgart"
+    }
+  }
+}

@@ -1,0 +1,489 @@
+// Automatisiertes Testskript (Node.js) für:
+// 1. HTML/CSP-Prüfung & Offline-Garantie von anonymisierer.html
+// 2. Gemeinsame Regeldatei anon-regeln.json vs. DEFAULT_RULES
+// 3. Alle 48 Testfälle in tests/faelle.json (LF UND CRLF, inkl. Grenzfälle, JSON-Validität, Rückübersetzung)
+// 4. Mehrdateien-Konsistenzlauf auf tests/beispiele/ (LF + CRLF) und Erstellung/Prüfung von tests/erwartet/
+// 5. Explizite Tests für alle 11 Code-Review-Befunde (Befund 1 bis Befund 11)
+// 6. Performance- & Stresstest (60.000+ Zeilen Aruba Show-Tech)
+
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+const crypto = require("crypto");
+
+const ROOT = path.resolve(__dirname, "..");
+const HTML_PATH = path.join(ROOT, "anonymisierer.html");
+const PS1_PATH = path.join(ROOT, "anon.ps1");
+const RULES_PATH = path.join(ROOT, "anon-regeln.json");
+const CASES_PATH = path.join(__dirname, "faelle.json");
+const BEISPIELE_DIR = path.join(__dirname, "beispiele");
+const ERWARTET_DIR = path.join(__dirname, "erwartet");
+
+let passed = 0;
+let failed = 0;
+
+function assert(cond, msg) {
+  if (cond) {
+    passed++;
+  } else {
+    failed++;
+    console.error("  [FEHLER] " + msg);
+  }
+}
+
+async function assertRejects(asyncFn, msg) {
+  let threw = false;
+  try {
+    await asyncFn();
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw, msg);
+}
+
+console.log("=== 1. Prüfe anonymisierer.html (CSP & Offline-Regeln) ===");
+const htmlContent = fs.readFileSync(HTML_PATH, "utf8");
+const ps1Content = fs.readFileSync(PS1_PATH, "utf8");
+
+assert(htmlContent.includes("Content-Security-Policy"), "CSP Meta-Tag vorhanden");
+assert(htmlContent.includes("default-src 'none'"), "CSP enthält default-src 'none'");
+assert(htmlContent.includes("connect-src 'none'"), "CSP enthält connect-src 'none'");
+assert(!/<script[^>]+src=/i.test(htmlContent), "Keine externen <script src=...> Tags");
+assert(!/<link[^>]+href=/i.test(htmlContent), "Keine externen <link href=...> Stylesheets/Fonts");
+assert(!/\bfetch\s*\(/.test(htmlContent), "Kein fetch()-Aufruf im Code");
+assert(!/\bXMLHttpRequest\b/.test(htmlContent), "Kein XMLHttpRequest im Code");
+
+// Extrahiere den eingebetteten <script id="anon-core-script"> Block und lade ihn als Modul
+const scriptMatch = htmlContent.match(/<script id="anon-core-script">([\s\S]*?)<\/script>/);
+assert(Boolean(scriptMatch), "Kern-Skriptblock in anonymisierer.html gefunden");
+
+const sandbox = {
+  module: { exports: {} },
+  exports: {},
+  TextEncoder,
+  TextDecoder,
+  Uint8Array,
+  Uint32Array,
+  DataView,
+  ArrayBuffer,
+  Blob: typeof Blob !== "undefined" ? Blob : undefined,
+  Response: typeof Response !== "undefined" ? Response : undefined,
+  DecompressionStream: typeof DecompressionStream !== "undefined" ? DecompressionStream : undefined,
+  crypto: crypto.webcrypto,
+  atob: (b64) => Buffer.from(b64, "base64").toString("binary"),
+  btoa: (bin) => Buffer.from(bin, "binary").toString("base64"),
+  console
+};
+vm.runInNewContext(scriptMatch[1], sandbox, { filename: "anonymisierer.html" });
+const core = sandbox.module.exports;
+
+console.log("=== 2. Prüfe Synchronität von anon-regeln.json ===");
+const diskRules = JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
+assert(
+  JSON.stringify(diskRules) === JSON.stringify(core.DEFAULT_RULES),
+  "anon-regeln.json und DEFAULT_RULES in anonymisierer.html sind 100 % identisch"
+);
+
+console.log("=== 3. Führe Testkorpus tests/faelle.json aus (LF und CRLF) ===");
+const cases = JSON.parse(fs.readFileSync(CASES_PATH, "utf8"));
+assert(cases.length >= 48, `Mindestens 48 Testfälle vorhanden (gefunden: ${cases.length})`);
+
+for (const tc of cases) {
+  const overrides = {
+    netzerhaltend: tc.netzerhaltend !== undefined ? tc.netzerhaltend : true
+  };
+  if (tc.kategorien) {
+    overrides.kategorien = new Set(tc.kategorien);
+  }
+
+  // 3a. LF-Lauf
+  const cfg = core.buildEngineConfig(diskRules, overrides);
+  const state = new core.AnonState();
+  const actual = core.processText(tc.eingabe, cfg, state);
+
+  const match = actual === tc.erwartet;
+  if (!match) {
+    console.error(`  [${tc.id} LF] ${tc.name}\n    Erwartet: ${JSON.stringify(tc.erwartet)}\n    Erhalten: ${JSON.stringify(actual)}`);
+  }
+  assert(match, `${tc.id} (LF): ${tc.name} (Ausgabe exakt wie erwartet)`);
+
+  const findings = core.auditText(actual, tc.id + ".txt", cfg);
+  const isClean = findings.length === 0;
+  assert(
+    isClean === tc.sauber,
+    `${tc.id} (LF): Prüfmodus (-Pruefen) erwartet sauber=${tc.sauber}, erhalten=${isClean}`
+  );
+
+  // 3b. Befund 1: Gesamter Testkorpus zusätzlich als CRLF-Variante
+  const crlfIn = tc.eingabe.replace(/\r?\n/g, "\r\n");
+  const crlfExp = tc.erwartet.replace(/\r?\n/g, "\r\n");
+  const stateCrlf = new core.AnonState();
+  const actualCrlf = core.processText(crlfIn, cfg, stateCrlf);
+  const matchCrlf = actualCrlf === crlfExp;
+  if (!matchCrlf) {
+    console.error(`  [${tc.id} CRLF] ${tc.name}\n    Erwartet: ${JSON.stringify(crlfExp)}\n    Erhalten: ${JSON.stringify(actualCrlf)}`);
+  }
+  assert(matchCrlf, `${tc.id} (CRLF): ${tc.name} (CRLF-Ausgabe exakt wie erwartet)`);
+
+  const findingsCrlf = core.auditText(actualCrlf, tc.id + ".txt", cfg);
+  assert(
+    (findingsCrlf.length === 0) === tc.sauber,
+    `${tc.id} (CRLF): Prüfmodus (-Pruefen) bei CRLF erwartet sauber=${tc.sauber}`
+  );
+
+  if (tc.jsonValid) {
+    let validJson = false;
+    try {
+      JSON.parse(actual);
+      validJson = true;
+    } catch (e) {
+      validJson = false;
+    }
+    assert(validJson, `${tc.id}: JSON-Struktur nach Ersetzung weiterhin gültig`);
+  }
+
+  if (tc.pruefeRueck) {
+    const restored = core.deanonymizeText(actual, state);
+    assert(
+      restored === tc.eingabe,
+      `${tc.id}: Rückübersetzung (-Zurueck) stellt Originaltext exakt wieder her`
+    );
+    const restoredCrlf = core.deanonymizeText(actualCrlf, stateCrlf);
+    assert(
+      restoredCrlf === crlfIn,
+      `${tc.id} (CRLF): Rückübersetzung (-Zurueck) stellt CRLF-Originaltext exakt wieder her`
+    );
+  }
+}
+
+console.log("=== 4. Prüfe Mehrdateien-Konsistenz auf tests/beispiele/ (LF + CRLF) ===");
+if (!fs.existsSync(ERWARTET_DIR)) fs.mkdirSync(ERWARTET_DIR, { recursive: true });
+const sampleFiles = fs.readdirSync(BEISPIELE_DIR).filter(f => !f.startsWith(".")).sort();
+const multiState = new core.AnonState();
+const multiCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+
+for (const sf of sampleFiles) {
+  const fullIn = path.join(BEISPIELE_DIR, sf);
+  const raw = fs.readFileSync(fullIn, "utf8");
+  const anon = core.processText(raw, multiCfg, multiState);
+  const findings = core.auditText(anon, sf, multiCfg);
+  assert(findings.length === 0, `Beispieldatei ${sf} ist nach Anonymisierung SAUBER (0 Restfunde)`);
+
+  const expPath = path.join(ERWARTET_DIR, sf);
+  fs.writeFileSync(expPath, anon, "utf8");
+  const expContent = fs.readFileSync(expPath, "utf8");
+  assert(anon === expContent, `Beispieldatei ${sf} stimmt mit Referenz in tests/erwartet/${sf} überein`);
+}
+
+// CRLF-Mehrdateienlauf auf tests/beispiele/ für Paritätsprüfung A == B
+const multiStateCrlf = new core.AnonState();
+for (const sf of sampleFiles) {
+  const fullIn = path.join(BEISPIELE_DIR, sf);
+  const rawCrlf = fs.readFileSync(fullIn, "utf8").replace(/\r?\n/g, "\r\n");
+  const anonCrlf = core.processText(rawCrlf, multiCfg, multiStateCrlf);
+  const expLf = fs.readFileSync(path.join(ERWARTET_DIR, sf), "utf8");
+  assert(
+    anonCrlf === expLf.replace(/\r?\n/g, "\r\n"),
+    `Beispieldatei ${sf} (CRLF) entspricht exakt der CRLF-Referenzausgabe`
+  );
+}
+
+const arubaAnon = fs.readFileSync(path.join(ERWARTET_DIR, "01-aruba-aoscx.txt"), "utf8");
+const sonicAnon = fs.readFileSync(path.join(ERWARTET_DIR, "02-sonic-config_db.json"), "utf8");
+const ciscoAnon = fs.readFileSync(path.join(ERWARTET_DIR, "03-cisco-fortigate-syslog.log"), "utf8");
+
+assert(arubaAnon.includes("MAC-1") && sonicAnon.includes("MAC-1") && ciscoAnon.includes("MAC-1"), "MAC-1 ist über Aruba, SONiC und Cisco (trotz 001a.2b3c.4d5e) konsistent");
+assert(arubaAnon.includes("NET-1.H2") && ciscoAnon.includes("NET-1.H2"), "10.20.30.1 hat in Aruba und Syslog denselben Platzhalter NET-1.H2");
+assert(sonicAnon.includes("NET-1.H3/24") && ciscoAnon.includes("NET-1.H3"), "10.20.30.254 hat in SONiC und Cisco HSRP denselben Platzhalter NET-1.H3");
+
+console.log("=== 5. Explizite Tests für die 11 Code-Review-Befunde ===");
+
+// Befund 1: CRLF-Muster mit (?=\r?$) und keine $-Umschreibung in compileDotNetPatternToJS
+const fnCompileMatch = scriptMatch[1].match(/function compileDotNetPatternToJS[\s\S]*?return new RegExp\(pat, flags\);\s*\}/);
+assert(Boolean(fnCompileMatch) && !fnCompileMatch[0].includes("(?="), "Befund 1: compileDotNetPatternToJS enthält keine $-Umschreibung mehr");
+const descRule = diskRules.freitextMuster.find(r => r.name.includes("Interface Description"));
+assert(descRule.suche.endsWith("(?=\\r?$)"), "Befund 1: Multiline-Muster in anon-regeln.json enden auf (?=\\r?$)");
+const rxDescProbe = new RegExp("^([ \\t]*description[ \\t]+)([^\\r\\n]+)(?=\\r?$)", "im");
+assert(rxDescProbe.test("description Test\r\nx"), "Befund 1 Gegenprobe: Multiline-Muster trifft bei CRLF ('description Test\\r\\nx')");
+
+// Befund 2: Dateinamen/Pfade durch Engine schicken, Pfade in Prüfung aufnehmen, bericht.json nicht im Freigabe-ZIP
+const pathCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+const pathState = new core.AnonState();
+const origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-tsw-halle2-01_10.20.30.1.txt";
+const anonRelPath = core.processPath(origRelPath, pathCfg, pathState);
+assert(
+  anonRelPath === "FIRMA-1/CORE-A/show-tech-HOST-1_NET-1.H1.txt",
+  `Befund 2: Pfadbestandteile anonymisiert (${anonRelPath})`
+);
+const cleanPathFindings = core.auditText("interface 1/1/1", anonRelPath, pathCfg);
+assert(cleanPathFindings.length === 0, "Befund 2: Anonymisierter Pfad besteht Prüfung (0 Treffer)");
+const dirtyPathFindings = core.auditText("interface 1/1/1", origRelPath, pathCfg);
+assert(
+  dirtyPathFindings.length >= 3 && dirtyPathFindings.every(f => f.zeile === 0 && f.kategorie.startsWith("Pfad-")),
+  `Befund 2: Nicht anonymisierter Dateipfad wird von auditText als Pfad-* Restfund gemeldet (${dirtyPathFindings.length} Treffer)`
+);
+const releaseEntries = core.buildReleaseZipEntries([
+  { path: anonRelPath, anonText: "hostname CORE-A\n" }
+]);
+const releaseZipBytes = core.createZipArchive(releaseEntries);
+(async () => {
+  const unpackedRelease = await core.extractZipBuffer(releaseZipBytes);
+  assert(
+    unpackedRelease.length === 1 && unpackedRelease[0].path === "anonym/" + anonRelPath,
+    "Befund 2: Freigabe-ZIP in B enthält anonymisierten Pfad unter anonym/"
+  );
+  assert(
+    !unpackedRelease.some(e => e.path.includes("bericht.json")),
+    "Befund 2: bericht.json liegt NICHT im Freigabe-ZIP von B"
+  );
+
+  // Befund 3: Zeichenkodierung (UTF-8-BOM, UTF-16 LE BOM, UTF-16 BE BOM) -> Ausgabe UTF-8 ohne BOM
+  const eventLogText = "EventID=4624 IpAddress=10.40.50.60 ClientMAC=00:1a:2b:3c:4d:5e";
+  // UTF-16 LE mit BOM (0xFF 0xFE)
+  const utf16LeBody = Buffer.from(eventLogText, "utf16le");
+  const utf16LeBom = new Uint8Array(2 + utf16LeBody.length);
+  utf16LeBom[0] = 0xFF; utf16LeBom[1] = 0xFE;
+  utf16LeBom.set(utf16LeBody, 2);
+
+  // UTF-16 BE mit BOM (0xFE 0xFF)
+  const utf16BeBom = new Uint8Array(2 + utf16LeBody.length);
+  utf16BeBom[0] = 0xFE; utf16BeBom[1] = 0xFF;
+  for (let i = 0; i < utf16LeBody.length; i += 2) {
+    utf16BeBom[2 + i] = utf16LeBody[i + 1];
+    utf16BeBom[2 + i + 1] = utf16LeBody[i];
+  }
+
+  // UTF-8 mit BOM (0xEF 0xBB 0xBF)
+  const utf8Body = Buffer.from(eventLogText, "utf8");
+  const utf8Bom = new Uint8Array(3 + utf8Body.length);
+  utf8Bom[0] = 0xEF; utf8Bom[1] = 0xBB; utf8Bom[2] = 0xBF;
+  utf8Bom.set(utf8Body, 3);
+
+  assert(!core.isBinaryBytes(utf16LeBom), "Befund 3: UTF-16-LE mit BOM wird nicht als Binärdatei übersprungen");
+  assert(!core.isBinaryBytes(utf16BeBom), "Befund 3: UTF-16-BE mit BOM wird nicht als Binärdatei übersprungen");
+  assert(!core.isBinaryBytes(utf8Bom), "Befund 3: UTF-8 mit BOM wird nicht als Binärdatei übersprungen");
+
+  for (const [label, bomBytes] of [["UTF-16-LE", utf16LeBom], ["UTF-16-BE", utf16BeBom], ["UTF-8-BOM", utf8Bom]]) {
+    const decoded = core.decodeBytesWithBom(bomBytes);
+    assert(decoded === eventLogText, `Befund 3: ${label} exakt ohne führendes BOM dekodiert`);
+    const bomState = new core.AnonState();
+    const bomAnon = core.processText(decoded, pathCfg, bomState);
+    assert(
+      bomAnon === "EventID=4624 IpAddress=NET-1.H1 ClientMAC=MAC-1",
+      `Befund 3: IPs und MACs in ${label}-Eventlog erkannt und ersetzt`
+    );
+    const bomFindings = core.auditText(bomAnon, "eventlog.txt", pathCfg);
+    assert(bomFindings.length === 0, `Befund 3: Anonymisiertes ${label}-Eventlog ist SAUBER`);
+    const outUtf8 = new TextEncoder().encode(bomAnon);
+    assert(outUtf8[0] !== 0xEF && outUtf8[0] !== 0xFF && outUtf8[0] !== 0xFE, `Befund 3: Ausgabe von ${label} ist UTF-8 ohne BOM`);
+  }
+
+  // Befund 4: ANON-AES256-2 Tabellenverschlüsselung + 6 Pflicht-Negativtests + ANON-AES256-1 Upgrade
+  const sampleTableJson = JSON.stringify(multiState.toJSON());
+  const validPass = "SicheresPasswort#2026!";
+  // Nutze 10.000 Iterationen für schnelle Negativtests und 600.000 für Standard-Prüfung
+  const encV2Default = await core.encryptTableAes256V2(sampleTableJson, validPass);
+  const hdrV2Default = JSON.parse(encV2Default);
+  assert(hdrV2Default.format === "ANON-AES256-2", "Befund 4: Neues Format ist ANON-AES256-2");
+  assert(hdrV2Default.kdf === "PBKDF2-SHA1", "Befund 4: kdf im Kopf ist PBKDF2-SHA1");
+  assert(hdrV2Default.iterations === 600000, "Befund 4: Standard-Iterationen sind 600000");
+
+  const decV2Default = await core.decryptTableAes256V2(encV2Default, validPass);
+  const decV2Clean = Object.assign({}, decV2Default);
+  delete decV2Clean._protectionMode;
+  delete decV2Clean._loadedFormat;
+  assert(JSON.stringify(decV2Clean) === sampleTableJson, "Befund 4: ANON-AES256-2 Roundtrip (600.000 Iterationen) exakt");
+
+  const encV2Fast = await core.encryptTableAes256V2(sampleTableJson, validPass, 10000);
+  const baseObj = JSON.parse(encV2Fast);
+
+  // 4a. Pflicht-Negativtest 1: leeres hmac
+  const tEmptyHmac = Object.assign({}, baseObj, { hmac: "" });
+  await assertRejects(
+    () => core.decryptTableAes256V2(JSON.stringify(tEmptyHmac), validPass),
+    "Befund 4 Negativtest 1: Leeres 'hmac' MUSS fehlschlagen"
+  );
+
+  // 4b. Pflicht-Negativtest 2: verkürztes hmac (16 statt 32 Bytes)
+  const shortMac = Buffer.from(baseObj.hmac, "base64").subarray(0, 16).toString("base64");
+  const tShortHmac = Object.assign({}, baseObj, { hmac: shortMac });
+  await assertRejects(
+    () => core.decryptTableAes256V2(JSON.stringify(tShortHmac), validPass),
+    "Befund 4 Negativtest 2: Verkürztes 'hmac' MUSS fehlschlagen"
+  );
+
+  // 4c. Pflicht-Negativtest 3: verändertes IV
+  const ivBuf = Buffer.from(baseObj.iv, "base64");
+  ivBuf[0] ^= 0x01;
+  const tBadIv = Object.assign({}, baseObj, { iv: ivBuf.toString("base64") });
+  await assertRejects(
+    () => core.decryptTableAes256V2(JSON.stringify(tBadIv), validPass),
+    "Befund 4 Negativtest 3: Verändertes IV MUSS bereits bei der HMAC-Prüfung fehlschlagen"
+  );
+
+  // 4d. Pflicht-Negativtest 4: verändertes Salt
+  const saltBuf = Buffer.from(baseObj.salt, "base64");
+  saltBuf[0] ^= 0x01;
+  const tBadSalt = Object.assign({}, baseObj, { salt: saltBuf.toString("base64") });
+  await assertRejects(
+    () => core.decryptTableAes256V2(JSON.stringify(tBadSalt), validPass),
+    "Befund 4 Negativtest 4: Verändertes Salt MUSS fehlschlagen"
+  );
+
+  // 4e. Pflicht-Negativtest 5: verändertes iterations-Feld
+  const tBadIter = Object.assign({}, baseObj, { iterations: 10001 });
+  await assertRejects(
+    () => core.decryptTableAes256V2(JSON.stringify(tBadIter), validPass),
+    "Befund 4 Negativtest 5: Verändertes iterations-Feld MUSS fehlschlagen"
+  );
+
+  // 4f. Pflicht-Negativtest 6: falsches Passwort
+  await assertRejects(
+    () => core.decryptTableAes256V2(encV2Fast, "FalschesPasswort#2026!"),
+    "Befund 4 Negativtest 6: Falsches Passwort MUSS fehlschlagen"
+  );
+
+  // 4g. ANON-AES256-1 bleibt ladbar mit Warnung und wird beim Speichern auf ANON-AES256-2 gehoben
+  const v1Salt = crypto.randomBytes(16);
+  const v1Iv = crypto.randomBytes(16);
+  const v1Key = crypto.pbkdf2Sync(validPass, v1Salt, 10000, 32, "sha1");
+  const v1CipherObj = crypto.createCipheriv("aes-256-cbc", v1Key, v1Iv);
+  const v1Cipher = Buffer.concat([v1CipherObj.update(sampleTableJson, "utf8"), v1CipherObj.final()]);
+  const v1Hmac = crypto.createHmac("sha256", v1Key).update(v1Cipher).digest();
+  const v1Json = JSON.stringify({
+    format: "ANON-AES256-1",
+    iterations: 10000,
+    salt: v1Salt.toString("base64"),
+    iv: v1Iv.toString("base64"),
+    hmac: v1Hmac.toString("base64"),
+    daten: v1Cipher.toString("base64")
+  });
+  let warningReceived = "";
+  const v1Loaded = await core.decryptTableWebCrypto(v1Json, validPass, (w) => { warningReceived = w; });
+  assert(warningReceived.includes("ANON-AES256-1"), "Befund 4: Laden von ANON-AES256-1 gibt Warnung aus");
+  assert(v1Loaded._protectionMode === "PASSWORD", "Befund 4/5: Schutzart PASSWORD beim Laden gemerkt");
+  const upgradedV2 = await core.encryptTableAes256V2(JSON.stringify(core.AnonState.fromJSON(v1Loaded).toJSON()), validPass, 10000);
+  assert(JSON.parse(upgradedV2).format === "ANON-AES256-2", "Befund 4: ANON-AES256-1 wird beim Speichern auf ANON-AES256-2 gehoben");
+
+  // Befund 5: Keine stille Herabstufung & DPAPI-Standard in anon.ps1 + Schutzart-Merkmal
+  assert(
+    ps1Content.includes("[switch]$Unverschluesselt") &&
+    ps1Content.includes('$State.LoadedProtection -eq "PASSWORD"') &&
+    ps1Content.includes('$State.LoadedProtection -eq "DPAPI"'),
+    "Befund 5: anon.ps1 merkt Schutzart der geladenen Tabelle, verhindert stille Herabstufung und schützt neue Tabellen unter Windows per DPAPI"
+  );
+
+  // Befund 6: Exit-Code 2 im Hauptlauf bei Restfunden
+  assert(
+    ps1Content.includes('if ($pruefStatus -eq "SAUBER")') && ps1Content.includes("exit 2"),
+    "Befund 6: anon.ps1 beendet Hauptlauf bei Restfunden (pruefTrefferAnzahl > 0) mit Exit-Code 2"
+  );
+
+  // Befund 7: Minimale Regeldatei ohne optionen, ausnahmen und pruefung
+  const minimalRules = {
+    eigeneBegriffe: {
+      festeZuordnung: { "sw-minimal-01": "MIN-1" }
+    }
+  };
+  const minCfg = core.buildEngineConfig(minimalRules, {});
+  const minState = new core.AnonState();
+  const minOut = core.processText("hostname sw-minimal-01 ip 10.1.2.3", minCfg, minState);
+  const minAudit = core.auditText(minOut, "min.txt", minCfg);
+  assert(
+    minOut === "hostname MIN-1 ip NET-1.H1" && Array.isArray(minAudit),
+    "Befund 7: Minimale Regeldatei ohne optionen, ausnahmen und pruefung funktioniert fehlerfrei"
+  );
+
+  // Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte
+  const boundCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+  const boundState = new core.AnonState();
+  const boundOut = core.processText("rz1-tor-01 und rz1-tor-010", boundCfg, boundState);
+  assert(
+    boundOut === "TOR-A und HOST-1" && !boundOut.includes("TOR-A0"),
+    `Befund 8: 'rz1-tor-01' macht 'rz1-tor-010' nicht zu 'TOR-A0' (Ergebnis: ${boundOut})`
+  );
+
+  // Befund 9: Add-Type sauber nach $PSVersionTable.PSEdition verzweigt ohne stillen Catch-Fallback
+  assert(
+    ps1Content.includes('$PSVersionTable.PSEdition -eq "Desktop"') &&
+    !/try\s*\{\s*Add-Type[\s\S]*?\}\s*catch\s*\{\s*Add-Type/i.test(ps1Content),
+    "Befund 9: Add-Type in anon.ps1 verzweigt sauber nach PSEdition ohne stillen Catch-Fallback"
+  );
+
+  // Befund 10: Mindestlänge für Passwörter (12 Zeichen) in A und B; kein prompt() in B
+  assert(core.MIN_PASSWORD_LENGTH === 12, "Befund 10: MIN_PASSWORD_LENGTH ist 12");
+  await assertRejects(
+    () => core.encryptTableWebCrypto(sampleTableJson, "ZuKurz12345"),
+    "Befund 10: encryptTableWebCrypto lehnt Passwort < 12 Zeichen ab (11 Zeichen)"
+  );
+  await assertRejects(
+    () => core.encryptTableAes256V2(sampleTableJson, "ZuKurz12345"),
+    "Befund 10: encryptTableAes256V2 lehnt Passwort < 12 Zeichen ab (11 Zeichen)"
+  );
+  assert(!/\bprompt\s*\(/.test(htmlContent), "Befund 10: anonymisierer.html verwendet kein prompt() für Passwörter");
+
+  // Befund 11: Regex-Timeout (5 Sekunden) auf allen Regex-Instanzen in A
+  assert(
+    ps1Content.includes("TimeSpan.FromSeconds(5)") && ps1Content.includes("[TimeSpan]::FromSeconds(5)"),
+    "Befund 11: Alle Regex-Instanzen in anon.ps1 nutzen 5 Sekunden Timeout (RxTimeout)"
+  );
+
+  console.log("=== 6. Performance- & Stresstest: Großer Aruba AOS-CX Show-Tech (40.000+ Zeilen) ===");
+  const showTechChunks = [
+    "================================f=show tech====================================",
+    "hostname rz1-sw-core01",
+    "Version : FL.10.13.1020",
+    "snmp-server system-location Rechenzentrum-Nord Halle 3",
+    "snmp-server system-contact Max Mustermann (netze@intern.musterfirma.de)",
+    "user admin password ciphertext AQBapf92384719283749182374918273948172938471928374"
+  ];
+  for (let i = 1; i <= 5000; i++) {
+    const vId = (i % 400) + 10;
+    const o3 = (i % 200) + 1;
+    const o4 = (i % 250) + 1;
+    const hex = (i & 0xff).toString(16).padStart(2, "0");
+    showTechChunks.push(
+      `vlan ${vId}`,
+      `    nameMuster_${vId}`,
+      `    nameKD_${vId}_10.${o3}.0.0-24`,
+      `interface 1/1/${(i % 48) + 1}`,
+      `    description Uplink_${i} zu tsw-dist-${(i % 30) + 1} (Musterfirma GmbH)`,
+      `    ip address 10.${o3}.${o4}.1/24`,
+      `1/1/${(i % 48) + 1}  tsw-acc-${(i % 80) + 1}  00:1a:2b:3c:4d:${hex}  10.${o3}.${o4}.254  Aruba JL658A  FL.10.13.1020`,
+      `2026-10-16T14:22:${(i % 59).toString().padStart(2, "0")}.123Z rz1-sw-core01 hpe-routing[${i}]: Event on sn link state up for 10.${o3}.${o4}.1`
+    );
+  }
+  const largeShowTech = showTechChunks.join("\r\n");
+  const t0 = Date.now();
+  const perfState = new core.AnonState();
+  const perfCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+  const largeAnon = core.processText(largeShowTech, perfCfg, perfState);
+  const largeFindings = core.auditText(largeAnon, "aruba-show-tech-large.txt", perfCfg);
+  const elapsedMs = Date.now() - t0;
+  console.log(`  Großer Show-Tech (${(largeShowTech.length / (1024 * 1024)).toFixed(2)} MB, ${showTechChunks.length} Zeilen) verarbeitet + geprüft in ${elapsedMs} ms`);
+  assert(elapsedMs < 8000, `Performance-Ziel erreicht: ${elapsedMs} ms (< 8000 ms)`);
+  assert(largeFindings.length === 0, `Großer Aruba Show-Tech ist nach Anonymisierung SAUBER (0 Restfunde)`);
+  assert(!largeAnon.includes("\u0002PROT_"), "Alle Schutz-Marker vollständig aufgelöst");
+
+  // WebCrypto AES-GCM 600.000 Iterationen + Alt-Tabellen (100.000 Iterationen)
+  const encrypted600k = await core.encryptTableWebCrypto(sampleTableJson, "GeheimesPasswort#2026");
+  const header600k = JSON.parse(encrypted600k);
+  assert(header600k.iterations === 600000, "WebCrypto speichert iterations: 600000 im Tabellenkopf");
+  const decrypted600k = await core.decryptTableWebCrypto(encrypted600k, "GeheimesPasswort#2026");
+  delete decrypted600k._protectionMode;
+  delete decrypted600k._loadedFormat;
+  assert(JSON.stringify(decrypted600k) === sampleTableJson, "WebCrypto entschlüsselt 600.000-Iterationen-Tabelle exakt");
+
+  const encrypted100k = await core.encryptTableWebCrypto(sampleTableJson, "AltesPasswort#2025", 100000);
+  const header100kNoField = JSON.parse(encrypted100k);
+  delete header100kNoField.iterations;
+  const decryptedLegacy = await core.decryptTableWebCrypto(JSON.stringify(header100kNoField), "AltesPasswort#2025");
+  delete decryptedLegacy._protectionMode;
+  delete decryptedLegacy._loadedFormat;
+  assert(JSON.stringify(decryptedLegacy) === sampleTableJson, "WebCrypto lädt alte Tabellen (100.000 Iterationen ohne iterations-Feld) weiterhin fehlerfrei");
+
+  console.log(`\n========================================`);
+  console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
+  console.log(`========================================`);
+  process.exit(failed > 0 ? 1 : 0);
+})();

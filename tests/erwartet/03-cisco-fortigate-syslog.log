@@ -1,0 +1,17 @@
+! Cisco IOS / FortiGate / Linux Syslog Kombiniertes Testbeispiel
+hostname HOST-3
+enable secret 5 *****
+username USER-2 privilege 15 password 7 *****
+Processor board ID SERIAL-3
+interface GigabitEthernet1/0/1
+   description TEXT-6
+   ip address NET-1.H4 255.255.255.0
+   standby 1 ip NET-1.H3
+   standby 1 mac-address MAC-1
+!
+config vpn ipsec phase1-interface
+    set psksecret ENC *****
+end
+Oct 17 12:34:56.789 sshd[4122]: Accepted publickey for USER-1 from NET-1.H2 port 51234 ssh2
+crypto ca certificate
+*****

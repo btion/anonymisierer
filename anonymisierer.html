@@ -1,0 +1,2520 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; media-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none';">
+  <title>Netzwerk-Anonymisierer (Offline)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-alt: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --border: #475569;
+      --mono: Consolas, "Courier New", monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    header {
+      background: #020617;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge-offline {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    nav.tabs {
+      display: flex;
+      gap: 4px;
+      background: #020617;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    nav.tabs button {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 3px solid transparent;
+      padding: 10px 18px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    nav.tabs button:hover {
+      color: var(--text);
+    }
+    nav.tabs button.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px 24px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 980px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      color: var(--primary);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .dropzone {
+      border: 2px dashed var(--primary);
+      background: rgba(56, 189, 248, 0.05);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .dropzone.dragover {
+      background: rgba(56, 189, 248, 0.18);
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    button, .btn {
+      background: var(--panel-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 13px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #475569; }
+    button.primary {
+      background: var(--primary);
+      color: #020617;
+      border-color: var(--primary);
+    }
+    button.primary:hover { background: var(--primary-hover); color: #fff; }
+    button.success {
+      background: var(--success);
+      color: #020617;
+      border-color: var(--success);
+    }
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+      border-color: var(--danger);
+    }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .checkbox-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .checkbox-list label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    input[type="text"], input[type="password"], select, textarea {
+      width: 100%;
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    .progress-wrap {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      height: 18px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-bar {
+      background: var(--primary);
+      height: 100%;
+      width: 0%;
+      transition: width 0.2s;
+    }
+    .diff-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .code-box {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      height: 380px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .audit-banner {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .audit-banner.clean {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid var(--success);
+      color: var(--success);
+    }
+    .audit-banner.dirty {
+      background: rgba(239, 68, 68, 0.18);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+    }
+    table.report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.report-table th, table.report-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 6px 8px;
+      text-align: left;
+    }
+    table.report-table tr.finding-row {
+      background: rgba(239, 68, 68, 0.14);
+      color: #fecaca;
+    }
+    .stat-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .stat-pill {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .small-muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      <span>Netzwerk-Anonymisierer</span>
+      <span class="badge-offline">100 % Offline &bull; CSP-geschützt &bull; Nur RAM</span>
+    </h1>
+    <div class="small-muted">Aruba &bull; SONiC &bull; Dell OS10 &bull; Cisco &bull; FortiGate &bull; Sophos &bull; Syslog &bull; Windows Eventlog</div>
+  </header>
+
+  <nav class="tabs">
+    <button class="active" data-tab="tab-anon">1. Anonymisieren &amp; Prüfen</button>
+    <button data-tab="tab-regeln">2. Regeldatei (JSON)</button>
+    <button data-tab="tab-tabelle">3. Zuordnungstabelle (AES-GCM)</button>
+    <button data-tab="tab-zurueck">4. Rückübersetzen</button>
+  </nav>
+
+  <main>
+    <!-- TAB 1: ANONYMISIEREN -->
+    <section id="tab-anon" class="tab-panel active">
+      <div class="grid-2">
+        <div>
+          <div class="card">
+            <h2>1. Eingabedateien / Archive wählen</h2>
+            <div id="dropzone" class="dropzone">
+              <strong>Dateien, Ordner oder .zip / .tar.gz hierher ziehen</strong>
+              <div class="small-muted" style="margin-top:6px;">Binärdateien werden automatisch erkannt und übersprungen.</div>
+              <div class="btn-row" style="justify-content:center; margin-top:12px;">
+                <button type="button" id="btnPickFiles">Dateien / Archive wählen</button>
+                <button type="button" id="btnPickFolder">Ordner wählen</button>
+                <button type="button" id="btnLoadDemo">Beispieldaten laden</button>
+              </div>
+              <input type="file" id="inputFiles" multiple style="display:none">
+              <input type="file" id="inputFolder" webkitdirectory directory multiple style="display:none">
+            </div>
+            <div id="fileCountInfo" class="small-muted" style="margin-top:8px;">Noch keine Dateien geladen.</div>
+          </div>
+
+          <div class="card">
+            <h2>2. Kategorien &amp; Optionen</h2>
+            <div style="margin-bottom:10px;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+                <input type="checkbox" id="optNetzerhaltend" checked>
+                Netzerhaltende IP-Platzhalter (z. B. NET-1.H17/24)
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; margin-top:4px; cursor:pointer;">
+                <input type="checkbox" id="optIpPrivPub" checked>
+                Privat/Öffentlich trennen (IP-PRIV-n / IP-PUB-n)
+              </label>
+            </div>
+            <div class="checkbox-list">
+              <label><input type="checkbox" class="cat-toggle" value="geheimnisseEntfernen" checked> Geheimnisse (*****)</label>
+              <label><input type="checkbox" class="cat-toggle" value="ip" checked> IPv4 / IPv6 &amp; Netze</label>
+              <label><input type="checkbox" class="cat-toggle" value="mac" checked> MAC-Adressen</label>
+              <label><input type="checkbox" class="cat-toggle" value="hostnamen" checked> Hostnamen / Domains</label>
+              <label><input type="checkbox" class="cat-toggle" value="benutzer" checked> Benutzernamen</label>
+              <label><input type="checkbox" class="cat-toggle" value="seriennummern" checked> Seriennummern</label>
+              <label><input type="checkbox" class="cat-toggle" value="freitext" checked> Freitext / Banner</label>
+              <label><input type="checkbox" class="cat-toggle" value="eigeneBegriffe" checked> Eigene Begriffe</label>
+            </div>
+            <div class="btn-row" style="margin-top:14px;">
+              <button type="button" class="primary" id="btnRunAnon">Anonymisieren &amp; Prüfen</button>
+              <button type="button" id="btnRunProbe">Trockenlauf (Probe)</button>
+              <button type="button" id="btnClearAll" class="danger">RAM leeren</button>
+            </div>
+            <div class="progress-wrap">
+              <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <div id="progressStatus" class="small-muted">Bereit.</div>
+          </div>
+
+          <div class="card">
+            <h2>3. Export (Freigabe)</h2>
+            <div class="small-muted" style="margin-bottom:8px;">
+              Prüfen Sie vor dem Download den Prüfbericht und die Vorschau. Die Zuordnungstabelle wird niemals ins Ausgabe-ZIP gelegt!
+            </div>
+            <div class="btn-row">
+              <button type="button" class="success" id="btnDownloadZip" disabled>Anonymisiertes ZIP herunterladen</button>
+              <button type="button" id="btnDownloadReport" disabled>Bericht (JSON) laden</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <h2>Prüfbericht (-Pruefen) &amp; Zusammenfassung</h2>
+            <div id="auditBanner" class="audit-banner clean">Noch kein Lauf durchgeführt.</div>
+            <div id="statPills" class="stat-pills"></div>
+            <div id="skippedInfo" class="small-muted" style="margin-bottom:8px;"></div>
+            <div style="max-height:180px; overflow:auto;">
+              <table class="report-table" id="auditTable">
+                <thead>
+                  <tr>
+                    <th>Datei</th>
+                    <th>Zeile</th>
+                    <th>Kategorie</th>
+                    <th>Gefundener Restwert / Hinweis</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                  <tr><td colspan="4" class="small-muted">Keine Restfunde vorhanden.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px;">
+              <h2 style="margin:0; border:none; padding:0;">Vorschau: Original vs. Anonymisiert</h2>
+              <select id="previewFileSelect" style="max-width:360px;">
+                <option value="">-- Datei auswählen --</option>
+              </select>
+            </div>
+            <div class="diff-grid">
+              <div>
+                <div class="small-muted" style="margin-bottom:4px;">Originaldatei (nur lokal im RAM)</div>
+                <div id="previewOriginal" class="code-box"></div>
+              </div>
+              <div>
+                <div class="small-muted" style="margin-bottom:4px;">Anonymisierte Ausgabe (für Weitergabe)</div>
+                <div id="previewAnon" class="code-box"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: REGELDATEI -->
+    <section id="tab-regeln" class="tab-panel">
+      <div class="card">
+        <h2>Regeldatei (anon-regeln.json) bearbeiten, laden oder speichern</h2>
+        <div class="small-muted" style="margin-bottom:10px;">
+          Diese JSON-Struktur ist zu 100 % kompatibel mit <code>anon.ps1</code>. Optional kann die Regeldatei (enthält keine Geheimnisse) im Browser gemerkt werden.
+        </div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button type="button" id="btnLoadRulesFile">anon-regeln.json von Festplatte laden</button>
+          <button type="button" class="primary" id="btnApplyRules">Änderungen übernehmen</button>
+          <button type="button" id="btnDownloadRules">Als anon-regeln.json speichern</button>
+          <button type="button" id="btnResetRules">Standardregeln wiederherstellen</button>
+          <input type="file" id="inputRulesFile" accept=".json" style="display:none">
+        </div>
+        <textarea id="rulesTextarea" rows="26" spellcheck="false"></textarea>
+        <div id="rulesStatus" class="small-muted" style="margin-top:6px;"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: ZUORDNUNGSTABELLE -->
+    <section id="tab-tabelle" class="tab-panel">
+      <div class="card">
+        <h2>Zuordnungstabelle verwalten (WebCrypto AES-256-GCM + PBKDF2)</h2>
+        <div class="small-muted" style="margin-bottom:12px;">
+          Die Zuordnungstabelle ist genauso vertraulich wie die Originaldaten! Sie wird mit Ihrem Passwort per PBKDF2 (600.000 Iterationen, SHA-256) und AES-256-GCM verschlüsselt heruntergeladen und kann für Folgeläufe oder zur Rückübersetzung wieder geladen werden. Ältere Tabellen bleiben weiterhin ladbar.
+        </div>
+        <div class="grid-2">
+          <div>
+            <h3>Aktuelle Tabelle verschlüsselt speichern</h3>
+            <label class="small-muted">Passwort für Verschlüsselung:</label>
+            <input type="password" id="tableSavePass" placeholder="Starkes Passwort eingeben..." style="margin:6px 0 8px 0;">
+            <label class="small-muted">Passwort zur Bestätigung wiederholen:</label>
+            <input type="password" id="tableSavePassConfirm" placeholder="Passwort erneut eingeben..." style="margin:6px 0 10px 0;">
+            <div class="btn-row">
+              <button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Tabelle (.anon-tab) herunterladen</button>
+              <button type="button" id="btnExportPlainTable">Unverschlüsselt (.json, kompatibel mit anon.ps1)</button>
+            </div>
+            <div id="tableSaveStatus" class="small-muted" style="margin-top:8px;"></div>
+          </div>
+          <div>
+            <h3>Bestehende Tabelle für konsistente Läufe laden</h3>
+            <label class="small-muted">Passwort zum Entschlüsseln (falls verschlüsselt):</label>
+            <input type="password" id="tableLoadPass" placeholder="Passwort (leer lassen bei unverschlüsselter JSON)" style="margin:6px 0 10px 0;">
+            <div class="btn-row">
+              <button type="button" id="btnLoadTableFile">Tabellendatei auswählen &amp; laden</button>
+              <button type="button" class="danger" id="btnResetTableState">Neue leere Tabelle starten</button>
+              <input type="file" id="inputTableFile" accept=".json,.anon-tab" style="display:none">
+            </div>
+            <div id="tableLoadStatus" class="small-muted" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: RÜCKÜBERSETZEN -->
+    <section id="tab-zurueck" class="tab-panel">
+      <div class="card">
+        <h2>Rückübersetzung (KI-Antwort &rarr; Echte Infrastruktur-Werte)</h2>
+        <div class="small-muted" style="margin-bottom:10px;">
+          Fügen Sie hier die Antwort der KI oder des externen Experten ein. Mithilfe der im Arbeitsspeicher geladenen (oder im Reiter „Zuordnungstabelle“ entsperrten) Tabelle werden Platzhalter wie <code>NET-1.H2</code>, <code>CORE-A</code>, <code>MAC-1</code> lokal zurückübersetzt.
+        </div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button type="button" class="primary" id="btnRunDeanonymize">Jetzt rückübersetzen</button>
+          <button type="button" id="btnQuickLoadTableRev">Tabelle laden...</button>
+        </div>
+        <div class="diff-grid">
+          <div>
+            <div class="small-muted" style="margin-bottom:4px;">Text mit Platzhaltern (z. B. KI-Antwort)</div>
+            <textarea id="reverseInput" rows="18" placeholder="z. B.: Prüfen Sie auf CORE-A die Route zu NET-1.H1/24 über Interface Ethernet1/1/10 (MAC-1)..."></textarea>
+          </div>
+          <div>
+            <div class="small-muted" style="margin-bottom:4px;">Rückübersetztes Ergebnis (nur im RAM)</div>
+            <textarea id="reverseOutput" rows="18" readonly placeholder="Hier erscheint der Text mit den echten Werten..."></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script id="anon-core-script">
+  // ============================================================================
+  // 1. STANDARD-REGELDATEI (identisch mit anon-regeln.json)
+  // ============================================================================
+  const DEFAULT_RULES = {
+    "version": "1.0",
+    "optionen": {
+      "netzerhaltend": true,
+      "ipPrivatOeffentlichTrennen": true,
+      "subnetzmaskenBehalten": true,
+      "macNormalisieren": true,
+      "kategorien": {
+        "geheimnisseEntfernen": true,
+        "ip": true,
+        "mac": true,
+        "hostnamen": true,
+        "benutzer": true,
+        "seriennummern": true,
+        "freitext": true,
+        "eigeneBegriffe": true
+      }
+    },
+    "eigeneBegriffe": {
+      "festeZuordnung": {
+        "rz1-sw-core01": "CORE-A",
+        "rz2-sw-core02": "CORE-B",
+        "rz1-tor-01": "TOR-A",
+        "fw-edge-01": "FW-EDGE-1",
+        "dc01.intern.musterfirma.de": "DC-1.DOMAIN-INTERN"
+      },
+      "firmenUndStandorte": [
+        "Musterfirma GmbH",
+        "Musterwerke AG",
+        "Rechenzentrum-Nord",
+        "Werk-Stuttgart",
+        "Standort-Muenchen",
+        "Max Mustermann",
+        "Erika Musterfrau",
+        "Hans Schmidt"
+      ],
+      "interneDomains": [
+        "intern.musterfirma.de",
+        "corp.musterwerke.local",
+        "ad.firma.lan",
+        "musterfirma.de"
+      ]
+    },
+    "ausnahmen": {
+      "exakteWoerter": [
+        "admin",
+        "root",
+        "system",
+        "default",
+        "local",
+        "hash",
+        "aes",
+        "sha256",
+        "sha512",
+        "md5",
+        "hmac",
+        "Aruba",
+        "Cisco",
+        "Dell",
+        "SONiC",
+        "Sophos",
+        "FortiGate",
+        "OS10",
+        "AOS-CX",
+        "AOS-S",
+        "NX-OS",
+        "IOS-XE",
+        "SFOS",
+        "LLDP",
+        "LACP",
+        "OSPF",
+        "BGP",
+        "VRRP",
+        "VLAN",
+        "EVPN",
+        "VXLAN",
+        "Spanning-Tree",
+        "MSTP",
+        "RSTP"
+      ],
+      "versionKontext": [
+        "(?i)\\b(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?\\d+(?:\\.\\d+){1,4}(?:[-._a-zA-Z0-9]+)?",
+        "(?i)\\b(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
+        "\\b\\d{1,3}\\.\\d{1,3}\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?\\b"
+      ],
+      "musterRegex": [
+        "(?i)\\b(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|FortyGigE|HundredGigE|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu)\\d+(?:[/:.]\\d+)*\\b",
+        "(?<![0-9A-Fa-f:])\\d{1,2}:\\d{2}:\\d{2}(?:[.,]\\d{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-]\\d{2}:?\\d{2}))?(?![0-9A-Fa-f:])",
+        "\\b(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)\\b"
+      ]
+    },
+    "pruefung": {
+      "erlaubtListe": [
+        "0.0.0.0",
+        "255.255.255.255",
+        "255.255.255.0",
+        "255.255.255.128",
+        "255.255.255.192",
+        "255.255.255.224",
+        "255.255.255.240",
+        "255.255.255.248",
+        "255.255.255.252",
+        "255.255.255.254",
+        "255.255.0.0",
+        "255.0.0.0",
+        "127.0.0.1",
+        "::1",
+        "::",
+        "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "00:00:00:00:00:00",
+        "ff:ff:ff:ff:ff:ff",
+        "ffff.ffff.ffff",
+        "0000.0000.0000",
+        "AOS-CX",
+        "AOS-S",
+        "OS10",
+        "NX-OS",
+        "IOS-XE",
+        "SONiC",
+        "SHA256",
+        "AES256",
+        "IKEv2",
+        "SNMPv3",
+        "OSPFv2",
+        "OSPFv3",
+        "BGP4",
+        "DOT1X",
+        "RADIUS",
+        "TACACS"
+      ],
+      "erlaubtMuster": [
+        "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP(?:-PRIV|-PUB|6|-6-PRIV|-6-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|(?:CORE|TOR|FW|DC|SW)-[A-Z0-9-]+)$",
+        "(?i)^(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|FortyGigE|HundredGigE|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|lag|eth|po|Gi|Te|Fa|Fo|Hu)\\d+(?:[/:.]\\d+)*$",
+        "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}$",
+        "^v?\\d+\\.\\d+\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?$"
+      ]
+    },
+    "geheimnisMuster": [
+      {
+        "name": "PEM-Zertifikate, Private Keys und OpenSSH Keys",
+        "hersteller": "Alle",
+        "suche": "-----BEGIN [A-Z0-9 -]+-----[\\s\\S]{1,16384}?-----END [A-Z0-9 -]+-----",
+        "ersetzen": "*****"
+      },
+      {
+        "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
+        "hersteller": "FortiGate/Sophos",
+        "suche": "(?i)(\\bset[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"[^\"]+\"|\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "Aruba AOS-CX / AOS-S ciphertext, Passwörter, Keys",
+        "hersteller": "Aruba",
+        "suche": "(?i)(\\b(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
+        "hersteller": "Cisco",
+        "suche": "(?i)(\\b(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+\\d+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+\\d+)?|key-string(?:[ \\t]+\\d+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+\\d+)?|tacacs-server[ \\t]+key(?:[ \\t]+\\d+)?)[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "Dell OS10 & Enterprise SONiC (inkl. Redis JSON Passkeys/Hashes/Secrets)",
+        "hersteller": "Dell/SONiC",
+        "suche": "(?i)(\"(?:password|passkey|auth_key|priv_key|secret|encrypted_password|community|psk|radius_key|tacacs_key|api_key|token|private_key)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")",
+        "ersetzen": "$1*****$3"
+      },
+      {
+        "name": "SNMP Community & SNMPv3 Auth/Priv Keys (CLI)",
+        "hersteller": "Alle",
+        "suche": "(?i)(\\bsnmp-server[ \\t]+community[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "SNMPv3 Auth/Priv Passwörter",
+        "hersteller": "Alle",
+        "suche": "(?i)(\\b(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "API-Keys, Bearer Tokens & generische Key/Secret-Zuweisungen",
+        "hersteller": "Alle",
+        "suche": "(?i)(\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|shared[_-]?secret|psk|passphrase)[ \\t]*[:=][ \\t]*\"?)(?:Bearer[ \\t]+)?([^\\s\"',;]+)(\"?)",
+        "ersetzen": "$1*****$3"
+      },
+      {
+        "name": "Authorization Bearer Header",
+        "hersteller": "Alle",
+        "suche": "(?i)(\\bAuthorization[ \\t]*:[ \\t]*Bearer[ \\t]+)(\\S+)",
+        "ersetzen": "$1*****"
+      },
+      {
+        "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
+        "hersteller": "Alle",
+        "suche": "\\$(?:1|2[abxy]|5|6|8|9|y)\\$[a-zA-Z0-9./=$]{10,128}",
+        "ersetzen": "*****"
+      },
+      {
+        "name": "Lange Hex-/Base64-Geheimnis-Blobs (>40 Zeichen Hex oder Base64 mit Padding)",
+        "hersteller": "Alle",
+        "suche": "\\b(?:[A-Fa-f0-9]{40,}|[A-Za-z0-9+/]{44,}={1,2})\\b",
+        "ersetzen": "*****"
+      }
+    ],
+    "freitextMuster": [
+      {
+        "name": "Mehrzeilige oder einzeilige Banner (banner motd / exec / login)",
+        "kategorie": "BANNER",
+        "suche": "(?im)^([ \\t]*banner[ \\t]+(?:motd|login|exec)[ \\t]+)([\\^#%~\"])([\\s\\S]{1,4096}?)(\\2)"
+      },
+      {
+        "name": "SNMP Location & System-Location (CLI)",
+        "kategorie": "ORT",
+        "suche": "(?im)^([ \\t]*(?:snmp-server[ \\t]+(?:system-)?location|location|syslocation)[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+      },
+      {
+        "name": "SNMP Contact & System-Contact (CLI)",
+        "kategorie": "KONTAKT",
+        "suche": "(?im)^([ \\t]*(?:snmp-server[ \\t]+(?:system-)?contact|contact|syscontact)[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+      },
+      {
+        "name": "Interface Description / Alias (CLI)",
+        "kategorie": "TEXT",
+        "suche": "(?im)^([ \\t]*(?:description|alias)[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+      },
+      {
+        "name": "VLAN-Namen (CLI)",
+        "kategorie": "TEXT",
+        "suche": "(?im)^([ \\t]*name[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+      },
+      {
+        "name": "VLAN-/Objektnamen (JSON)",
+        "kategorie": "TEXT",
+        "suche": "(?i)(\"(?:name|vlan_name|alias)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")"
+      },
+      {
+        "name": "SONiC / JSON Description, Alias, Location, Contact",
+        "kategorie": "TEXT",
+        "suche": "(?i)(\"(?:description|alias|sysLocation|sysContact|location|contact|motd|banner)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")"
+      },
+      {
+        "name": "LLDP / CDP System Description & Port Description",
+        "kategorie": "TEXT",
+        "suche": "(?im)^([ \\t]*(?:System Description|Port Description)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
+      }
+    ],
+    "seriennummerMuster": [
+      "(?i)(\\b(?:Serial[ \\t]*Number|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t]+Number|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
+      "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
+    ],
+    "benutzerMuster": [
+      "(?im)(\\b(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type)|[ \\t]*(?=\\r?$))",
+      "(?i)(\\b(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
+      "(?i)(\"(?:username|user_name|account_name|login_user)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._\\\\@-]{2,32})(\")",
+      "(?i)(\\b(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
+    ],
+    "hostnamenMuster": [
+      "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
+      "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
+      "(?i)(\"(?:hostname|sys_name|device_name|switch_name)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
+      "(?i)\\b((?:rz\\d|sv|sw|tsw|back|lwl)-[A-Za-z0-9-]+)\\b"
+    ]
+  };
+
+  // ============================================================================
+  // 2. KERN-ENGINE (100 % ausgabekompatibel mit anon.ps1 C# AnonEngine)
+  // ============================================================================
+  function compileDotNetPatternToJS(patternStr, forceGlobal) {
+    let flags = forceGlobal ? "g" : "";
+    let pat = patternStr;
+    // Inline-Modifikatoren am Anfang auswerten: (?i), (?m), (?im), (?s)
+    const inlineMatch = pat.match(/^\(\?([ims]+)\)/);
+    if (inlineMatch) {
+      const mod = inlineMatch[1];
+      if (mod.indexOf("i") !== -1 && flags.indexOf("i") === -1) flags += "i";
+      if (mod.indexOf("m") !== -1 && flags.indexOf("m") === -1) flags += "m";
+      if (mod.indexOf("s") !== -1 && flags.indexOf("s") === -1) flags += "s";
+      pat = pat.slice(inlineMatch[0].length);
+    }
+    return new RegExp(pat, flags);
+  }
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  class AnonState {
+    constructor() {
+      this.forward = new Map();      // lowerKey -> token
+      this.reverse = new Map();      // UPPER_TOKEN -> originalValue
+      this.reverseKeys = new Map();  // UPPER_TOKEN -> canonicalToken
+      this.counters = new Map();     // UPPER_PREFIX -> int
+      this.netHostForward = new Map(); // UPPER_NET_TOKEN -> Map(hostOctet -> Hn)
+      this.stats = new Map();        // category -> count
+    }
+
+    nextCounter(prefix) {
+      const k = prefix.toUpperCase();
+      const val = (this.counters.get(k) || 0) + 1;
+      this.counters.set(k, val);
+      return val;
+    }
+
+    addStat(category, count = 1) {
+      if (count <= 0) return;
+      this.stats.set(category, (this.stats.get(category) || 0) + count);
+    }
+
+    getOrCreateToken(categoryKey, rawValue, prefix, reverseDisplayVal) {
+      const trimmed = rawValue.trim();
+      const lookupKey = (categoryKey + "|" + trimmed).toLowerCase();
+      if (this.forward.has(lookupKey)) {
+        return this.forward.get(lookupKey);
+      }
+      const num = this.nextCounter(prefix);
+      const token = prefix + "-" + num;
+      this.forward.set(lookupKey, token);
+      const revKey = token.toUpperCase();
+      if (!this.reverse.has(revKey)) {
+        this.reverse.set(revKey, reverseDisplayVal ? reverseDisplayVal.trim() : trimmed);
+        this.reverseKeys.set(revKey, token);
+      }
+      return token;
+    }
+
+    registerFixed(rawValue, token) {
+      const lookupKey = ("FIXED|" + rawValue.trim()).toLowerCase();
+      this.forward.set(lookupKey, token);
+      const revKey = token.toUpperCase();
+      if (!this.reverse.has(revKey)) {
+        this.reverse.set(revKey, rawValue);
+        this.reverseKeys.set(revKey, token);
+      }
+    }
+
+    toJSON() {
+      const vorwaerts = {};
+      Array.from(this.forward.keys()).sort().forEach(k => { vorwaerts[k] = this.forward.get(k); });
+      const rueckwaerts = {};
+      Array.from(this.reverseKeys.keys()).sort().forEach(rk => {
+        const canon = this.reverseKeys.get(rk);
+        rueckwaerts[canon] = this.reverse.get(rk);
+      });
+      const zaehler = {};
+      Array.from(this.counters.keys()).sort().forEach(k => { zaehler[k] = this.counters.get(k); });
+      const netzHosts = {};
+      Array.from(this.netHostForward.keys()).sort().forEach(nk => {
+        const sub = {};
+        const m = this.netHostForward.get(nk);
+        Array.from(m.keys()).sort().forEach(hk => { sub[hk] = m.get(hk); });
+        netzHosts[nk] = sub;
+      });
+      return {
+        version: "1.0",
+        erstelltAm: new Date().toISOString(),
+        vorwaerts,
+        rueckwaerts,
+        zaehler,
+        netzHosts
+      };
+    }
+
+    static fromJSON(obj) {
+      const st = new AnonState();
+      if (!obj) return st;
+      if (obj.vorwaerts) {
+        for (const [k, v] of Object.entries(obj.vorwaerts)) {
+          st.forward.set(k.toLowerCase(), String(v));
+        }
+      }
+      if (obj.rueckwaerts) {
+        for (const [k, v] of Object.entries(obj.rueckwaerts)) {
+          st.reverse.set(k.toUpperCase(), String(v));
+          st.reverseKeys.set(k.toUpperCase(), k);
+        }
+      }
+      if (obj.zaehler) {
+        for (const [k, v] of Object.entries(obj.zaehler)) {
+          st.counters.set(k.toUpperCase(), Number(v));
+        }
+      }
+      if (obj.netzHosts) {
+        for (const [nk, sub] of Object.entries(obj.netzHosts)) {
+          const m = new Map();
+          for (const [hk, hv] of Object.entries(sub)) {
+            m.set(String(hk), String(hv));
+          }
+          st.netHostForward.set(nk.toUpperCase(), m);
+        }
+      }
+      return st;
+    }
+  }
+
+  function buildEngineConfig(rulesObj, overrides = {}) {
+    const opt = (rulesObj && rulesObj.optionen) || {};
+    const kat = opt.kategorien || {};
+    const cfg = {
+      netzerhaltend: overrides.netzerhaltend !== undefined ? overrides.netzerhaltend : (opt.netzerhaltend !== false),
+      ipPrivatOeffentlichTrennen: overrides.ipPrivatOeffentlichTrennen !== undefined ? overrides.ipPrivatOeffentlichTrennen : (opt.ipPrivatOeffentlichTrennen !== false),
+      subnetzmaskenBehalten: opt.subnetzmaskenBehalten !== false,
+      macNormalisieren: opt.macNormalisieren !== false,
+      catGeheimnisse: overrides.kategorien ? overrides.kategorien.has("geheimnisseEntfernen") : (kat.geheimnisseEntfernen !== false),
+      catIp: overrides.kategorien ? overrides.kategorien.has("ip") : (kat.ip !== false),
+      catMac: overrides.kategorien ? overrides.kategorien.has("mac") : (kat.mac !== false),
+      catHostnamen: overrides.kategorien ? overrides.kategorien.has("hostnamen") : (kat.hostnamen !== false),
+      catBenutzer: overrides.kategorien ? overrides.kategorien.has("benutzer") : (kat.benutzer !== false),
+      catSeriennummern: overrides.kategorien ? overrides.kategorien.has("seriennummern") : (kat.seriennummern !== false),
+      catFreitext: overrides.kategorien ? overrides.kategorien.has("freitext") : (kat.freitext !== false),
+      catEigeneBegriffe: overrides.kategorien ? overrides.kategorien.has("eigeneBegriffe") : (kat.eigeneBegriffe !== false),
+      festeZuordnung: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.festeZuordnung) || {},
+      firmenUndStandorte: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.firmenUndStandorte) || [],
+      interneDomains: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.interneDomains) || [],
+      exakteAusnahmen: new Set(((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.exakteWoerter) || []).map(w => w.toLowerCase())),
+      versionKontextRegex: ((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.versionKontext) || []).map(p => compileDotNetPatternToJS(p, true)),
+      ausnahmenRegex: ((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.musterRegex) || []).map(p => compileDotNetPatternToJS(p, true)),
+      pruefungErlaubtListe: new Set(((rulesObj && rulesObj.pruefung && rulesObj.pruefung.erlaubtListe) || []).map(w => w.toLowerCase())),
+      pruefungErlaubtMuster: ((rulesObj && rulesObj.pruefung && rulesObj.pruefung.erlaubtMuster) || []).map(p => compileDotNetPatternToJS(p, false)),
+      geheimnisMuster: ((rulesObj && rulesObj.geheimnisMuster) || []).map(g => ({
+        name: g.name,
+        replacement: g.ersetzen,
+        compiled: compileDotNetPatternToJS(g.suche, true)
+      })),
+      freitextMuster: ((rulesObj && rulesObj.freitextMuster) || []).map(f => ({
+        name: f.name,
+        category: f.kategorie,
+        compiled: compileDotNetPatternToJS(f.suche, true)
+      })),
+      seriennummerMuster: ((rulesObj && rulesObj.seriennummerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
+      benutzerMuster: ((rulesObj && rulesObj.benutzerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
+      hostnamenMuster: ((rulesObj && rulesObj.hostnamenMuster) || []).map(p => compileDotNetPatternToJS(p, true))
+    };
+    return cfg;
+  }
+
+  const RxEmail = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b/g;
+  const RxUrl = /\b(?:https?|ftp|tftp|scp|sftp|ldap|ldaps):\/\/[^\s"'<>]+/gi;
+  const RxMacColonDash = /(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:.])|(?<![0-9A-Fa-f.-])(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f.-])/g;
+  const RxMacDot = /(?<![0-9A-Fa-f.])(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])/g;
+  const RxMacRawContext = /(\b(?:mac(?:-address|_address|\s+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)\b[\s":=]{1,6})([0-9A-Fa-f]{12})("?)(?![0-9A-Fa-f])/gi;
+  const RxIpv4 = /(?<![0-9.])(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:(?:\/|-)(?:3[0-2]|[12]?\d)(?![0-9]))?(?![0-9.])/g;
+  const RxIpv6 = /(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:\/(?:12[0-8]|1[01]\d|[1-9]?\d))?(?![0-9A-Fa-f:])/g;
+  const RxCliPrompt = /^([A-Za-z][A-Za-z0-9_-]{2,48})(\([A-Za-z0-9_-]+\))?([#>])[ \t]+/gm;
+  const RxUnprotect = /\u0002PROT_(\d+)\u0003/g;
+  const RxPathExt = /(\.(?:tar\.gz|tgz|zip|tar|txt|log|json|cfg|conf|xml|csv|out|bin|dump|bak|old))$/i;
+  const RxPathPrefix = /^((?:show-tech-|show_tech_|showtech-|running-config-|startup-config-|config-|backup-|support-|tech-support-|firmware-|dump-|log-|syslog-|eventlog-)+)(.+)$/i;
+
+  function isSubnetMaskOrSpecialIpv4(o1, o2, o3, o4, keepMasks) {
+    if (o1 === 0 && o2 === 0 && o3 === 0 && o4 === 0) return true;
+    if (o1 === 255 && o2 === 255 && o3 === 255 && o4 === 255) return true;
+    if (o1 === 127 && o2 === 0 && o3 === 0 && o4 === 1) return true;
+    if (!keepMasks) return false;
+
+    if (o1 === 255 && [255, 254, 252, 248, 240, 224, 192, 128, 0].includes(o2)) {
+      const mask = (((o1 << 24) >>> 0) | ((o2 << 16) >>> 0) | ((o3 << 8) >>> 0) | (o4 >>> 0)) >>> 0;
+      const inv = (~mask) >>> 0;
+      if ((inv & (inv + 1)) === 0) return true;
+    }
+    if (o1 === 0 && [255, 127, 63, 31, 15, 7, 3, 1].includes(o4)) {
+      const wc = (((o1 << 24) >>> 0) | ((o2 << 16) >>> 0) | ((o3 << 8) >>> 0) | (o4 >>> 0)) >>> 0;
+      if ((wc & (wc + 1)) === 0) return true;
+    }
+    return false;
+  }
+
+  function isPrivateIpv4(o1, o2) {
+    if (o1 === 10) return true;
+    if (o1 === 172 && o2 >= 16 && o2 <= 31) return true;
+    if (o1 === 192 && o2 === 168) return true;
+    if (o1 === 169 && o2 === 254) return true;
+    if (o1 === 100 && o2 >= 64 && o2 <= 127) return true;
+    return false;
+  }
+
+  function normalizeMac(rawMac) {
+    return rawMac.replace(/[^0-9A-Fa-f]/g, "").toLowerCase();
+  }
+
+  function formatIpv4Token(rawMatch, cfg, state) {
+    let ipPart = rawMatch;
+    let suffix = "";
+    const slashIdx = rawMatch.indexOf("/");
+    const dashIdx = rawMatch.indexOf("-");
+    if (slashIdx > 0) {
+      ipPart = rawMatch.slice(0, slashIdx);
+      suffix = rawMatch.slice(slashIdx);
+    } else if (dashIdx > 0) {
+      ipPart = rawMatch.slice(0, dashIdx);
+      suffix = rawMatch.slice(dashIdx);
+    }
+
+    const parts = ipPart.split(".");
+    if (parts.length !== 4) return rawMatch;
+    for (let i = 0; i < 4; i++) {
+      if (parts[i].length > 1 && parts[i][0] === "0") return rawMatch;
+    }
+    const o1 = parseInt(parts[0], 10);
+    const o2 = parseInt(parts[1], 10);
+    const o3 = parseInt(parts[2], 10);
+    const o4 = parseInt(parts[3], 10);
+    if ([o1, o2, o3, o4].some(n => Number.isNaN(n))) return rawMatch;
+
+    if (isSubnetMaskOrSpecialIpv4(o1, o2, o3, o4, cfg.subnetzmaskenBehalten)) {
+      return rawMatch;
+    }
+
+    state.addStat("ip", 1);
+
+    if (cfg.netzerhaltend) {
+      const netKey = `${o1}.${o2}.${o3}`;
+      const netToken = state.getOrCreateToken("IPV4NET", netKey, "NET");
+      const netUpper = netToken.toUpperCase();
+      let hostPart;
+      if (o4 === 0) {
+        hostPart = "H0";
+      } else if (o4 === 255) {
+        hostPart = "H255";
+      } else {
+        if (!state.netHostForward.has(netUpper)) {
+          state.netHostForward.set(netUpper, new Map());
+        }
+        const hostMap = state.netHostForward.get(netUpper);
+        const hKey = String(o4);
+        if (hostMap.has(hKey)) {
+          hostPart = hostMap.get(hKey);
+        } else {
+          const hNum = state.nextCounter("HOST_IN_" + netUpper);
+          hostPart = "H" + hNum;
+          hostMap.set(hKey, hostPart);
+        }
+      }
+      const fullToken = `${netToken}.${hostPart}`;
+      state.forward.set(("IPV4|" + ipPart).toLowerCase(), fullToken);
+      const fullUpper = fullToken.toUpperCase();
+      if (!state.reverse.has(fullUpper)) {
+        state.reverse.set(fullUpper, ipPart);
+        state.reverseKeys.set(fullUpper, fullToken);
+      }
+      if (!state.reverse.has(netUpper)) {
+        state.reverse.set(netUpper, netKey);
+        state.reverseKeys.set(netUpper, netToken);
+      }
+      return fullToken + suffix;
+    } else {
+      let prefix = "IP";
+      if (cfg.ipPrivatOeffentlichTrennen) {
+        prefix = isPrivateIpv4(o1, o2) ? "IP-PRIV" : "IP-PUB";
+      }
+      const token = state.getOrCreateToken("IPV4", ipPart, prefix);
+      return token + suffix;
+    }
+  }
+
+  function formatIpv6Token(rawMatch, cfg, state) {
+    let ipPart = rawMatch;
+    let suffix = "";
+    const slashIdx = rawMatch.indexOf("/");
+    if (slashIdx > 0) {
+      ipPart = rawMatch.slice(0, slashIdx);
+      suffix = rawMatch.slice(slashIdx);
+    }
+    const lower = ipPart.toLowerCase();
+    if (lower === "::" || lower === "::1" || lower === "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff") {
+      return rawMatch;
+    }
+    if (!lower.includes("::")) {
+      const segs = lower.split(":");
+      if (segs.length < 6) return rawMatch;
+    }
+    state.addStat("ip", 1);
+    const isPriv = lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd");
+    const prefix = cfg.ipPrivatOeffentlichTrennen ? (isPriv ? "IP6-PRIV" : "IP6-PUB") : "IP6";
+    const token = state.getOrCreateToken("IPV6", lower, prefix);
+    return token + suffix;
+  }
+
+  function processText(input, cfg, state) {
+    if (!input) return input;
+    let text = input;
+
+    const protectedValues = [];
+    const protect = (val) => {
+      const idx = protectedValues.length;
+      protectedValues.push(val);
+      return `\u0002PROT_${idx}\u0003`;
+    };
+
+    // STUFE 1: Geheimnisse ENTFERNEN (*****)
+    if (cfg.catGeheimnisse) {
+      for (const rule of cfg.geheimnisMuster) {
+        text = text.replace(rule.compiled, (...args) => {
+          state.addStat("geheimnisseEntfernen", 1);
+          const match = args[0];
+          let rep = rule.replacement;
+          rep = rep.replace(/\$(\d+)/g, (_, d) => {
+            const gIdx = parseInt(d, 10);
+            return args[gIdx] !== undefined ? args[gIdx] : "";
+          });
+          return protect(rep);
+        });
+      }
+    }
+
+    // STUFE 2: Ausnahmen & Version-Kontext schützen
+    for (const vr of cfg.versionKontextRegex) {
+      text = text.replace(vr, (m) => protect(m));
+    }
+    for (const ar of cfg.ausnahmenRegex) {
+      text = text.replace(ar, (m) => protect(m));
+    }
+
+    // STUFE 3: Freitext-Felder
+    if (cfg.catFreitext) {
+      for (const fRule of cfg.freitextMuster) {
+        text = text.replace(fRule.compiled, (...args) => {
+          const m = args[0];
+          const groups = args.slice(1, -2);
+          if (groups.length >= 4 && fRule.category === "BANNER") {
+            const body = (groups[2] || "").trim();
+            if (!body || body === "*****") return m;
+            state.addStat("freitext", 1);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            return protect(groups[0] + groups[1] + tok + groups[3]);
+          } else if (groups.length >= 3) {
+            const body = (groups[1] || "").trim();
+            if (!body || body === "*****") return m;
+            state.addStat("freitext", 1);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            return protect(groups[0] + tok + (groups[2] || ""));
+          } else if (groups.length >= 2) {
+            const body = (groups[1] || "").trim();
+            if (!body || body === "*****") return m;
+            state.addStat("freitext", 1);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            return protect(groups[0] + tok);
+          }
+          return m;
+        });
+      }
+    }
+
+    // STUFE 4: Eigene Begriffe & Feste Zuordnungen (mit Wort-/Token-Grenzen (?<![A-Za-z0-9-])...(?![A-Za-z0-9-]))
+    if (cfg.catEigeneBegriffe) {
+      const sortedFixed = Object.entries(cfg.festeZuordnung).sort((a, b) => b[0].length - a[0].length);
+      for (const [key, val] of sortedFixed) {
+        if (!key) continue;
+        state.registerFixed(key, val);
+        const rx = new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(key)}(?![A-Za-z0-9-])`, "gi");
+        text = text.replace(rx, () => {
+          state.addStat("eigeneBegriffe", 1);
+          return protect(val);
+        });
+      }
+
+      const validTerms = cfg.firmenUndStandorte.filter(s => s && s.trim()).map(s => s.trim());
+      if (validTerms.length > 0) {
+        const sortedByLen = [...validTerms].sort((a, b) => b.length - a.length).map(s => escapeRegExp(s));
+        const combinedRx = new RegExp(`(?<![A-Za-z0-9-])(?:${sortedByLen.join("|")})(?![A-Za-z0-9-])`, "gi");
+        text = text.replace(combinedRx, (m) => {
+          state.addStat("eigeneBegriffe", 1);
+          const matchedCanonical = validTerms.find(t => t.toLowerCase() === m.toLowerCase()) || m;
+          const tok = state.getOrCreateToken("FIRMA", matchedCanonical, "FIRMA");
+          return protect(tok);
+        });
+      }
+    }
+
+    // STUFE 5: Seriennummern
+    if (cfg.catSeriennummern) {
+      for (const sRx of cfg.seriennummerMuster) {
+        text = text.replace(sRx, (...args) => {
+          const m = args[0];
+          const g1 = args[1] || "";
+          const g2 = (args[2] || "").trim();
+          const g3 = typeof args[3] === "string" ? args[3] : "";
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****") return m;
+          state.addStat("seriennummern", 1);
+          const tok = state.getOrCreateToken("SERIAL", g2, "SERIAL");
+          return protect(g1 + tok + g3);
+        });
+      }
+    }
+
+    // STUFE 6: Benutzernamen
+    if (cfg.catBenutzer) {
+      for (const uRx of cfg.benutzerMuster) {
+        text = text.replace(uRx, (...args) => {
+          const m = args[0];
+          const g1 = args[1] || "";
+          const g2 = (args[2] || "").trim();
+          const g3 = typeof args[3] === "string" ? args[3] : "";
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****") return m;
+          state.addStat("benutzer", 1);
+          const tok = state.getOrCreateToken("USER", g2, "USER");
+          return protect(g1 + tok + g3);
+        });
+      }
+    }
+
+    // STUFE 7: E-Mail & URLs
+    if (cfg.catHostnamen) {
+      text = text.replace(RxEmail, (m) => {
+        state.addStat("hostnamen", 1);
+        const tok = state.getOrCreateToken("MAIL", m, "MAIL");
+        return protect(tok);
+      });
+      text = text.replace(RxUrl, (m) => {
+        state.addStat("hostnamen", 1);
+        const tok = state.getOrCreateToken("URL", m, "URL");
+        return protect(tok);
+      });
+    }
+
+    // STUFE 8: MAC-Adressen
+    if (cfg.catMac) {
+      text = text.replace(RxMacColonDash, (m) => {
+        const norm = normalizeMac(m);
+        if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        state.addStat("mac", 1);
+        const key = cfg.macNormalisieren ? norm : m.toLowerCase();
+        const tok = state.getOrCreateToken("MAC", key, "MAC", m);
+        return protect(tok);
+      });
+
+      text = text.replace(RxMacDot, (m) => {
+        const norm = normalizeMac(m);
+        if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        state.addStat("mac", 1);
+        const key = cfg.macNormalisieren ? norm : m.toLowerCase();
+        const tok = state.getOrCreateToken("MAC", key, "MAC", m);
+        return protect(tok);
+      });
+
+      text = text.replace(RxMacRawContext, (m, g1, g2, g3) => {
+        const norm = normalizeMac(g2);
+        if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        state.addStat("mac", 1);
+        const key = cfg.macNormalisieren ? norm : g2.toLowerCase();
+        const tok = state.getOrCreateToken("MAC", key, "MAC", g2);
+        return protect(g1 + tok + (g3 || ""));
+      });
+    }
+
+    // STUFE 9: IPv6 & IPv4
+    if (cfg.catIp) {
+      text = text.replace(RxIpv6, (m) => {
+        const replaced = formatIpv6Token(m, cfg, state);
+        if (replaced === m) return m;
+        return protect(replaced);
+      });
+
+      text = text.replace(RxIpv4, (m) => {
+        const replaced = formatIpv4Token(m, cfg, state);
+        if (replaced === m) return m;
+        return protect(replaced);
+      });
+    }
+
+    // STUFE 10: Hostnamen, FQDNs, Domains
+    if (cfg.catHostnamen) {
+      const discoveredHosts = [];
+      for (const hRx of cfg.hostnamenMuster) {
+        text = text.replace(hRx, (...args) => {
+          const m = args[0];
+          const groups = args.slice(1, -2);
+          if (groups.length >= 2 && groups[1] !== undefined) {
+            const g1 = groups[0] || "";
+            const hVal = (groups[1] || "").trim();
+            const g3 = typeof groups[2] === "string" ? groups[2] : "";
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+            state.addStat("hostnamen", 1);
+            const tok = state.getOrCreateToken("HOST", hVal, "HOST");
+            if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
+            return protect(g1 + tok + g3);
+          } else {
+            const hVal = (groups.length >= 1 && groups[0] !== undefined ? groups[0] : m).trim();
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+            state.addStat("hostnamen", 1);
+            const tok = state.getOrCreateToken("HOST", hVal, "HOST");
+            if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
+            return protect(tok);
+          }
+        });
+      }
+
+      text = text.replace(RxCliPrompt, (m, g1, g2, g3) => {
+        const hVal = (g1 || "").trim();
+        if (cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+        state.addStat("hostnamen", 1);
+        const tok = state.getOrCreateToken("HOST", hVal, "HOST");
+        if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
+        return protect(tok) + (g2 || "") + g3 + " ";
+      });
+
+      const validDiscovered = discoveredHosts.filter(s => s && s.length >= 3).sort((a, b) => b.length - a.length);
+      if (validDiscovered.length > 0) {
+        const hostTokMap = new Map();
+        const escapedHosts = [];
+        for (const dh of validDiscovered) {
+          hostTokMap.set(dh.toLowerCase(), state.getOrCreateToken("HOST", dh, "HOST"));
+          escapedHosts.push(escapeRegExp(dh));
+        }
+        const combinedHostRx = new RegExp(`\\b(?:${escapedHosts.join("|")})\\b`, "gi");
+        text = text.replace(combinedHostRx, (m) => {
+          const tok = hostTokMap.get(m.toLowerCase());
+          if (tok) {
+            state.addStat("hostnamen", 1);
+            return protect(tok);
+          }
+          return m;
+        });
+      }
+
+      const sortedDomains = cfg.interneDomains.filter(d => d && d.trim()).sort((a, b) => b.length - a.length);
+      for (const dom of sortedDomains) {
+        const cleanDom = dom.trim();
+        const fqdnRx = new RegExp(`\\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)\\.${escapeRegExp(cleanDom)}\\b`, "gi");
+        text = text.replace(fqdnRx, (m, hostPart) => {
+          if (cfg.exakteAusnahmen.has(hostPart.toLowerCase())) return m;
+          state.addStat("hostnamen", 1);
+          const hTok = state.getOrCreateToken("HOST", m, "HOST");
+          return protect(hTok);
+        });
+
+        const domRx = new RegExp(`\\b${escapeRegExp(cleanDom)}\\b`, "gi");
+        text = text.replace(domRx, () => {
+          state.addStat("hostnamen", 1);
+          const dTok = state.getOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
+          return protect(dTok);
+        });
+      }
+    }
+
+    // Schutz-Maskierungen in wenigen linearen Durchläufen auflösen (statt O(K * Dateigröße))
+    let guard = 0;
+    while (text.indexOf("\u0002") !== -1 && guard < 8) {
+      text = text.replace(RxUnprotect, (m, d) => {
+        const idx = parseInt(d, 10);
+        return (idx >= 0 && idx < protectedValues.length) ? protectedValues[idx] : m;
+      });
+      guard++;
+    }
+
+    return text;
+  }
+
+  function processPath(relPath, cfg, state) {
+    if (!relPath) return relPath;
+    const savedStats = new Map(state.stats);
+    const norm = relPath.replace(/\\/g, "/");
+    const parts = norm.split("/").filter(Boolean);
+    const outParts = [];
+
+    for (const seg of parts) {
+      let basePart = seg;
+      let extPart = "";
+      const mExt = basePart.match(RxPathExt);
+      if (mExt && mExt.index > 0) {
+        extPart = mExt[1];
+        basePart = basePart.slice(0, mExt.index);
+      }
+      let prefixPart = "";
+      let corePart = basePart;
+      const mPref = basePart.match(RxPathPrefix);
+      if (mPref) {
+        prefixPart = mPref[1];
+        corePart = mPref[2];
+      }
+      const subParts = corePart.split("_").map(sp => (sp ? processText(sp, cfg, state) : sp));
+      const anonCore = subParts.join("_");
+      const combined = (prefixPart + anonCore + extPart).replace(/[*?"<>|:]/g, "_");
+      outParts.push(combined);
+    }
+
+    state.stats = savedStats;
+    return outParts.join("/");
+  }
+
+  function deanonymizeText(input, state) {
+    if (!input || !state || !state.reverse || state.reverse.size === 0) return input;
+    const sortedUpperKeys = Array.from(state.reverse.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
+    if (sortedUpperKeys.length === 0) return input;
+    const escapedTokens = sortedUpperKeys.map(k => escapeRegExp(k));
+    const combinedRx = new RegExp(`(?<![A-Za-z0-9])(?:${escapedTokens.join("|")})(?![0-9])`, "gi");
+    return input.replace(combinedRx, (m) => {
+      const orig = state.reverse.get(m.toUpperCase());
+      return orig !== undefined ? orig : m;
+    });
+  }
+
+  function isAllowedInAudit(candidate, cfg) {
+    if (!candidate || candidate === "*****") return true;
+    const lower = candidate.toLowerCase();
+    if (cfg.pruefungErlaubtListe.has(lower)) return true;
+    if (cfg.exakteAusnahmen.has(lower)) return true;
+    for (const r of cfg.pruefungErlaubtMuster) {
+      if (r.test(candidate)) return true;
+    }
+    return false;
+  }
+
+  function getLineNumberFromIndex(lineStarts, charIndex) {
+    let low = 0;
+    let high = lineStarts.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >>> 1;
+      const midVal = lineStarts[mid];
+      if (midVal === charIndex) return mid + 1;
+      if (midVal < charIndex) low = mid + 1;
+      else high = mid - 1;
+    }
+    return low;
+  }
+
+  function auditText(text, fileName, cfg) {
+    const findings = [];
+
+    // Vorab Sperrbegriffe und interne Domains kompilieren (für Pfad- und Inhaltsprüfung)
+    const blockTerms = [];
+    const canonicalTerms = new Map();
+    for (const k of Object.keys(cfg.festeZuordnung)) {
+      if (k && k.trim()) {
+        const cleanK = k.trim();
+        const low = cleanK.toLowerCase();
+        if (!canonicalTerms.has(low)) {
+          canonicalTerms.set(low, cleanK);
+          blockTerms.push(escapeRegExp(cleanK));
+        }
+      }
+    }
+    for (const term of cfg.firmenUndStandorte) {
+      if (term && term.trim()) {
+        const cleanT = term.trim();
+        const low = cleanT.toLowerCase();
+        if (!canonicalTerms.has(low)) {
+          canonicalTerms.set(low, cleanT);
+          blockTerms.push(escapeRegExp(cleanT));
+        }
+      }
+    }
+    blockTerms.sort((a, b) => b.length - a.length);
+    const rxBlock = blockTerms.length > 0
+      ? new RegExp(`(?<![A-Za-z0-9-])(?:${blockTerms.join("|")})(?![A-Za-z0-9-])`, "gi")
+      : null;
+
+    const blockDoms = [];
+    const canonicalDoms = new Map();
+    for (const dom of cfg.interneDomains) {
+      if (dom && dom.trim()) {
+        const cleanD = dom.trim();
+        const low = cleanD.toLowerCase();
+        if (!canonicalDoms.has(low)) {
+          canonicalDoms.set(low, cleanD);
+          blockDoms.push(escapeRegExp(cleanD));
+        }
+      }
+    }
+    blockDoms.sort((a, b) => b.length - a.length);
+    const rxDom = blockDoms.length > 0
+      ? new RegExp(`\\b(?:${blockDoms.join("|")})\\b`, "gi")
+      : null;
+
+    // 0. Prüfe Dateipfad / Dateiname auf nicht anonymisierte Bestandteile
+    if (fileName) {
+      const pathSegs = fileName.replace(/\\/g, "/").split("/").filter(Boolean);
+      const normSegs = pathSegs.map(ps => {
+        const mPref = ps.match(RxPathPrefix);
+        const s = mPref ? (mPref[1] + " " + mPref[2]) : ps;
+        return s.replace(/_/g, " ");
+      });
+      const pathCheck = normSegs.join(" / ");
+
+      for (const m of pathCheck.matchAll(RxIpv4)) {
+        const val = m[0];
+        const ipOnly = val.split(/[/-]/)[0];
+        if (isAllowedInAudit(ipOnly, cfg)) continue;
+        const p = ipOnly.split(".").map(n => parseInt(n, 10));
+        if (p.length === 4 && !p.some(Number.isNaN) && isSubnetMaskOrSpecialIpv4(p[0], p[1], p[2], p[3], true)) continue;
+        findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-IPv4", fund: val, kontext: "Dateipfad: " + fileName });
+      }
+      if (rxBlock) {
+        for (const m of pathCheck.matchAll(rxBlock)) {
+          const fund = canonicalTerms.get(m[0].toLowerCase()) || m[0];
+          findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Sperrbegriff", fund, kontext: "Dateipfad: " + fileName });
+        }
+      }
+      if (rxDom) {
+        for (const m of pathCheck.matchAll(rxDom)) {
+          const fund = canonicalDoms.get(m[0].toLowerCase()) || m[0];
+          findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Domain", fund, kontext: "Dateipfad: " + fileName });
+        }
+      }
+      for (const hRx of cfg.hostnamenMuster) {
+        for (const m of pathCheck.matchAll(hRx)) {
+          const groups = m.slice(1);
+          const hVal = (groups.length >= 2 && groups[1] !== undefined ? groups[1] : m[0]).trim();
+          if (!hVal || isAllowedInAudit(hVal, cfg)) continue;
+          findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Hostname", fund: hVal, kontext: "Dateipfad: " + fileName });
+        }
+      }
+    }
+
+    if (!text) return findings;
+
+    const rawLines = text.split(/\r?\n/);
+    const lineStarts = [0];
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
+    }
+    const getLineCtx = (ln) => (ln >= 1 && ln <= rawLines.length ? rawLines[ln - 1].trim() : "");
+
+    // Maskiere erlaubte Versionskontexte und Ausnahmen längengleich mit Leerzeichen (Zeilenumbrüche bleiben erhalten)
+    const spaceMasker = (m) => m.replace(/[^\r\n]/g, " ");
+    let cleanText = text;
+    for (const vr of cfg.versionKontextRegex) cleanText = cleanText.replace(vr, spaceMasker);
+    for (const ar of cfg.ausnahmenRegex) cleanText = cleanText.replace(ar, spaceMasker);
+
+    const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
+    const rxCryptHash = /\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}/g;
+
+    // 1. Prüfe auf verbliebene IPv4
+    for (const m of cleanText.matchAll(RxIpv4)) {
+      const val = m[0];
+      const ipOnly = val.split(/[/-]/)[0];
+      if (isAllowedInAudit(ipOnly, cfg)) continue;
+      const p = ipOnly.split(".").map(n => parseInt(n, 10));
+      if (p.length === 4 && !p.some(Number.isNaN) && isSubnetMaskOrSpecialIpv4(p[0], p[1], p[2], p[3], true)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv4", fund: val, kontext: getLineCtx(ln) });
+    }
+
+    // 2. Prüfe auf verbliebene IPv6
+    for (const m of cleanText.matchAll(RxIpv6)) {
+      const val = m[0].split("/")[0];
+      if (isAllowedInAudit(val, cfg)) continue;
+      if (!val.includes("::") && val.split(":").length < 6) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv6", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
+    // 3. Prüfe auf verbliebene MAC-Adressen
+    for (const m of cleanText.matchAll(RxMacColonDash)) {
+      if (isAllowedInAudit(m[0], cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-MAC", fund: m[0], kontext: getLineCtx(ln) });
+    }
+    for (const m of cleanText.matchAll(RxMacDot)) {
+      if (isAllowedInAudit(m[0], cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-MAC", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
+    // 4. Prüfe auf verbliebene E-Mail-Adressen
+    for (const m of cleanText.matchAll(RxEmail)) {
+      if (isAllowedInAudit(m[0], cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-EMail", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
+    // 5. Prüfe auf eigene Begriffe / Sperrliste (Firmen, Standorte, Feste Zuordnung Keys)
+    if (rxBlock) {
+      for (const m of cleanText.matchAll(rxBlock)) {
+        const ln = getLineNumberFromIndex(lineStarts, m.index);
+        const fund = canonicalTerms.get(m[0].toLowerCase()) || m[0];
+        findings.push({ datei: fileName, zeile: ln, kategorie: "Sperrbegriff", fund, kontext: getLineCtx(ln) });
+      }
+    }
+
+    if (rxDom) {
+      for (const m of cleanText.matchAll(rxDom)) {
+        const ln = getLineNumberFromIndex(lineStarts, m.index);
+        const fund = canonicalDoms.get(m[0].toLowerCase()) || m[0];
+        findings.push({ datei: fileName, zeile: ln, kategorie: "Interne-Domain", fund, kontext: getLineCtx(ln) });
+      }
+    }
+
+    // 6. Prüfe auf Passwort-Hashes oder lange Geheimnis-Blobs
+    for (const m of cleanText.matchAll(rxCryptHash)) {
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Hash", fund: m[0], kontext: getLineCtx(ln) });
+    }
+    for (const m of cleanText.matchAll(rxSuspiciousLongHexOrB64)) {
+      if (isAllowedInAudit(m[0], cfg)) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Geheimnis-Blob", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
+    if (findings.length > 1) {
+      findings.sort((a, b) => a.zeile - b.zeile);
+    }
+
+    return findings;
+  }
+
+  // ============================================================================
+  // 3. EINGEBETTETER ARCHIV- & BINÄR-CODEC (ZIP / TAR / GZIP, Eigenimplementierung)
+  // ============================================================================
+  function isBinaryBytes(u8) {
+    if (!u8 || u8.length === 0) return false;
+    if (u8.length >= 2 && ((u8[0] === 0xFF && u8[1] === 0xFE) || (u8[0] === 0xFE && u8[1] === 0xFF))) return false;
+    const len = Math.min(u8.length, 8192);
+    let nullCount = 0;
+    let ctrlCount = 0;
+    for (let i = 0; i < len; i++) {
+      const b = u8[i];
+      if (b === 0) {
+        nullCount++;
+        if (nullCount >= 2) return true;
+      } else if (b < 7 || (b > 14 && b < 32 && b !== 27)) {
+        ctrlCount++;
+      }
+    }
+    if (nullCount > 0) return true;
+    if (len > 32 && (ctrlCount / len) > 0.15) return true;
+    return false;
+  }
+
+  function decodeBytesWithBom(u8) {
+    if (!u8 || u8.length === 0) return "";
+    if (u8.length >= 3 && u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF) {
+      return new TextDecoder("utf-8").decode(u8.subarray(3));
+    }
+    if (u8.length >= 2 && u8[0] === 0xFF && u8[1] === 0xFE) {
+      return new TextDecoder("utf-16le").decode(u8.subarray(2));
+    }
+    if (u8.length >= 2 && u8[0] === 0xFE && u8[1] === 0xFF) {
+      return new TextDecoder("utf-16be").decode(u8.subarray(2));
+    }
+    return new TextDecoder("utf-8").decode(u8);
+  }
+
+  // CRC32 für ZIP-Erzeugung
+  const CRC32_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(u8) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) {
+      crc = CRC32_TABLE[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // Erstellt ein standardkonformes ZIP-Archiv im Speicher
+  function createZipArchive(entries) {
+    // entries: [{ path: "ordner/datei.txt", data: Uint8Array }]
+    const enc = new TextEncoder();
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+      const nameBytes = enc.encode(entry.path.replace(/\\/g, "/").replace(/^\/+/, ""));
+      const data = entry.data instanceof Uint8Array ? entry.data : enc.encode(String(entry.data));
+      const crc = crc32(data);
+
+      const localHeader = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(localHeader.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true); // UTF-8 Flag
+      lv.setUint16(8, 0, true);      // Store (uncompressed, schnell & kompatibel)
+      lv.setUint16(10, 0, true);
+      lv.setUint16(12, 0x2100, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      localHeader.set(nameBytes, 30);
+
+      localParts.push(localHeader, data);
+
+      const centralHeader = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(centralHeader.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0x2100, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      centralHeader.set(nameBytes, 46);
+
+      centralParts.push(centralHeader);
+      offset += localHeader.length + data.length;
+    }
+
+    let centralSize = 0;
+    for (const c of centralParts) centralSize += c.length;
+
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, offset, true);
+    ev.setUint16(20, 0, true);
+
+    const totalLen = offset + centralSize + 22;
+    const out = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const p of localParts) { out.set(p, pos); pos += p.length; }
+    for (const p of centralParts) { out.set(p, pos); pos += p.length; }
+    out.set(eocd, pos);
+    return out;
+  }
+
+  async function decompressDeflateRaw(compressedBytes) {
+    if (typeof DecompressionStream !== "undefined") {
+      const ds = new DecompressionStream("deflate-raw");
+      const writer = ds.writable.getWriter();
+      writer.write(compressedBytes);
+      writer.close();
+      const resp = new Response(ds.readable);
+      const ab = await resp.arrayBuffer();
+      return new Uint8Array(ab);
+    }
+    throw new Error("Browser unterstützt DecompressionStream nicht.");
+  }
+
+  async function decompressGzip(gzBytes) {
+    if (typeof DecompressionStream !== "undefined") {
+      const ds = new DecompressionStream("gzip");
+      const writer = ds.writable.getWriter();
+      writer.write(gzBytes);
+      writer.close();
+      const resp = new Response(ds.readable);
+      const ab = await resp.arrayBuffer();
+      return new Uint8Array(ab);
+    }
+    throw new Error("Browser unterstützt DecompressionStream (gzip) nicht.");
+  }
+
+  async function extractZipBuffer(u8, prefixPath = "") {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const dec = new TextDecoder("utf-8");
+    let eocdPos = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) {
+        eocdPos = i;
+        break;
+      }
+    }
+    if (eocdPos < 0) throw new Error("Ungültiges ZIP-Archiv (EOCD nicht gefunden).");
+    const totalEntries = dv.getUint16(eocdPos + 10, true);
+    let cdPos = dv.getUint32(eocdPos + 16, true);
+    const outFiles = [];
+
+    for (let i = 0; i < totalEntries; i++) {
+      if (dv.getUint32(cdPos, true) !== 0x02014b50) break;
+      const method = dv.getUint16(cdPos + 10, true);
+      const compSize = dv.getUint32(cdPos + 20, true);
+      const nameLen = dv.getUint16(cdPos + 28, true);
+      const extraLen = dv.getUint16(cdPos + 30, true);
+      const commentLen = dv.getUint16(cdPos + 32, true);
+      const localOffset = dv.getUint32(cdPos + 42, true);
+      const name = dec.decode(u8.subarray(cdPos + 46, cdPos + 46 + nameLen));
+      cdPos += 46 + nameLen + extraLen + commentLen;
+
+      if (name.endsWith("/")) continue;
+      const lNameLen = dv.getUint16(localOffset + 26, true);
+      const lExtraLen = dv.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+      const compData = u8.subarray(dataStart, dataStart + compSize);
+
+      let rawBytes;
+      if (method === 0) {
+        rawBytes = compData;
+      } else if (method === 8) {
+        rawBytes = await decompressDeflateRaw(compData);
+      } else {
+        continue;
+      }
+      const cleanRel = (prefixPath ? prefixPath + "/" : "") + name.replace(/^\/+/, "");
+      outFiles.push({ path: cleanRel, bytes: rawBytes });
+    }
+    return outFiles;
+  }
+
+  function extractTarBuffer(u8, prefixPath = "") {
+    const dec = new TextDecoder("utf-8");
+    const outFiles = [];
+    let pos = 0;
+    while (pos + 512 <= u8.length) {
+      let allZero = true;
+      for (let i = 0; i < 512; i++) {
+        if (u8[pos + i] !== 0) { allZero = false; break; }
+      }
+      if (allZero) break;
+
+      const readStr = (off, len) => {
+        let end = off;
+        while (end < off + len && u8[pos + end] !== 0) end++;
+        return dec.decode(u8.subarray(pos + off, pos + end)).trim();
+      };
+      let name = readStr(0, 100);
+      const prefix = readStr(345, 155);
+      if (prefix) name = prefix + "/" + name;
+      const sizeOct = readStr(124, 12);
+      const size = sizeOct ? parseInt(sizeOct, 8) : 0;
+      const typeFlag = u8[pos + 156];
+      pos += 512;
+
+      if ((typeFlag === 0 || typeFlag === 48) && !name.endsWith("/")) {
+        const fileBytes = u8.subarray(pos, pos + size);
+        const cleanRel = (prefixPath ? prefixPath + "/" : "") + name.replace(/^\/+/, "");
+        outFiles.push({ path: cleanRel, bytes: fileBytes });
+      }
+      const pad = (512 - (size % 512)) % 512;
+      pos += size + pad;
+    }
+    return outFiles;
+  }
+
+  // ============================================================================
+  // 4. TABELLENVERSCHLÜSSELUNG (ANON-AES256-2 & ANON-WEBCRYPTO-AESGCM-1)
+  // ============================================================================
+  function bytesToBase64(bytes) {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function base64ToBytes(b64) {
+    if (!b64) return new Uint8Array(0);
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  const PBKDF2_DEFAULT_ITERATIONS = 600000;
+  const PBKDF2_LEGACY_ITERATIONS = 100000;
+  const MIN_PASSWORD_LENGTH = 12;
+
+  function validatePasswordMinLength(password) {
+    if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`Das Passwort für die Tabellenverschlüsselung muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.`);
+    }
+  }
+
+  function buildAes256V2MacInput(iterations, salt, iv, cipher) {
+    const enc = new TextEncoder();
+    const headerBytes = enc.encode(`ANON-AES256-2|${iterations}`);
+    const macInput = new Uint8Array(headerBytes.length + salt.length + iv.length + cipher.length);
+    let offset = 0;
+    macInput.set(headerBytes, offset); offset += headerBytes.length;
+    macInput.set(salt, offset); offset += salt.length;
+    macInput.set(iv, offset); offset += iv.length;
+    macInput.set(cipher, offset);
+    return macInput;
+  }
+
+  async function deriveAes256V2Subkeys(password, salt, iterations) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const masterBits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations, hash: "SHA-1" },
+      keyMaterial,
+      256
+    );
+    const masterHmacKey = await crypto.subtle.importKey(
+      "raw",
+      masterBits,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const encKeyBytes = new Uint8Array(await crypto.subtle.sign("HMAC", masterHmacKey, enc.encode("enc")));
+    const macKeyBytes = new Uint8Array(await crypto.subtle.sign("HMAC", masterHmacKey, enc.encode("mac")));
+    const aesKey = await crypto.subtle.importKey("raw", encKeyBytes, { name: "AES-CBC" }, false, ["encrypt", "decrypt"]);
+    const macKey = await crypto.subtle.importKey("raw", macKeyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    return { aesKey, macKey };
+  }
+
+  async function encryptTableAes256V2(plainJsonStr, password, customIterations) {
+    validatePasswordMinLength(password);
+    const iterations = (typeof customIterations === "number" && customIterations > 0)
+      ? customIterations
+      : PBKDF2_DEFAULT_ITERATIONS;
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations);
+    const cipherBuf = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, aesKey, enc.encode(plainJsonStr));
+    const cipher = new Uint8Array(cipherBuf);
+    const macInput = buildAes256V2MacInput(iterations, salt, iv, cipher);
+    const macBytes = new Uint8Array(await crypto.subtle.sign("HMAC", macKey, macInput));
+    return JSON.stringify({
+      format: "ANON-AES256-2",
+      kdf: "PBKDF2-SHA1",
+      iterations,
+      salt: bytesToBase64(salt),
+      iv: bytesToBase64(iv),
+      hmac: bytesToBase64(macBytes),
+      daten: bytesToBase64(cipher)
+    }, null, 2);
+  }
+
+  async function decryptTableAes256V2(rawTextOrObj, password, onWarning) {
+    const obj = typeof rawTextOrObj === "string" ? JSON.parse(rawTextOrObj) : rawTextOrObj;
+    if (!obj || (obj.format !== "ANON-AES256-2" && obj.format !== "ANON-AES256-1")) {
+      return obj;
+    }
+    if (!password) {
+      throw new Error("Bitte Passwort für die verschlüsselte Zuordnungstabelle eingeben.");
+    }
+    if (obj.format === "ANON-AES256-2") {
+      const iterProp = obj.iterations !== undefined ? obj.iterations : obj.iterationen;
+      const iterations = Number(iterProp);
+      if (!Number.isInteger(iterations) || iterations <= 0) {
+        throw new Error("Ungültige oder fehlende Iterationszahl in ANON-AES256-2.");
+      }
+      if (!obj.hmac || typeof obj.hmac !== "string") {
+        throw new Error("Fehlender HMAC in ANON-AES256-2.");
+      }
+      const salt = base64ToBytes(obj.salt);
+      const iv = base64ToBytes(obj.iv);
+      const cipher = base64ToBytes(obj.daten);
+      const expectedMac = base64ToBytes(obj.hmac);
+      if (expectedMac.length !== 32) {
+        throw new Error("Ungültige HMAC-Länge in ANON-AES256-2 (erwartet: 32 Bytes).");
+      }
+      if (salt.length < 8 || iv.length !== 16) {
+        throw new Error("Ungültiges Salt oder IV in ANON-AES256-2.");
+      }
+      const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations);
+      const macInput = buildAes256V2MacInput(iterations, salt, iv, cipher);
+      const actualMac = new Uint8Array(await crypto.subtle.sign("HMAC", macKey, macInput));
+      let diff = 0;
+      for (let i = 0; i < 32; i++) {
+        diff |= (actualMac[i] ^ expectedMac[i]);
+      }
+      if (diff !== 0) {
+        throw new Error("HMAC-Prüfung fehlgeschlagen (Passwort falsch oder Datei manipuliert).");
+      }
+      const plainBuf = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, aesKey, cipher);
+      const parsed = JSON.parse(new TextDecoder("utf-8").decode(plainBuf));
+      parsed._protectionMode = "PASSWORD";
+      parsed._loadedFormat = "ANON-AES256-2";
+      return parsed;
+    }
+    // Legacy ANON-AES256-1 (ladbar mit Warnung, wird beim Speichern auf ANON-AES256-2 gehoben)
+    const warnMsg = "Veraltetes Tabellenformat ANON-AES256-1 geladen. Beim nächsten Speichern wird automatisch auf ANON-AES256-2 aktualisiert.";
+    if (typeof onWarning === "function") onWarning(warnMsg);
+    else if (typeof console !== "undefined" && console.warn) console.warn(warnMsg);
+
+    const iterProp = obj.iterations !== undefined ? obj.iterations : obj.iterationen;
+    const iterations = iterProp !== undefined ? Number(iterProp) : PBKDF2_LEGACY_ITERATIONS;
+    if (!Number.isInteger(iterations) || iterations <= 0) {
+      throw new Error("Ungültige Iterationszahl in ANON-AES256-1.");
+    }
+    if (!obj.hmac || typeof obj.hmac !== "string") {
+      throw new Error("Fehlender HMAC in ANON-AES256-1.");
+    }
+    const salt = base64ToBytes(obj.salt);
+    const iv = base64ToBytes(obj.iv);
+    const cipher = base64ToBytes(obj.daten);
+    const expectedMac = base64ToBytes(obj.hmac);
+    if (expectedMac.length !== 32) {
+      throw new Error("Ungültige HMAC-Länge in ANON-AES256-1.");
+    }
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const keyBits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-1" }, keyMaterial, 256);
+    const macKey = await crypto.subtle.importKey("raw", keyBits, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const actualMac = new Uint8Array(await crypto.subtle.sign("HMAC", macKey, cipher));
+    let diff = 0;
+    for (let i = 0; i < 32; i++) {
+      diff |= (actualMac[i] ^ expectedMac[i]);
+    }
+    if (diff !== 0) {
+      throw new Error("HMAC/Passwort-Prüfung für Zuordnungstabelle fehlgeschlagen.");
+    }
+    const aesKey = await crypto.subtle.importKey("raw", keyBits, { name: "AES-CBC" }, false, ["decrypt"]);
+    const plainBuf = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, aesKey, cipher);
+    const parsed = JSON.parse(new TextDecoder("utf-8").decode(plainBuf));
+    parsed._protectionMode = "PASSWORD";
+    parsed._loadedFormat = "ANON-AES256-1";
+    return parsed;
+  }
+
+  async function encryptTableWebCrypto(plainJsonStr, password, customIterations) {
+    validatePasswordMinLength(password);
+    const iterations = (typeof customIterations === "number" && customIterations > 0)
+      ? customIterations
+      : PBKDF2_DEFAULT_ITERATIONS;
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
+    const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plainJsonStr));
+    return JSON.stringify({
+      format: "ANON-WEBCRYPTO-AESGCM-1",
+      kdf: "PBKDF2-SHA256",
+      iterations,
+      salt: bytesToBase64(salt),
+      iv: bytesToBase64(iv),
+      daten: bytesToBase64(new Uint8Array(cipherBuf))
+    }, null, 2);
+  }
+
+  async function decryptTableWebCrypto(rawText, password, onWarning) {
+    const obj = JSON.parse(rawText);
+    if (obj && (obj.format === "ANON-AES256-2" || obj.format === "ANON-AES256-1")) {
+      return decryptTableAes256V2(obj, password, onWarning);
+    }
+    if (obj && obj.format === "ANON-WEBCRYPTO-AESGCM-1") {
+      if (!password) throw new Error("Bitte Passwort für die verschlüsselte Zuordnungstabelle eingeben.");
+      const hasExplicitIter = obj.iterations !== undefined || obj.iterationen !== undefined;
+      const iterations = hasExplicitIter ? Number(obj.iterations !== undefined ? obj.iterations : obj.iterationen) : PBKDF2_LEGACY_ITERATIONS;
+      if (!Number.isInteger(iterations) || iterations <= 0) {
+        throw new Error("Ungültige Iterationszahl in der verschlüsselten Zuordnungstabelle.");
+      }
+      const enc = new TextEncoder();
+      const salt = base64ToBytes(obj.salt);
+      const iv = base64ToBytes(obj.iv);
+      const cipher = base64ToBytes(obj.daten);
+      const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+      const key = await crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
+      const plainBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
+      const parsed = JSON.parse(new TextDecoder("utf-8").decode(plainBuf));
+      parsed._protectionMode = "PASSWORD";
+      parsed._loadedFormat = "ANON-WEBCRYPTO-AESGCM-1";
+      return parsed;
+    }
+    return obj;
+  }
+
+  function buildReleaseZipEntries(processedResults) {
+    const enc = new TextEncoder();
+    // Wichtig (Befund 2): bericht.json wird NICHT ins Freigabe-ZIP gelegt, Pfade sind bereits anonymisiert.
+    return processedResults.map(r => ({
+      path: "anonym/" + r.path.replace(/^\/+/, ""),
+      data: enc.encode(r.anonText)
+    }));
+  }
+
+  // ============================================================================
+  // 5. BROWSER-UI STEUERUNG (Wird nur im Browser ausgeführt, Node-kompatibel)
+  // ============================================================================
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    let currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
+    let currentState = new AnonState();
+    let loadedInputFiles = []; // [{ path, bytes }]
+    let processedResults = []; // [{ path, originalText, anonText, findings }]
+    let skippedBinaryFiles = [];
+    let lastReportObj = null;
+
+    const rulesTextarea = document.getElementById("rulesTextarea");
+    rulesTextarea.value = JSON.stringify(currentRules, null, 2);
+
+    // Tab-Navigation
+    document.querySelectorAll("nav.tabs button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    function updateTableStatusUI() {
+      const el = document.getElementById("tableLoadStatus");
+      if (el) el.textContent = `Aktuell aktive Zuordnungen im RAM: ${currentState.reverse.size}`;
+    }
+
+    const MAX_PREVIEW_CHARS = 200000; // 200 KB Vorschau-Limit im DOM verhindert Browser-Layout-Freeze bei 20-50 MB Show-Techs
+    function formatPreviewText(fullText) {
+      if (!fullText || fullText.length <= MAX_PREVIEW_CHARS) return fullText || "";
+      const totalKb = Math.round(fullText.length / 1024);
+      const shownKb = Math.round(MAX_PREVIEW_CHARS / 1024);
+      return fullText.slice(0, MAX_PREVIEW_CHARS) +
+        `\n\n================================================================================\n` +
+        `[VORSCHAU GEKÜRZT: Es werden die ersten ${shownKb} KB von insgesamt ${totalKb} KB angezeigt,\n` +
+        `damit der Browser flüssig bleibt. Im ZIP-Download ist die vollständige Datei enthalten!]\n` +
+        `================================================================================`;
+    }
+
+    function renderPreviewForIndex(idx) {
+      if (!Number.isNaN(idx) && processedResults[idx]) {
+        document.getElementById("previewOriginal").textContent = formatPreviewText(processedResults[idx].originalText);
+        document.getElementById("previewAnon").textContent = formatPreviewText(processedResults[idx].anonText);
+      }
+    }
+
+    async function ingestFileList(fileList) {
+      if (!fileList || fileList.length === 0) return;
+      const statusEl = document.getElementById("fileCountInfo");
+      statusEl.textContent = `Lade ${fileList.length} Datei(en) in den Arbeitsspeicher...`;
+      await new Promise(r => setTimeout(r, 15));
+
+      let totalBytes = 0;
+      for (let idx = 0; idx < fileList.length; idx++) {
+        const f = fileList[idx];
+        const rel = f.webkitRelativePath || f.name;
+        statusEl.textContent = `Lese (${idx + 1}/${fileList.length}): ${rel} (${(f.size / (1024 * 1024)).toFixed(1)} MB)...`;
+        await new Promise(r => setTimeout(r, 5));
+
+        const ab = await f.arrayBuffer();
+        const u8 = new Uint8Array(ab);
+        totalBytes += u8.byteLength;
+        const lower = rel.toLowerCase();
+        try {
+          if (lower.endsWith(".zip")) {
+            const base = rel.replace(/\.zip$/i, "");
+            const extracted = await extractZipBuffer(u8, base);
+            loadedInputFiles.push(...extracted);
+          } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
+            const base = rel.replace(/(\.tar\.gz|\.tgz)$/i, "");
+            const tarBytes = await decompressGzip(u8);
+            const extracted = extractTarBuffer(tarBytes, base);
+            loadedInputFiles.push(...extracted);
+          } else if (lower.endsWith(".tar")) {
+            const base = rel.replace(/\.tar$/i, "");
+            const extracted = extractTarBuffer(u8, base);
+            loadedInputFiles.push(...extracted);
+          } else {
+            loadedInputFiles.push({ path: rel, bytes: u8 });
+          }
+        } catch (err) {
+          alert(`Fehler beim Entpacken von ${rel}: ${err.message}`);
+        }
+      }
+      const mbStr = (totalBytes / (1024 * 1024)).toFixed(2);
+      statusEl.textContent = `${loadedInputFiles.length} Datei(en) (${mbStr} MB) im Arbeitsspeicher bereit. Klicke auf 'Anonymisieren & Prüfen'.`;
+    }
+
+    document.getElementById("btnPickFiles").addEventListener("click", () => document.getElementById("inputFiles").click());
+    document.getElementById("btnPickFolder").addEventListener("click", () => document.getElementById("inputFolder").click());
+    document.getElementById("inputFiles").addEventListener("change", (e) => ingestFileList(e.target.files));
+    document.getElementById("inputFolder").addEventListener("change", (e) => ingestFileList(e.target.files));
+
+    const dz = document.getElementById("dropzone");
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.classList.remove("dragover");
+      if (e.dataTransfer && e.dataTransfer.files) ingestFileList(e.dataTransfer.files);
+    });
+
+    // Demo-Beispieldaten laden
+    document.getElementById("btnLoadDemo").addEventListener("click", () => {
+      const enc = new TextEncoder();
+      const demoAruba = [
+        "hostname rz1-sw-core01",
+        "Version FL.10.13.1020",
+        "user admin password ciphertext AQBapf92384719283749182374918273948172938471928374",
+        "username netadmin role administrators password plaintext GeheimesPasswort123!",
+        "snmp-server community MySecretRO",
+        "snmp-server location Rechenzentrum-Nord Raum 2.04",
+        "snmp-server contact Max Mustermann (netze@intern.musterfirma.de)",
+        "interface 1/1/10",
+        "   description Uplink zu rz2-sw-core02 (Musterfirma GmbH)",
+        "   ip address 10.20.30.1/24",
+        "   ipv6 address 2001:db8:abcd:10::1/64",
+        "vlan 100",
+        "   name WAN_10.20.30.0-24",
+        "lldp neighbor-info 1/1/10",
+        "   Chassis ID : 00:1a:2b:3c:4d:5e",
+        "   System Name : sw-access-04.intern.musterfirma.de",
+        "   System Description : ArubaOS-CX FL.10.13.1020",
+        "Serial Number: CN93K2M019"
+      ].join("\n");
+
+      const demoSonicJson = JSON.stringify({
+        "DEVICE_METADATA": {
+          "localhost": {
+            "hostname": "sonic-leaf01",
+            "mac": "00:1a:2b:3c:4d:5e",
+            "serial": "DL-99887766",
+            "software_version": "4.2.0-Enterprise"
+          }
+        },
+        "VLAN_INTERFACE": {
+          "Vlan100|10.20.30.254/24": {}
+        },
+        "TACPLUS": {
+          "global": {
+            "passkey": "SuperGeheimerTacacsKey99!"
+          }
+        },
+        "PORT": {
+          "Ethernet1/1/10": {
+            "alias": "etp10",
+            "description": "Server-Uplink Werk-Stuttgart"
+          }
+        }
+      }, null, 2);
+
+      loadedInputFiles = [
+        { path: "aruba-show-tech.txt", bytes: enc.encode(demoAruba) },
+        { path: "sonic-config_db.json", bytes: enc.encode(demoSonicJson) }
+      ];
+      document.getElementById("fileCountInfo").textContent = "2 realistische Beispieldateien (Aruba AOS-CX & Dell SONiC JSON) geladen.";
+    });
+
+    async function executeRun(isProbe) {
+      if (loadedInputFiles.length === 0) {
+        alert("Bitte zuerst Dateien auswählen oder 'Beispieldaten laden' klicken.");
+        return;
+      }
+      try {
+        currentRules = JSON.parse(rulesTextarea.value);
+      } catch (e) {
+        alert("Fehler in der Regeldatei (JSON ungültig): " + e.message);
+        return;
+      }
+
+      const btnAnon = document.getElementById("btnRunAnon");
+      const btnProbe = document.getElementById("btnRunProbe");
+      btnAnon.disabled = true;
+      btnProbe.disabled = true;
+
+      try {
+        const activeCats = new Set();
+        document.querySelectorAll(".cat-toggle:checked").forEach(cb => activeCats.add(cb.value));
+        const cfg = buildEngineConfig(currentRules, {
+          netzerhaltend: document.getElementById("optNetzerhaltend").checked,
+          ipPrivatOeffentlichTrennen: document.getElementById("optIpPrivPub").checked,
+          kategorien: activeCats
+        });
+
+        const runState = isProbe ? AnonState.fromJSON(currentState.toJSON()) : currentState;
+        processedResults = [];
+        skippedBinaryFiles = [];
+        const allFindings = [];
+        const progressBar = document.getElementById("progressBar");
+        const progressStatus = document.getElementById("progressStatus");
+        const tStart = performance.now();
+
+        for (let i = 0; i < loadedInputFiles.length; i++) {
+          const item = loadedInputFiles[i];
+          const pct = Math.round(((i + 0.2) / loadedInputFiles.length) * 100);
+          progressBar.style.width = pct + "%";
+          const kbSize = Math.round(item.bytes.byteLength / 1024);
+          progressStatus.textContent = `Verarbeite (${i + 1}/${loadedInputFiles.length}): ${item.path} (${kbSize} KB)...`;
+          // Kurze Pause für Browser-Repaint, damit Fortschrittsbalken sofort sichtbar ist
+          await new Promise(r => setTimeout(r, 15));
+
+          if (isBinaryBytes(item.bytes)) {
+            const anonBinPath = processPath(item.path, cfg, runState);
+            skippedBinaryFiles.push(anonBinPath);
+            continue;
+          }
+          // Befund 3: BOM-erkennend dekodieren (UTF-8-BOM, UTF-16 LE/BE), Ausgabe immer UTF-8 ohne BOM
+          const origText = decodeBytesWithBom(item.bytes);
+          // Befund 2: Jeden Pfadbestandteil durch die Engine schicken und in Prüfung aufnehmen
+          const anonRelPath = processPath(item.path, cfg, runState);
+          const anonText = processText(origText, cfg, runState);
+          const findings = auditText(anonText, anonRelPath, cfg);
+          for (let fIdx = 0; fIdx < findings.length; fIdx++) {
+            allFindings.push(findings[fIdx]);
+          }
+          processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings });
+        }
+
+        const elapsedSec = ((performance.now() - tStart) / 1000).toFixed(2);
+        progressBar.style.width = "100%";
+        progressStatus.textContent = `Fertig in ${elapsedSec} s (${processedResults.length} Textdatei(en) verarbeitet).`;
+
+        // Statistiken & Prüfbericht anzeigen
+        const statPills = document.getElementById("statPills");
+        statPills.innerHTML = "";
+        for (const [k, v] of runState.stats.entries()) {
+          const pill = document.createElement("div");
+          pill.className = "stat-pill";
+          pill.textContent = `${k}: ${v}`;
+          statPills.appendChild(pill);
+        }
+
+        const skippedEl = document.getElementById("skippedInfo");
+        skippedEl.textContent = skippedBinaryFiles.length > 0
+          ? `Übersprungene Binärdateien (${skippedBinaryFiles.length}): ${skippedBinaryFiles.join(", ")}`
+          : `Verarbeitete Textdateien: ${processedResults.length} | Übersprungene Binärdateien: 0 | Dauer: ${elapsedSec} s`;
+
+        const banner = document.getElementById("auditBanner");
+        const tbody = document.getElementById("auditTableBody");
+        tbody.innerHTML = "";
+
+        if (allFindings.length === 0) {
+          banner.className = "audit-banner clean";
+          banner.textContent = `Prüfergebnis (-Pruefen): SAUBER (0 Treffer in ${processedResults.length} Datei(en))${isProbe ? " [TROCKENLAUF]" : ""}`;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td colspan="4" class="small-muted">0 Restfunde – Ausgabe ist laut Regelwerk sauber.</td>`;
+          tbody.appendChild(tr);
+        } else {
+          banner.className = "audit-banner dirty";
+          banner.textContent = `Prüfergebnis (-Pruefen): RESTFUNDE VORHANDEN (${allFindings.length} Treffer) – Bitte vor Weitergabe prüfen!`;
+          const maxRows = 500;
+          const displayCount = Math.min(allFindings.length, maxRows);
+          for (let idx = 0; idx < displayCount; idx++) {
+            const f = allFindings[idx];
+            const tr = document.createElement("tr");
+            tr.className = "finding-row";
+            const td1 = document.createElement("td"); td1.textContent = f.datei;
+            const td2 = document.createElement("td"); td2.textContent = String(f.zeile);
+            const td3 = document.createElement("td"); td3.textContent = f.kategorie;
+            const td4 = document.createElement("td"); td4.textContent = f.fund;
+            tr.append(td1, td2, td3, td4);
+            tbody.appendChild(tr);
+          }
+          if (allFindings.length > maxRows) {
+            const trMore = document.createElement("tr");
+            const tdMore = document.createElement("td");
+            tdMore.colSpan = 4;
+            tdMore.className = "small-muted";
+            tdMore.textContent = `... sowie ${allFindings.length - maxRows} weitere Treffer (Anzeige auf ${maxRows} Zeilen begrenzt).`;
+            trMore.appendChild(tdMore);
+            tbody.appendChild(trMore);
+          }
+        }
+
+        // Vorschau-Auswahl füllen
+        const sel = document.getElementById("previewFileSelect");
+        sel.innerHTML = "";
+        processedResults.forEach((res, idx) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = `${res.path} (${Math.round(res.anonText.length / 1024)} KB)`;
+          sel.appendChild(opt);
+        });
+        if (processedResults.length > 0) {
+          sel.value = "0";
+          renderPreviewForIndex(0);
+        }
+
+        const kategorienGesamt = {};
+        for (const [k, v] of runState.stats.entries()) kategorienGesamt[k] = v;
+        lastReportObj = {
+          zeitstempel: new Date().toISOString(),
+          modus: isProbe ? "PROBE" : "ANONYMISIERUNG",
+          netzerhaltend: cfg.netzerhaltend,
+          verarbeiteteDateien: processedResults.length,
+          uebersprungeneBinaer: skippedBinaryFiles,
+          kategorienGesamt,
+          pruefergebnis: allFindings.length === 0 ? "SAUBER" : "RESTFUNDE_VORHANDEN",
+          pruefTrefferAnzahl: allFindings.length
+        };
+
+        document.getElementById("btnDownloadZip").disabled = isProbe || processedResults.length === 0;
+        document.getElementById("btnDownloadReport").disabled = false;
+        updateTableStatusUI();
+      } finally {
+        btnAnon.disabled = false;
+        btnProbe.disabled = false;
+      }
+    }
+
+    document.getElementById("btnRunAnon").addEventListener("click", () => executeRun(false));
+    document.getElementById("btnRunProbe").addEventListener("click", () => executeRun(true));
+
+    document.getElementById("previewFileSelect").addEventListener("change", (e) => {
+      const idx = parseInt(e.target.value, 10);
+      renderPreviewForIndex(idx);
+    });
+
+    document.getElementById("btnClearAll").addEventListener("click", () => {
+      loadedInputFiles = [];
+      processedResults = [];
+      skippedBinaryFiles = [];
+      currentState = new AnonState();
+      document.getElementById("previewOriginal").textContent = "";
+      document.getElementById("previewAnon").textContent = "";
+      document.getElementById("fileCountInfo").textContent = "Arbeitsspeicher vollständig geleert.";
+      document.getElementById("btnDownloadZip").disabled = true;
+      document.getElementById("btnDownloadReport").disabled = true;
+      updateTableStatusUI();
+    });
+
+    function triggerDownload(bytesOrStr, filename, mime = "application/octet-stream") {
+      const blob = new Blob([bytesOrStr], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 250);
+    }
+
+    document.getElementById("btnDownloadZip").addEventListener("click", () => {
+      const entries = buildReleaseZipEntries(processedResults);
+      const zipBytes = createZipArchive(entries);
+      triggerDownload(zipBytes, "anonym-ausgabe.zip", "application/zip");
+    });
+
+    document.getElementById("btnDownloadReport").addEventListener("click", () => {
+      if (!lastReportObj) return;
+      triggerDownload(JSON.stringify(lastReportObj, null, 2), "bericht.json", "application/json");
+    });
+
+    // Regeldatei-Aktionen
+    document.getElementById("btnLoadRulesFile").addEventListener("click", () => document.getElementById("inputRulesFile").click());
+    document.getElementById("inputRulesFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const txt = await f.text();
+      rulesTextarea.value = txt;
+      document.getElementById("rulesStatus").textContent = `Regeldatei '${f.name}' geladen.`;
+    });
+    document.getElementById("btnApplyRules").addEventListener("click", () => {
+      try {
+        currentRules = JSON.parse(rulesTextarea.value);
+        document.getElementById("rulesStatus").textContent = "Regeln erfolgreich geprüft und im RAM aktiviert.";
+      } catch (e) {
+        alert("Ungültiges JSON: " + e.message);
+      }
+    });
+    document.getElementById("btnDownloadRules").addEventListener("click", () => {
+      triggerDownload(rulesTextarea.value, "anon-regeln.json", "application/json");
+    });
+    document.getElementById("btnResetRules").addEventListener("click", () => {
+      currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
+      rulesTextarea.value = JSON.stringify(currentRules, null, 2);
+      document.getElementById("rulesStatus").textContent = "Standardregeln wiederhergestellt.";
+    });
+
+    // Zuordnungstabelle-Aktionen
+    document.getElementById("btnExportEncryptedTable").addEventListener("click", async () => {
+      const pass = document.getElementById("tableSavePass").value;
+      const passConfirm = document.getElementById("tableSavePassConfirm").value;
+      if (!pass || pass.length < MIN_PASSWORD_LENGTH) {
+        alert(`Bitte ein Passwort (mind. ${MIN_PASSWORD_LENGTH} Zeichen) für die Tabellenverschlüsselung eingeben.`);
+        return;
+      }
+      if (pass !== passConfirm) {
+        alert("Die beiden eingegebenen Passwörter stimmen nicht überein. Bitte prüfen.");
+        return;
+      }
+      const plain = JSON.stringify(currentState.toJSON(), null, 2);
+      const encrypted = await encryptTableWebCrypto(plain, pass);
+      triggerDownload(encrypted, "zuordnungstabelle.anon-tab", "application/json");
+      document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (PBKDF2 600.000 Iterationen) heruntergeladen.";
+    });
+
+    document.getElementById("btnExportPlainTable").addEventListener("click", () => {
+      const plain = JSON.stringify(currentState.toJSON(), null, 2);
+      triggerDownload(plain, "zuordnungstabelle.json", "application/json");
+    });
+
+    document.getElementById("btnLoadTableFile").addEventListener("click", () => document.getElementById("inputTableFile").click());
+    document.getElementById("btnQuickLoadTableRev").addEventListener("click", () => document.getElementById("inputTableFile").click());
+    document.getElementById("inputTableFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const raw = await f.text();
+        const pass = document.getElementById("tableLoadPass").value;
+        const parsedCheck = JSON.parse(raw);
+        const isEncrypted = parsedCheck && (
+          parsedCheck.format === "ANON-WEBCRYPTO-AESGCM-1" ||
+          parsedCheck.format === "ANON-AES256-2" ||
+          parsedCheck.format === "ANON-AES256-1"
+        );
+        if (isEncrypted && !pass) {
+          alert("Diese Zuordnungstabelle ist verschlüsselt. Bitte zuerst das Passwort im Feld 'Passwort zum Entschlüsseln' eingeben und die Datei danach erneut auswählen.");
+          e.target.value = "";
+          return;
+        }
+        const obj = await decryptTableWebCrypto(raw, pass);
+        currentState = AnonState.fromJSON(obj);
+        updateTableStatusUI();
+        alert(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge).`);
+      } catch (err) {
+        alert("Fehler beim Laden/Entschlüsseln der Tabelle: " + err.message);
+      }
+    });
+
+    document.getElementById("btnResetTableState").addEventListener("click", () => {
+      currentState = new AnonState();
+      updateTableStatusUI();
+    });
+
+    // Rückübersetzen
+    document.getElementById("btnRunDeanonymize").addEventListener("click", () => {
+      const inp = document.getElementById("reverseInput").value;
+      const out = deanonymizeText(inp, currentState);
+      document.getElementById("reverseOutput").value = out;
+    });
+  }
+
+  // Export für automatisierte Tests unter Node.js
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      DEFAULT_RULES,
+      AnonState,
+      buildEngineConfig,
+      processText,
+      processPath,
+      deanonymizeText,
+      auditText,
+      isBinaryBytes,
+      decodeBytesWithBom,
+      buildReleaseZipEntries,
+      createZipArchive,
+      extractZipBuffer,
+      extractTarBuffer,
+      decompressGzip,
+      encryptTableWebCrypto,
+      decryptTableWebCrypto,
+      encryptTableAes256V2,
+      decryptTableAes256V2,
+      MIN_PASSWORD_LENGTH
+    };
+  }
+  </script>
+</body>
+</html>

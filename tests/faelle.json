@@ -1,0 +1,390 @@
+[
+  {
+    "id": "TC01",
+    "name": "Netzerhaltende IPv4 im selben /24 Subnetz",
+    "eingabe": "ip address 10.20.30.1/24\nip route 10.20.30.0/24 10.20.30.254",
+    "erwartet": "ip address NET-1.H1/24\nip route NET-1.H0/24 NET-1.H2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC02",
+    "name": "Nicht-netzerhaltende IPv4 mit Privat/Öffentlich-Trennung",
+    "eingabe": "src=192.168.10.55 dst=8.8.8.8",
+    "erwartet": "src=IP-PRIV-1 dst=IP-PUB-1",
+    "netzerhaltend": false,
+    "sauber": true
+  },
+  {
+    "id": "TC03",
+    "name": "IPv4 direkt an Unterstrich und Bindestrich-Maske (z.B. Objekt-/Routenname)",
+    "eingabe": "ip route static WAN_10.1.2.0-27 via 10.1.2.1/27",
+    "erwartet": "ip route static WAN_NET-1.H0-27 via NET-1.H1/27",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC04",
+    "name": "Subnetzmasken und 0.0.0.0 bleiben sichtbar",
+    "eingabe": "ip route 0.0.0.0 0.0.0.0 172.16.5.1\nmask 255.255.255.0 wildcard 0.0.0.255",
+    "erwartet": "ip route 0.0.0.0 0.0.0.0 NET-1.H1\nmask 255.255.255.0 wildcard 0.0.0.255",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC05",
+    "name": "IPv6 Link-Local und Global Unicast mit Präfix",
+    "eingabe": "ipv6 address fe80::1a2b:3c4d:5e6f:7a8b/64\nipv6 address 2001:db8:85a3::8a2e:370:7334/64",
+    "erwartet": "ipv6 address IP6-PRIV-1/64\nipv6 address IP6-PUB-1/64",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC06",
+    "name": "Uhrzeiten/Zeitstempel nicht als IPv6 oder MAC behandeln",
+    "eingabe": "2026-10-17 14:22:05.123 CET Interface up at 08:15:30 UTC",
+    "erwartet": "2026-10-17 14:22:05.123 CET Interface up at 08:15:30 UTC",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC07",
+    "name": "MAC neben Doppelpunkt-Zeitstempel korrekt trennen",
+    "eingabe": "12:34:56.789 LLDP neighbor 00:1a:2b:3c:4d:5e seen on Ethernet1/1/10",
+    "erwartet": "12:34:56.789 LLDP neighbor MAC-1 seen on Ethernet1/1/10",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC08",
+    "name": "MAC-Normalisierung über alle 4 Schreibweisen hinweg derselbe Platzhalter",
+    "eingabe": "m1=00:1a:2b:3c:4d:5e m2=00-1A-2B-3C-4D-5E m3=001a.2b3c.4d5e mac=001a2b3c4d5e",
+    "erwartet": "m1=MAC-1 m2=MAC-1 m3=MAC-1 mac=MAC-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC09",
+    "name": "Versionsnummern wie 10.13.1020 und Aruba FL.10.13.1020 nicht als IP behandeln",
+    "eingabe": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 10.5.3.2",
+    "erwartet": "ArubaOS-CX Version FL.10.13.1020 Build 10.13.1020\nSoftware version: 10.5.3.2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC10",
+    "name": "Normales Wort 'hash' und 'aes' und 'sha256' bleiben erhalten",
+    "eingabe": "crypto hash sha256 encryption aes load-balance hash src-dst-ip",
+    "erwartet": "crypto hash sha256 encryption aes load-balance hash src-dst-ip",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC11",
+    "name": "Portnamen (Ethernet1/1/10, PortChannel3, lag10, Gi1/0/1, Vlan100) nie ersetzen",
+    "eingabe": "interface Ethernet1/1/10 member of PortChannel3 and lag10 on Gi1/0/1 Vlan100",
+    "erwartet": "interface Ethernet1/1/10 member of PortChannel3 and lag10 on Gi1/0/1 Vlan100",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC12",
+    "name": "Aruba AOS-CX ciphertext Passwort entfernen",
+    "eingabe": "user admin group administrators password ciphertext AQBap928374918273498172394871293847192837491",
+    "erwartet": "user admin group administrators password ciphertext *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC13",
+    "name": "Aruba AOS-S RADIUS und WPA-Passphrase entfernen",
+    "eingabe": "radius-server host 10.0.0.5 key ciphertext 998877665544332211\nwpa-passphrase SuperGeheimesWlanPasswort!",
+    "erwartet": "radius-server host NET-1.H1 key ciphertext *****\nwpa-passphrase *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC14",
+    "name": "Cisco IOS enable secret und password 7 entfernen",
+    "eingabe": "enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0\nusername netop privilege 15 password 7 0822455D0A16",
+    "erwartet": "enable secret 5 *****\nusername USER-1 privilege 15 password 7 *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC15",
+    "name": "Cisco ISAKMP Pre-Shared-Key und Key-String entfernen",
+    "eingabe": "crypto isakmp key GeheimerVpnKey99! address 198.51.100.10\nkey-string 7 1234567890ABCDEF",
+    "erwartet": "crypto isakmp key ***** address NET-1.H1\nkey-string 7 *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC16",
+    "name": "Linux / OS10 / SONiC $6$ SHA-512 und $y$ yescrypt Hashes entfernen",
+    "eingabe": "root:$6$rounds=5000$saltsalt$abcDEF1234567890abcDEF1234567890:19000:0:99999:7:::\nsonic:$y$j9T$SaltString123$HashValue9876543210abcdef:19000",
+    "erwartet": "root:*****:19000:0:99999:7:::\nsonic:*****:19000",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC17",
+    "name": "SNMP Community und SNMPv3 Auth/Priv Passwörter entfernen",
+    "eingabe": "snmp-server community GeheimeCommunityRO ro\nsnmp-server user snmpadmin grp v3 auth sha256 AuthPass123! priv aes128 PrivPass456!",
+    "erwartet": "snmp-server community ***** ro\nsnmp-server user snmpadmin grp v3 auth sha256 ***** priv aes128 *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC18",
+    "name": "FortiGate ENC Passwort und PSKSecret entfernen",
+    "eingabe": "set password ENC AK1234567890abcdef1234567890\nset psksecret ENC 99887766554433221100aabbccddeeff",
+    "erwartet": "set password ENC *****\nset psksecret ENC *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC19",
+    "name": "Sophos XG / SFOS Shared-Secret und Radius-Secret entfernen",
+    "eingabe": "set shared-secret \"MeinSophosIpsecSecret!\"\nset radius-secret GeheimerRadius123",
+    "erwartet": "set shared-secret *****\nset radius-secret *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC20",
+    "name": "PEM-Zertifikat und Private Key Block komplett durch ***** ersetzen",
+    "eingabe": "crypto ca\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA1234567890abcdef\n9876543210fedcba==\n-----END RSA PRIVATE KEY-----\nexit",
+    "erwartet": "crypto ca\n*****\nexit",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC21",
+    "name": "API-Keys und Authorization Bearer Token entfernen",
+    "eingabe": "api_key=sk_live_9876543210abcdef\nAuthorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+    "erwartet": "api_key=*****\nAuthorization: Bearer *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC22",
+    "name": "Lange Hex- und Base64-Geheimnis-Blobs (>40 Zeichen) entfernen",
+    "eingabe": "key-blob a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718",
+    "erwartet": "key-blob *****",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC23",
+    "name": "Dell Enterprise SONiC Redis-JSON-Dump bleibt valides JSON nach Anonymisierung",
+    "eingabe": "{\"DEVICE_METADATA\":{\"localhost\":{\"hostname\":\"leaf-sw01\",\"mac\":\"00:11:22:33:44:55\",\"serial\":\"SN99887766\"}},\"TACPLUS\":{\"global\":{\"passkey\":\"TopSecret123\"}},\"PORT\":{\"Ethernet1/1/10\":{\"description\":\"Uplink zu rz1-sw-core01\"}}}",
+    "erwartet": "{\"DEVICE_METADATA\":{\"localhost\":{\"hostname\":\"HOST-1\",\"mac\":\"MAC-1\",\"serial\":\"SERIAL-1\"}},\"TACPLUS\":{\"global\":{\"passkey\":\"*****\"}},\"PORT\":{\"Ethernet1/1/10\":{\"description\":\"TEXT-1\"}}}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "jsonValid": true
+  },
+  {
+    "id": "TC24",
+    "name": "Feste Zuordnung aus anon-regeln.json (rz1-sw-core01 -> CORE-A)",
+    "eingabe": "neighbor rz1-sw-core01 connected to rz2-sw-core02 via fw-edge-01",
+    "erwartet": "neighbor CORE-A connected to CORE-B via FW-EDGE-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC25",
+    "name": "Firmen-, Standort- und Personennamen aus anon-regeln.json ersetzen",
+    "eingabe": "Eigentum der Musterfirma GmbH im Rechenzentrum-Nord, Ansprechpartner: Max Mustermann",
+    "erwartet": "Eigentum der FIRMA-1 im FIRMA-2, Ansprechpartner: FIRMA-3",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC26",
+    "name": "Interne Domains und FQDNs ersetzen",
+    "eingabe": "ntp server ntp01.intern.musterfirma.de domain-name intern.musterfirma.de",
+    "erwartet": "ntp server HOST-1 domain-name DOMAIN-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC27",
+    "name": "E-Mail-Adressen und URLs ersetzen",
+    "eingabe": "logging email noc@musterfirma.de webhook https://hooks.intern.musterfirma.de/alert/123",
+    "erwartet": "logging email MAIL-1 webhook URL-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC28",
+    "name": "Benutzernamen in Konfig und Syslog/Eventlog ersetzen (admin bleibt Ausnahme)",
+    "eingabe": "username jdoe privilege 15\nuser=mmustermann src=10.1.1.5\nSubjectUserName=kmayer\nusername admin privilege 15",
+    "erwartet": "username USER-1 privilege 15\nuser=USER-2 src=NET-1.H1\nSubjectUserName=USER-3\nusername admin privilege 15",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC29",
+    "name": "SSH Syslog Accepted/Failed password for <user> from <IP>",
+    "eingabe": "Oct 17 01:10:00 sshd[1234]: Failed password for invalid user backupop from 192.0.2.44 port 54321 ssh2",
+    "erwartet": "Oct 17 01:10:00 sshd[1234]: Failed password for invalid user USER-1 from NET-1.H1 port 54321 ssh2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC30",
+    "name": "Seriennummern, Service-Tags und Processor board ID ersetzen",
+    "eingabe": "Serial Number: CN12345678\nService Tag: 8H2K9Z2\nProcessor board ID FDO2211A0BC",
+    "erwartet": "Serial Number: SERIAL-1\nService Tag: SERIAL-2\nProcessor board ID SERIAL-3",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC31",
+    "name": "Freitext: Interface description und alias",
+    "eingabe": "interface Ethernet1/1/1\n   description Kunden-Uplink Halle 4\n   alias UPLINK_H4",
+    "erwartet": "interface Ethernet1/1/1\n   description TEXT-1\n   alias TEXT-2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC32",
+    "name": "Freitext: SNMP Location und Contact",
+    "eingabe": "snmp-server location Gebaeude B, 3. OG, Rack 12\nsnmp-server contact IT-Bereitschaft +49 711 123456",
+    "erwartet": "snmp-server location ORT-1\nsnmp-server contact KONTAKT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC33",
+    "name": "Freitext: Mehrzeiliges Banner motd ersetzen",
+    "eingabe": "banner motd ^\nNur autorisierter Zugriff auf Switch der Musterfirma GmbH!\nBei Fragen: Max Mustermann\n^",
+    "erwartet": "banner motd ^BANNER-1^",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC34",
+    "name": "LLDP / CDP System Name und System Description",
+    "eingabe": "System Name: sw-etage3-01\nSystem Description: Dell EMC Networking OS10-Enterprise",
+    "erwartet": "System Name: HOST-1\nSystem Description: TEXT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC35",
+    "name": "Hostname aus CLI-Prompt erkennen und im Folgetext konsistent ersetzen",
+    "eingabe": "sw-verteilung-09# show version\nUptime of sw-verteilung-09 is 42 days",
+    "erwartet": "HOST-1# show version\nUptime of HOST-1 is 42 days",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC36",
+    "name": "Konsistenz derselben Werte innerhalb eines Laufs",
+    "eingabe": "ping 10.50.60.10 source 10.50.60.1\nreply from 10.50.60.10 to 10.50.60.1",
+    "erwartet": "ping NET-1.H1 source NET-1.H2\nreply from NET-1.H1 to NET-1.H2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC37",
+    "name": "Rückübersetzung stellt netzerhaltende IPs, MACs und feste Rollen exakt wieder her",
+    "eingabe": "Route auf rz1-sw-core01 über 10.99.88.1/24 (MAC 00:aa:bb:cc:dd:ee) zu 10.99.88.50",
+    "erwartet": "Route auf CORE-A über NET-1.H1/24 (MAC MAC-1) zu NET-1.H2",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC38",
+    "name": "Einzelne Kategorie abschaltbar (z.B. MAC ausgeschaltet, IP eingeschaltet)",
+    "eingabe": "ip=10.1.1.1 mac=00:11:22:33:44:55",
+    "erwartet": "ip=NET-1.H1 mac=00:11:22:33:44:55",
+    "netzerhaltend": true,
+    "kategorien": ["ip", "geheimnisseEntfernen"],
+    "sauber": false
+  },
+  {
+    "id": "TC39",
+    "name": "Broadcast- und Null-MACs (ff:ff:ff:ff:ff:ff, 00:00:00:00:00:00) bleiben unverändert und SAUBER",
+    "eingabe": "arp 10.0.0.1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
+    "erwartet": "arp NET-1.H1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC40",
+    "name": "Loopback 127.0.0.1 und ::1 bleiben unverändert und SAUBER",
+    "eingabe": "listen 127.0.0.1 port 8080 ipv6 ::1",
+    "erwartet": "listen 127.0.0.1 port 8080 ipv6 ::1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC41",
+    "name": "Dell OS10 sysname und JSON-Konfig kombiniert",
+    "eingabe": "hostname os10-spine-01\n{\"username\":\"neteng\",\"password\":\"GeheimOS10!\"}",
+    "erwartet": "hostname HOST-1\n{\"username\":\"USER-1\",\"password\":\"*****\"}",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC42",
+    "name": "Windows Eventlog Zeile mit Account, IP und Domain",
+    "eingabe": "EventID=4624 SubjectUserName=admin_mayer TargetUserName=svc_backup IpAddress=10.40.50.60 Domain=ad.firma.lan",
+    "erwartet": "EventID=4624 SubjectUserName=USER-1 TargetUserName=USER-2 IpAddress=NET-1.H1 Domain=DOMAIN-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC43",
+    "name": "Punkt 1: VLAN-Namen (CLI und JSON) mit Firmenkürzel und öffentlichen IP-Netzen als Freitext erfassen",
+    "eingabe": "vlan 210\n   name MFW_WAN_198.51.100.0-24\n{\"vlan_name\":\"MFW_DMZ_203.0.113.0_24\",\"name\":\"Kundennetz_Nord\"}",
+    "erwartet": "vlan 210\n   name TEXT-1\n{\"vlan_name\":\"TEXT-2\",\"name\":\"TEXT-3\"}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "jsonValid": false
+  },
+  {
+    "id": "TC44",
+    "name": "Punkt 2: Aruba AOS-CX snmp-server system-location und system-contact erfassen",
+    "eingabe": "snmp-server system-location RZ-Sued Bau 3 Rack 7\nsnmp-server system-contact Netzbetrieb +49 89 987654",
+    "erwartet": "snmp-server system-location ORT-1\nsnmp-server system-contact KONTAKT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC45",
+    "name": "Punkt 3: Gerätenamen in LLDP-/MAC-/ARP-Tabellen ohne 'System Name:' über Namensschema erkennen",
+    "eingabe": "1/1/1   tsw-halle2-01   00:1a:2b:3c:4d:5e   1/1/24\n1/1/2   lwl-ring-nord02 00:1a:2b:3c:4d:5f   1/1/2",
+    "erwartet": "1/1/1   HOST-1   MAC-1   1/1/24\n1/1/2   HOST-2 MAC-2   1/1/2",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC46",
+    "name": "Punkt 4: erlaubtMuster akzeptiert Rollen wie TOR-A, SW-1 und Netze wie NET-3/24 im Prüfmodus",
+    "eingabe": "uplink rz1-tor-01 route NET-3/24 via SW-ACCESS-1",
+    "erwartet": "uplink TOR-A route NET-3/24 via HOST-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC47",
+    "name": "Punkt 5: Platform in LLDP/CDP bleibt als wichtiger Gerätetyp unverändert erhalten",
+    "eingabe": "System Name: tsw-etage1-04\nPlatform: Aruba 8325-48Y8C\nPort Description: Uplink_Core",
+    "erwartet": "System Name: HOST-1\nPlatform: Aruba 8325-48Y8C\nPort Description: TEXT-1",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC48",
+    "name": "Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte (rz1-tor-01 macht rz1-tor-010 nicht zu TOR-A0)",
+    "eingabe": "uplink rz1-tor-01 neighbor rz1-tor-010 site Rechenzentrum-Nord tag Rechenzentrum-Nord2",
+    "erwartet": "uplink TOR-A neighbor HOST-1 site FIRMA-1 tag Rechenzentrum-Nord2",
+    "netzerhaltend": true,
+    "sauber": true
+  }
+]

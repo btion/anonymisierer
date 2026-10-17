@@ -1,0 +1,24 @@
+{
+  "DEVICE_METADATA": {
+    "localhost": {
+      "hostname": "HOST-2",
+      "mac": "MAC-1",
+      "serial": "SERIAL-2",
+      "software_version": "4.2.0-Enterprise"
+    }
+  },
+  "VLAN_INTERFACE": {
+    "Vlan100|NET-1.H3/24": {}
+  },
+  "TACPLUS": {
+    "global": {
+      "passkey": "*****"
+    }
+  },
+  "PORT": {
+    "Ethernet1/1/10": {
+      "alias": "TEXT-4",
+      "description": "TEXT-5"
+    }
+  }
+}

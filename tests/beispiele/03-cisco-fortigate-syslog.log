@@ -1,0 +1,19 @@
+! Cisco IOS / FortiGate / Linux Syslog Kombiniertes Testbeispiel
+hostname cisco-dist-01
+enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+username backupop privilege 15 password 7 0822455D0A16
+Processor board ID FDO2211A0BC
+interface GigabitEthernet1/0/1
+   description Verbindung zu fw-edge-01
+   ip address 10.20.30.2 255.255.255.0
+   standby 1 ip 10.20.30.254
+   standby 1 mac-address 001a.2b3c.4d5e
+!
+config vpn ipsec phase1-interface
+    set psksecret ENC 99887766554433221100aabbccddeeff
+end
+Oct 17 12:34:56.789 sshd[4122]: Accepted publickey for netop from 10.20.30.1 port 51234 ssh2
+crypto ca certificate
+-----BEGIN CERTIFICATE-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef
+-----END CERTIFICATE-----

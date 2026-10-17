@@ -1,0 +1,20 @@
+! ArubaOS-CX Show-Tech Auszug (Synthetische Testdaten)
+hostname CORE-A
+Version FL.10.13.1020
+Serial Number: SERIAL-1
+user admin group administrators password ciphertext *****
+username USER-1 role administrators password plaintext *****
+radius-server host NET-1.H1 key ciphertext *****
+snmp-server community *****
+snmp-server location ORT-1
+snmp-server contact KONTAKT-1
+vlan 100
+   name TEXT-2
+interface Ethernet1/1/10
+   description TEXT-1
+   ip address NET-1.H2/24
+   ipv6 address IP6-PUB-1/64
+lldp neighbor-info 1/1/10
+   Chassis ID : MAC-1
+   System Name : HOST-1
+   System Description : TEXT-3
