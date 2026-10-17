@@ -543,6 +543,8 @@
         "OS10",
         "AOS-CX",
         "AOS-S",
+        "ArubaOS-CX",
+        "ArubaOS-S",
         "NX-OS",
         "IOS-XE",
         "SFOS",
@@ -594,6 +596,8 @@
         "0000.0000.0000",
         "AOS-CX",
         "AOS-S",
+        "ArubaOS-CX",
+        "ArubaOS-S",
         "OS10",
         "NX-OS",
         "IOS-XE",
@@ -748,7 +752,7 @@
       {
         "name": "MikroTik comment= (ohne Anführungszeichen)",
         "kategorie": "TEXT",
-        "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)([^\"\\s\\r\\n]+)()(?=[ \\t]|\\r?$)"
+        "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)(?!\")([^\"\\r\\n]+?)()(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
       },
       {
         "name": "MikroTik SNMP Location (location=)",
@@ -763,7 +767,7 @@
       {
         "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
         "kategorie": "TEXT",
-        "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)"
+        "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
       }
     ],
     "seriennummerMuster": [
@@ -1110,6 +1114,26 @@
       protectedValues.push(val);
       return `\u0002PROT_${idx}\u0003`;
     };
+    const unprotect = (val) => {
+      if (!val || val.indexOf("\u0002") === -1) return val;
+      return val.replace(/\u0002PROT_(\d+)\u0003/g, (pm, d) => {
+        const idx = parseInt(d, 10);
+        return (idx >= 0 && idx < protectedValues.length) ? protectedValues[idx] : pm;
+      });
+    };
+    const isOnlyProtectedOrExempt = (bodyVal) => {
+      if (!bodyVal || !bodyVal.trim() || bodyVal === "*****") return true;
+      const stripped = bodyVal.replace(/\u0002PROT_\d+\u0003/g, " ").trim();
+      if (!stripped) return true;
+      const parts = stripped.split(/\s+/);
+      for (const p of parts) {
+        if (!p) continue;
+        if (!cfg.exakteAusnahmen.has(p.toLowerCase())) {
+          return false;
+        }
+      }
+      return true;
+    };
 
     // STUFE 1: Geheimnisse ENTFERNEN (*****)
     if (cfg.catGeheimnisse) {
@@ -1143,21 +1167,24 @@
           const groups = args.slice(1, -2);
           if (groups.length >= 4 && fRule.category === "BANNER") {
             const body = (groups[2] || "").trim();
-            if (!body || body === "*****" || cfg.exakteAusnahmen.has(body.toLowerCase()) || body.indexOf("\u0002") !== -1) return m;
+            if (isOnlyProtectedOrExempt(body)) return m;
+            const cleanBody = unprotect(body);
             state.addStat("freitext", 1);
-            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + groups[1] + tok + groups[3]);
           } else if (groups.length >= 3) {
             const body = (groups[1] || "").trim();
-            if (!body || body === "*****" || cfg.exakteAusnahmen.has(body.toLowerCase()) || body.indexOf("\u0002") !== -1) return m;
+            if (isOnlyProtectedOrExempt(body)) return m;
+            const cleanBody = unprotect(body);
             state.addStat("freitext", 1);
-            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + tok + (groups[2] || ""));
           } else if (groups.length >= 2) {
             const body = (groups[1] || "").trim();
-            if (!body || body === "*****" || cfg.exakteAusnahmen.has(body.toLowerCase()) || body.indexOf("\u0002") !== -1) return m;
+            if (isOnlyProtectedOrExempt(body)) return m;
+            const cleanBody = unprotect(body);
             state.addStat("freitext", 1);
-            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, body, fRule.category);
+            const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + tok);
           }
           return m;

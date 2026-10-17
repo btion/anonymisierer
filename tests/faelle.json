@@ -426,5 +426,14 @@
     "erwartet": "/interface wireguard\nadd listen-port=13231 name=TEXT-1 private-key=*****\n/interface wireguard peers\nadd interface=TEXT-1 public-key=***** preshared-key=*****\n/ip dhcp-server lease\nadd address=NET-1.H1 mac-address=MAC-1 host-name=HOST-1 active-host-name=\"HOST-1\"",
     "netzerhaltend": true,
     "sauber": true
+  },
+  {
+    "id": "TC54",
+    "name": "Review-Befund 1: Freitext mit geschützten Tokens (Portnamen, Versionen) wird komplett ersetzt; reine Produkt+Version System Description bleibt erhalten",
+    "eingabe": "interface 1/1/10\n description Uplink Praxis Dr Weber Ethernet1/1/10\nsnmp-server system-location Standort München Ethernet1/1/2\n/interface ethernet\nset [ find default-name=ether1 ] comment=\"Kunde Weber Gi1/0/1\"\nvlan 20\n name Praxis_Weber_FL.10.13.1020\nSystem Description : Switch bei Weber FL.10.13.1020\nSystem Description : ArubaOS-CX FL.10.13.1020",
+    "erwartet": "interface 1/1/10\n description TEXT-1\nsnmp-server system-location ORT-1\n/interface ethernet\nset [ find default-name=ether1 ] comment=\"TEXT-4\"\nvlan 20\n name TEXT-2\nSystem Description : TEXT-3\nSystem Description : ArubaOS-CX FL.10.13.1020",
+    "netzerhaltend": true,
+    "sauber": true
   }
 ]
+

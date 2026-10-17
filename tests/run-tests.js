@@ -531,9 +531,139 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(sammlerPs1.includes("/ip dhcp-server lease print without-paging") && sammlerPs1.includes("MitDhcpLeases"), "switch-sammler.ps1 führt MikroTik DHCP-Leases in 07_extra.txt standardmäßig abgewählt und nur per -MitDhcpLeases");
   assert(Object.prototype.hasOwnProperty.call(sammlerJson, "abgewaehlteBefehle"), "sammler-befehle.json enthält abgewaehlteBefehle");
 
+  console.log("=== 8. Prüfe Code-Review Commit 65cd5d4 (Befunde 1–3) ===");
+  // Befund 1: Freitext-Leck bei geschützten Wörtern im Body (LF + CRLF)
+  const freitextSamplesByRule = {
+    "Mehrzeilige oder einzeilige Banner (banner/header motd, exec, login, shell, incoming)": "banner motd ^Kunde Mustermann Ethernet1/1/1^",
+    "SNMP Location & System-Location (CLI)": "snmp-server system-location Kunde Mustermann Ethernet1/1/1",
+    "SNMP Contact & System-Contact (CLI)": "snmp-server system-contact Kunde Mustermann Ethernet1/1/1",
+    "Interface Description / Alias (CLI)": " description Kunde Mustermann Ethernet1/1/1",
+    "VLAN-Namen (CLI)": " name Kunde Mustermann Ethernet1/1/1",
+    "VLAN-/Objektnamen (JSON)": "\"vlan_name\": \"Kunde Mustermann Ethernet1/1/1\"",
+    "SONiC / JSON Description, Alias, Location, Contact": "\"description\": \"Kunde Mustermann Ethernet1/1/1\"",
+    "LLDP / CDP System Description & Port Description": "System Description : Kunde Mustermann Ethernet1/1/1",
+    "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \\-Fortsetzung)": "set [ find default-name=ether1 ] comment=\"Kunde Mustermann Ethernet1/1/1\"",
+    "MikroTik comment= (ohne Anführungszeichen)": "set [ find default-name=ether1 ] comment=Kunde Mustermann Ethernet1/1/1",
+    "MikroTik SNMP Location (location=)": "/snmp set location=\"Kunde Mustermann Ethernet1/1/1\"",
+    "MikroTik SNMP Contact (contact=)": "/snmp set contact=\"Kunde Mustermann Ethernet1/1/1\"",
+    "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)": "/interface vlan add interface=bridge1 name=\"Kunde Mustermann Ethernet1/1/1\" vlan-id=10"
+  };
+  assert(
+    diskRules.freitextMuster.length === Object.keys(freitextSamplesByRule).length,
+    `Alle ${diskRules.freitextMuster.length} freitextMuster-Regeln sind im Mustermann+Ethernet1/1/1-Test abgedeckt`
+  );
+
+  for (const eol of ["\n", "\r\n"]) {
+    const label = eol === "\r\n" ? "CRLF" : "LF";
+    const ftState = new core.AnonState();
+    const ftCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+    const ftInput = [
+      "interface 1/1/10",
+      " description Uplink Praxis Dr Weber Ethernet1/1/10",
+      "snmp-server system-location Praxis Weber München Ethernet1/1/2",
+      "set [ find default-name=ether1 ] comment=\"Kunde Weber Gi1/0/1\"",
+      "vlan 20",
+      " name Praxis_Weber_FL.10.13.1020",
+      "System Description : Switch bei Weber FL.10.13.1020",
+      "System Description : ArubaOS-CX FL.10.13.1020"
+    ].join(eol);
+    const ftOut = core.processText(ftInput, ftCfg, ftState);
+    assert(
+      ftOut.includes(" description TEXT-1") && !ftOut.includes("Weber") && !ftOut.includes("Ethernet1/1/10"),
+      `Befund 1 (${label}): description mit Personenname + Portname (Ethernet1/1/10) wird komplett ersetzt`
+    );
+    assert(
+      ftOut.includes("snmp-server system-location ORT-1") && !ftOut.includes("München") && !ftOut.includes("Ethernet1/1/2"),
+      `Befund 1 (${label}): snmp-server system-location mit Ort + Portname wird komplett ersetzt`
+    );
+    assert(
+      ftOut.includes("comment=\"TEXT-4\"") && !ftOut.includes("Gi1/0/1"),
+      `Befund 1 (${label}): MikroTik comment=\"... Gi1/0/1\" wird komplett ersetzt`
+    );
+    assert(
+      ftOut.includes(" name TEXT-2"),
+      `Befund 1 (${label}): VLAN-name mit Name + Versionsnummer (FL.10.13.1020) wird komplett ersetzt`
+    );
+    assert(
+      ftOut.includes("System Description : TEXT-3") && !ftOut.includes("Switch bei Weber"),
+      `Befund 1 (${label}): System Description 'Switch bei Weber FL.10.13.1020' wird komplett ersetzt`
+    );
+    assert(
+      ftOut.includes("System Description : ArubaOS-CX FL.10.13.1020"),
+      `Befund 1 Positivtest (${label}): System Description 'ArubaOS-CX FL.10.13.1020' (nur Produkt + Version) bleibt erhalten`
+    );
+
+    // Schleife über ALLE freitextMuster: Body "Kunde Mustermann Ethernet1/1/1" muss bei jedem Muster ersetzt werden
+    for (const ruleObj of diskRules.freitextMuster) {
+      const sampleLine = freitextSamplesByRule[ruleObj.name];
+      assert(typeof sampleLine === "string", `Testzeile für freitextMuster '${ruleObj.name}' vorhanden`);
+      const singleRuleJson = JSON.parse(JSON.stringify(diskRules));
+      singleRuleJson.freitextMuster = [ruleObj];
+      const singleCfg = core.buildEngineConfig(singleRuleJson, { netzerhaltend: true });
+      const singleState = new core.AnonState();
+      const inputWithEol = sampleLine + eol + "next-line";
+      const outSingle = core.processText(inputWithEol, singleCfg, singleState);
+      const expectedPlaceholder = `${ruleObj.kategorie || "TEXT"}-1`;
+      assert(
+        outSingle.includes(expectedPlaceholder) && !outSingle.includes("Mustermann") && !outSingle.includes("Kunde") && !outSingle.includes("Ethernet1/1/1"),
+        `Befund 1 Alle-Muster-Test (${label}) [${ruleObj.name}]: 'Kunde Mustermann Ethernet1/1/1' wird durch ${expectedPlaceholder} ersetzt`
+      );
+    }
+  }
+
+  // Befunde 2 & 3: Prüfe switch-sammler.ps1 (Argument-Injection & %LOCALAPPDATA%\Anon\Temp mit ACL vor dem Schreiben)
+  const os = require("os");
+  const { spawnSync } = require("child_process");
+  const pwshCheck = spawnSync("pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], { encoding: "utf8" });
+  if (pwshCheck.status === 0) {
+    const tmpLocalAppData = fs.mkdtempSync(path.join(os.tmpdir(), "anon-js-localappdata-"));
+    const protokollPfad = path.join(tmpLocalAppData, "protokoll.json");
+    const sammlerAusgabe = path.join(tmpLocalAppData, "ausgabe");
+    const psTestScript = `
+      $ErrorActionPreference = "Stop"
+      . "${sammlerPs1Path.replace(/\\/g, "\\\\")}" -NurFunktionenLaden
+      $injCases = @(
+        @{ fn = { Test-SammlerBenutzerName -Benutzer "-oProxyCommand=calc" } },
+        @{ fn = { Test-SammlerHostNameOderIp -Wert "-oProxyCommand=x" } },
+        @{ fn = { Test-SammlerSprungserver -Sprungserver "x -oProxyCommand=y" } },
+        @{ fn = { Test-SammlerHostNameOderIp -Wert "sw01 mit leerzeichen" } },
+        @{ fn = { Test-SammlerHostNameOderIp -Wert 'sw01"quote' } },
+        @{ fn = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "SshKeyPfad" } },
+        @{ fn = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "PlinkPfad" } }
+      )
+      foreach ($c in $injCases) {
+        $threw = $false
+        try { & $c.fn } catch { $threw = $true }
+        if (-not $threw) { throw "Injection-Fall hat nicht geworfen!" }
+      }
+      $env:LOCALAPPDATA = "${tmpLocalAppData.replace(/\\/g, "\\\\")}"
+      $validKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@synthetic"
+      & "${sammlerPs1Path.replace(/\\/g, "\\\\")}" -Geraete @("sw-aoscx01") -Profil "aruba-aoscx" -Hostkey $validKey -MitPasswort -AusgabeOrdner "${sammlerAusgabe.replace(/\\/g, "\\\\")}" -TestModus -TestSimulationsOptionen @{
+        SimuliertesPasswort = "TestSecretPassword!"
+        ProtokollPfad       = "${protokollPfad.replace(/\\/g, "\\\\")}"
+      }
+    `;
+    const runRes = spawnSync("pwsh", ["-NoProfile", "-Command", psTestScript], { encoding: "utf8" });
+    assert(runRes.status === 0, `Befund 2 & 3 (via pwsh): Argument-Injection-Abwehr und Temp-Datei-Lauf erfolgreich (${runRes.stderr || "ok"})`);
+    if (fs.existsSync(protokollPfad)) {
+      const prot = JSON.parse(fs.readFileSync(protokollPfad, "utf8"));
+      const expectedTempSuffix = path.join("Anon", "Temp");
+      assert(prot.tempOrdner && prot.tempOrdner.endsWith(expectedTempSuffix), `Befund 3: Temp-Ordner liegt unter %LOCALAPPDATA%\\Anon\\Temp (${prot.tempOrdner})`);
+      assert(Array.isArray(prot.dateien) && prot.dateien.length === 3, "Befund 3: Passwort-Datei, known_hosts und Befehlsdatei wurden protokolliert");
+      for (const d of prot.dateien) {
+        assert(d.aclVorSchreiben === true && d.groesseVorAcl === 0 && d.groesseBeiAcl === 0, `Befund 3: Datei ${path.basename(d.pfad)} wurde ERST leer erzeugt + ACL gesetzt (0 Bytes), DANN beschrieben`);
+        assert(d.geloeschtNachLauf === true && !fs.existsSync(d.pfad), `Befund 3: Datei ${path.basename(d.pfad)} wurde nach dem Lauf im finally gelöscht`);
+      }
+    } else {
+      assert(false, "Befund 3: Protokolldatei wurde von switch-sammler.ps1 erzeugt");
+    }
+    fs.rmSync(tmpLocalAppData, { recursive: true, force: true });
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);
   process.exit(failed > 0 ? 1 : 0);
 })();
+
 

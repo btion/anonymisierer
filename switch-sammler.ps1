@@ -613,8 +613,283 @@ function Format-KnownHostsEintrag {
 }
 
 # ============================================================================
-# 4. DATEISCHUTZ (ACL NUR FUER AKTUELLEN BENUTZER & SICHERES LOESCHEN)
+# 3b. STRENGE PARAMETER- & GERAETE-VALIDIERUNG GEGEN ARGUMENT-INJECTION
 # ============================================================================
+function Test-SammlerPort {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port,
+        [string]$Kontext = "port"
+    )
+    if ($Port -lt 1 -or $Port -gt 65535) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Port '$Port' liegt ausserhalb des gueltigen Bereichs 1..65535."
+    }
+    return $true
+}
+
+function Test-SammlerHostNameOderIp {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Wert,
+        [string]$Kontext = "geraet"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Wert)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Hostname oder IP darf nicht leer sein."
+    }
+    if ($Wert.StartsWith("-", [StringComparison]::Ordinal)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): '$Wert' beginnt mit '-' (Argument-Injection verhindert)."
+    }
+    if ($Wert -match '[\s"''`;|><&`$]') {
+        throw "SICHERHEITSVERSTOSS ($Kontext): '$Wert' enthaelt unzulaessige Leer-, Anfuehrungs- oder Sonderzeichen."
+    }
+
+    # 1. IPv6-Literal (nur Hex-Ziffern und Doppelpunkte, kein %Zone-Suffix)
+    if ($Wert.IndexOf(':') -ge 0) {
+        if ($Wert -notmatch '^[0-9A-Fa-f:]{2,45}$') {
+            throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige IPv6-Adresse '$Wert'."
+        }
+        $ipObj = $null
+        if (-not [System.Net.IPAddress]::TryParse($Wert, [ref]$ipObj) -or $ipObj.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetworkV6) {
+            throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige IPv6-Adresse '$Wert'."
+        }
+        return $true
+    }
+
+    # 2. Rein numerisch mit Punkten -> muss gueltige IPv4-Adresse sein
+    if ($Wert -match '^\d+(?:\.\d+)*$') {
+        if ($Wert -notmatch '^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$') {
+            throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige IPv4-Adresse '$Wert'."
+        }
+        return $true
+    }
+
+    # 3. Hostname nach Vorgabe: ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ (kein fuehrendes '-', keine Leerzeichen)
+    if ($Wert -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$' -or $Wert.EndsWith("-", [StringComparison]::Ordinal) -or $Wert.Contains("..")) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltiger Hostname '$Wert'."
+    }
+    return $true
+}
+
+function Test-SammlerBenutzerName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Benutzer,
+        [string]$Kontext = "benutzer"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Benutzer)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Benutzername darf nicht leer sein."
+    }
+    if ($Benutzer.StartsWith("-", [StringComparison]::Ordinal)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Benutzername '$Benutzer' beginnt mit '-' (Argument-Injection verhindert)."
+    }
+    # Erlaubt: ^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}$ (fuer MikroTik optional +ct am Ende)
+    if ($Benutzer -notmatch '^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}(?:\+ct)?$') {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltiger Benutzername '$Benutzer' (Argument-Injection verhindert)."
+    }
+    return $true
+}
+
+function Test-SammlerSprungserver {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Sprungserver,
+        [string]$Kontext = "sprungserver"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Sprungserver)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Sprungserver darf nicht leer sein."
+    }
+    if ($Sprungserver.StartsWith("-", [StringComparison]::Ordinal)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Sprungserver '$Sprungserver' beginnt mit '-' (Argument-Injection verhindert)."
+    }
+    if ($Sprungserver -match '[\s"''`;|><&`$]') {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Sprungserver '$Sprungserver' enthaelt Leerzeichen oder verbotene Sonderzeichen."
+    }
+
+    $jumpUser = ""
+    $hostPortTeil = $Sprungserver
+    $atIdx = $Sprungserver.LastIndexOf('@')
+    if ($atIdx -ge 0) {
+        $jumpUser = $Sprungserver.Substring(0, $atIdx)
+        $hostPortTeil = $Sprungserver.Substring($atIdx + 1)
+        [void](Test-SammlerBenutzerName -Benutzer $jumpUser -Kontext "$Kontext (benutzer)")
+    }
+
+    if ([string]::IsNullOrWhiteSpace($hostPortTeil)) {
+        throw "SICHERHEITSVERSTOSS ($Kontext): Host-Anteil in '$Sprungserver' fehlt."
+    }
+
+    $jumpHost = ""
+    $jumpPort = 22
+
+    if ($hostPortTeil.StartsWith("[", [StringComparison]::Ordinal)) {
+        if ($hostPortTeil -match '^\[([^\]]+)\](?::(\d+))?$') {
+            $jumpHost = $Matches[1]
+            if (-not [string]::IsNullOrEmpty($Matches[2])) {
+                $jumpPort = [int]$Matches[2]
+            }
+        } else {
+            throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltiges IPv6-Sprungserver-Format '$Sprungserver'."
+        }
+    } elseif (($hostPortTeil.Split(':').Count - 1) -gt 1) {
+        # Ungeklammerte IPv6-Adresse ohne Port
+        $jumpHost = $hostPortTeil
+        $jumpPort = 22
+    } elseif ($hostPortTeil.IndexOf(':') -ge 0) {
+        if ($hostPortTeil -match '^([^:]+):(\d+)$') {
+            $jumpHost = $Matches[1]
+            $jumpPort = [int]$Matches[2]
+        } else {
+            throw "SICHERHEITSVERSTOSS ($Kontext): Ungueltige Portangabe in Sprungserver '$Sprungserver'."
+        }
+    } else {
+        $jumpHost = $hostPortTeil
+        $jumpPort = 22
+    }
+
+    [void](Test-SammlerHostNameOderIp -Wert $jumpHost -Kontext "$Kontext (host)")
+    [void](Test-SammlerPort -Port $jumpPort -Kontext "$Kontext (port)")
+
+    return @{
+        benutzer = $jumpUser
+        host     = $jumpHost
+        port     = $jumpPort
+        original = $Sprungserver
+    }
+}
+
+function Test-SammlerDateiPfad {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Pfad,
+        [string]$ParameterName = "DateiPfad"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Pfad)) {
+        throw "SICHERHEITSVERSTOSS ($ParameterName): Dateipfad darf nicht leer sein."
+    }
+    $trimmed = $Pfad.TrimStart()
+    if ($trimmed.StartsWith("-", [StringComparison]::Ordinal)) {
+        throw "SICHERHEITSVERSTOSS ($ParameterName): Dateipfad '$Pfad' darf nicht mit '-' beginnen (Argument-Injection verhindert)."
+    }
+    if ($Pfad.IndexOf("`r") -ge 0 -or $Pfad.IndexOf("`n") -ge 0 -or $Pfad.IndexOf([char]0) -ge 0) {
+        throw "SICHERHEITSVERSTOSS ($ParameterName): Dateipfad '$Pfad' enthaelt unzulaessige Steuerzeichen."
+    }
+    if (-not (Test-Path -LiteralPath $Pfad -PathType Leaf)) {
+        throw "SICHERHEITSVERSTOSS ($ParameterName): Datei '$Pfad' existiert nicht oder ist kein regulärer Dateipfad."
+    }
+    return $true
+}
+
+function Test-SammlerGeraeteEintrag {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Eintrag
+    )
+
+    [void](Test-SammlerHostNameOderIp -Wert ([string]$Eintrag.geraet) -Kontext "geraet")
+    [void](Test-SammlerBenutzerName -Benutzer ([string]$Eintrag.benutzer) -Kontext "benutzer fuer '$($Eintrag.geraet)'")
+    $portInt = 0
+    if (-not [int]::TryParse("$($Eintrag.port)", [ref]$portInt)) {
+        throw "SICHERHEITSVERSTOSS (port fuer '$($Eintrag.geraet)'): Port '$($Eintrag.port)' ist keine gueltige Zahl."
+    }
+    [void](Test-SammlerPort -Port $portInt -Kontext "port fuer '$($Eintrag.geraet)'")
+    if (-not [string]::IsNullOrWhiteSpace([string]$Eintrag.sprungserver)) {
+        [void](Test-SammlerSprungserver -Sprungserver ([string]$Eintrag.sprungserver) -Kontext "sprungserver fuer '$($Eintrag.geraet)'")
+    }
+    return $true
+}
+
+function Format-WindowsProzessArgument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Argument
+    )
+    if ($Argument.Length -eq 0) {
+        return '""'
+    }
+    if ($Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+    # CommandLineToArgvW-konformes Escaping:
+    # 1. Alle Backslashes unmittelbar vor einem " verdoppeln und " als \" escapen
+    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
+    # 2. Alle Backslashes am Ende des Strings verdoppeln, damit sie nicht das schliessende " escapen
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
+function Join-WindowsProzessArgumente {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Argumente
+    )
+    $teile = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($a in $Argumente) {
+        $teile.Add((Format-WindowsProzessArgument -Argument $a))
+    }
+    return ($teile -join " ")
+}
+
+# ============================================================================
+# 4. DATEISCHUTZ (%LOCALAPPDATA%\Anon\Temp, ACL VOR DEM SCHREIBEN, LOESCHUNG)
+# ============================================================================
+$script:SammlerTempDateiProtokoll = New-Object 'System.Collections.Generic.List[hashtable]'
+
+function Protect-SammlerTempOrdner {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OrdnerPfad
+    )
+    $isWin = ($env:OS -eq "Windows_NT")
+    if ($isWin) {
+        try {
+            $acl = New-Object System.Security.AccessControl.DirectorySecurity
+            $acl.SetAccessRuleProtection($true, $false)
+            $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $inheritFlags = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+            $propFlags = [System.Security.AccessControl.PropagationFlags]::None
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                $currentUser,
+                [System.Security.AccessControl.FileSystemRights]::FullControl,
+                $inheritFlags,
+                $propFlags,
+                [System.Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.AddAccessRule($rule)
+            Set-Acl -LiteralPath $OrdnerPfad -AclObject $acl
+        } catch {
+            Write-Verbose "Ordner-ACL-Schutz Hinweis: $($_.Exception.Message)"
+        }
+    } else {
+        try {
+            & chmod 700 $OrdnerPfad 2>$null
+        } catch {}
+    }
+}
+
+function Get-SammlerTempOrdner {
+    $basis = $env:LOCALAPPDATA
+    if ([string]::IsNullOrWhiteSpace($basis)) {
+        $basis = [System.IO.Path]::GetTempPath()
+    }
+    $anonBasis = Join-Path $basis "Anon"
+    $tempOrdner = Join-Path $anonBasis "Temp"
+    if (-not (Test-Path -LiteralPath $tempOrdner)) {
+        [void](New-Item -ItemType Directory -Path $tempOrdner -Force)
+    }
+    Protect-SammlerTempOrdner -OrdnerPfad $tempOrdner
+    return $tempOrdner
+}
+
 function Protect-SammlerTempDatei {
     param(
         [Parameter(Mandatory = $true)]
@@ -641,6 +916,50 @@ function Protect-SammlerTempDatei {
             & chmod 600 $Pfad 2>$null
         } catch {}
     }
+}
+
+function New-GeschuetzteSammlerTempDatei {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Pfad,
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$Inhalt = ""
+    )
+
+    $elternOrdner = [System.IO.Path]::GetDirectoryName($Pfad)
+    if (-not [string]::IsNullOrWhiteSpace($elternOrdner)) {
+        if (-not (Test-Path -LiteralPath $elternOrdner)) {
+            [void](New-Item -ItemType Directory -Path $elternOrdner -Force)
+        }
+        Protect-SammlerTempOrdner -OrdnerPfad $elternOrdner
+    }
+
+    # Schritt 1: Datei ERST leer (0 Bytes) erzeugen
+    [System.IO.File]::WriteAllBytes($Pfad, [byte[]]@())
+    $groesseVorAcl = (Get-Item -LiteralPath $Pfad).Length
+
+    # Schritt 2: Benutzer-ACL setzen, solange die Datei noch leer (0 Bytes) ist
+    Protect-SammlerTempDatei -Pfad $Pfad
+    $groesseBeiAcl = (Get-Item -LiteralPath $Pfad).Length
+
+    # Schritt 3: ERST DANACH den sensiblen Inhalt in die bereits geschuetzte Datei schreiben
+    if (-not [string]::IsNullOrEmpty($Inhalt)) {
+        [System.IO.File]::WriteAllText($Pfad, $Inhalt, (New-Object System.Text.UTF8Encoding($false)))
+    }
+    $groesseNachSchreiben = (Get-Item -LiteralPath $Pfad).Length
+
+    if ($null -ne $script:SammlerTempDateiProtokoll) {
+        $script:SammlerTempDateiProtokoll.Add(@{
+            pfad                 = $Pfad
+            groesseVorAcl        = $groesseVorAcl
+            groesseBeiAcl        = $groesseBeiAcl
+            groesseNachSchreiben = $groesseNachSchreiben
+            aclVorSchreiben      = ($groesseVorAcl -eq 0 -and $groesseBeiAcl -eq 0)
+        })
+    }
+
+    return $Pfad
 }
 
 function Remove-SammlerTempDateiSicher {
@@ -785,15 +1104,14 @@ function Invoke-SshProzess {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $Programm
-    # Baue ArgumentString sauber mit Quoting
-    $escapedArgs = foreach ($a in $Argumente) {
-        if ($a -match '[\s"]') {
-            '"' + ($a -replace '"', '\"') + '"'
-        } else {
-            $a
+    # Nutze ArgumentList (ab .NET Core / PS 7) bzw. CommandLineToArgvW-konformes Quoting (PS 5.1)
+    if ($null -ne $psi.PSObject.Properties["ArgumentList"]) {
+        foreach ($a in $Argumente) {
+            [void]$psi.ArgumentList.Add($a)
         }
+    } else {
+        $psi.Arguments = Join-WindowsProzessArgumente -Argumente $Argumente
     }
-    $psi.Arguments = ($escapedArgs -join " ")
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -1042,7 +1360,7 @@ if ($NurFunktionenLaden) {
 }
 
 # ============================================================================
-# 8. GERAETELISTE LADEN & PARAMETER PRUEFEN
+# 8. GERAETELISTE LADEN & PARAMETER STRENG PRUEFEN (VOR JEDER VERWENDUNG)
 # ============================================================================
 $skriptOrdner = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($skriptOrdner)) {
@@ -1051,6 +1369,19 @@ if ([string]::IsNullOrWhiteSpace($skriptOrdner)) {
 
 if ([string]::IsNullOrWhiteSpace($AusgabeOrdner)) {
     $AusgabeOrdner = Join-Path $skriptOrdner "sammler-ausgabe"
+}
+
+# Strenge Vorab-Validierung aller CLI-Parameter gegen Argument-Injection
+[void](Test-SammlerPort -Port $Port -Kontext "Parameter -Port")
+[void](Test-SammlerBenutzerName -Benutzer $Benutzer -Kontext "Parameter -Benutzer")
+if (-not [string]::IsNullOrWhiteSpace($Sprungserver)) {
+    [void](Test-SammlerSprungserver -Sprungserver $Sprungserver -Kontext "Parameter -Sprungserver")
+}
+if (-not [string]::IsNullOrWhiteSpace($SshKeyPfad)) {
+    [void](Test-SammlerDateiPfad -Pfad $SshKeyPfad -ParameterName "SshKeyPfad")
+}
+if ($PSBoundParameters.ContainsKey("PlinkPfad") -or ($MitPasswort -and -not $TestModus)) {
+    [void](Test-SammlerDateiPfad -Pfad $PlinkPfad -ParameterName "PlinkPfad")
 }
 
 $abwahlProProfil = @{}
@@ -1073,7 +1404,14 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
     if ($ext -eq ".json") {
         $jsonItems = ([System.IO.File]::ReadAllText($GeraeteDatei, [System.Text.Encoding]::UTF8) | ConvertFrom-Json)
         foreach ($item in $jsonItems) {
-            $gPort = if ($null -ne $item.PSObject.Properties["port"] -and "$($item.port)" -ne "") { [int]$item.port } else { $Port }
+            $gPort = $Port
+            if ($null -ne $item.PSObject.Properties["port"] -and "$($item.port)" -ne "") {
+                $parsedPort = 0
+                if (-not [int]::TryParse("$($item.port)", [ref]$parsedPort)) {
+                    throw "SICHERHEITSVERSTOSS (port): Ungueltiger Port '$($item.port)' in Geraetedatei."
+                }
+                $gPort = $parsedPort
+            }
             $gBenutzer = if ($null -ne $item.PSObject.Properties["benutzer"] -and "$($item.benutzer)" -ne "") { [string]$item.benutzer } else { $Benutzer }
             $gHostkey = if ($null -ne $item.PSObject.Properties["hostkey"]) { [string]$item.hostkey } else { "" }
             $gJump = if ($null -ne $item.PSObject.Properties["sprungserver"] -and "$($item.sprungserver)" -ne "") { [string]$item.sprungserver } else { $Sprungserver }
@@ -1081,7 +1419,7 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
             $gLegacy = if ($null -ne $item.PSObject.Properties["legacyKex"] -and ("$($item.legacyKex)" -match '^(?i:true|1|ja|yes)$')) { $true } else { $false }
             $gClick = if ($null -ne $item.PSObject.Properties["sonicClickCli"] -and ("$($item.sonicClickCli)" -match '^(?i:true|1|ja|yes)$')) { $true } else { [bool]$SonicClickCli }
 
-            $geraeteListe.Add(@{
+            $eintrag = @{
                 geraet              = [string]$item.geraet
                 profil              = ([string]$item.profil).ToLowerInvariant()
                 port                = $gPort
@@ -1091,13 +1429,22 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
                 sprungserverHostkey = $gJumpKey
                 legacyKex           = $gLegacy
                 sonicClickCli       = $gClick
-            })
+            }
+            [void](Test-SammlerGeraeteEintrag -Eintrag $eintrag)
+            $geraeteListe.Add($eintrag)
         }
     } else {
         $csvItems = Import-Csv -LiteralPath $GeraeteDatei -Encoding UTF8
         foreach ($row in $csvItems) {
             if ([string]::IsNullOrWhiteSpace($row.geraet)) { continue }
-            $gPort = if ($null -ne $row.PSObject.Properties["port"] -and "$($row.port)" -ne "") { [int]$row.port } else { $Port }
+            $gPort = $Port
+            if ($null -ne $row.PSObject.Properties["port"] -and "$($row.port)" -ne "") {
+                $parsedPort = 0
+                if (-not [int]::TryParse("$($row.port)", [ref]$parsedPort)) {
+                    throw "SICHERHEITSVERSTOSS (port): Ungueltiger Port '$($row.port)' in Geraetedatei."
+                }
+                $gPort = $parsedPort
+            }
             $gBenutzer = if ($null -ne $row.PSObject.Properties["benutzer"] -and "$($row.benutzer)" -ne "") { [string]$row.benutzer } else { $Benutzer }
             $gHostkey = if ($null -ne $row.PSObject.Properties["hostkey"]) { [string]$row.hostkey } else { "" }
             $gJump = if ($null -ne $row.PSObject.Properties["sprungserver"] -and "$($row.sprungserver)" -ne "") { [string]$row.sprungserver } else { $Sprungserver }
@@ -1105,7 +1452,7 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
             $gLegacy = if ($null -ne $row.PSObject.Properties["legacyKex"] -and ("$($row.legacyKex)" -match '^(?i:true|1|ja|yes)$')) { $true } else { $false }
             $gClick = if ($null -ne $row.PSObject.Properties["sonicClickCli"] -and ("$($row.sonicClickCli)" -match '^(?i:true|1|ja|yes)$')) { $true } else { [bool]$SonicClickCli }
 
-            $geraeteListe.Add(@{
+            $eintrag = @{
                 geraet              = [string]$row.geraet
                 profil              = ([string]$row.profil).ToLowerInvariant()
                 port                = $gPort
@@ -1115,12 +1462,14 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
                 sprungserverHostkey = $gJumpKey
                 legacyKex           = $gLegacy
                 sonicClickCli       = $gClick
-            })
+            }
+            [void](Test-SammlerGeraeteEintrag -Eintrag $eintrag)
+            $geraeteListe.Add($eintrag)
         }
     }
 } elseif ($Geraete.Count -gt 0) {
     foreach ($g in $Geraete) {
-        $geraeteListe.Add(@{
+        $eintrag = @{
             geraet              = [string]$g
             profil              = $Profil.ToLowerInvariant()
             port                = $Port
@@ -1130,7 +1479,9 @@ if (-not [string]::IsNullOrWhiteSpace($GeraeteDatei)) {
             sprungserverHostkey = $SprungserverHostkey
             legacyKex           = $false
             sonicClickCli       = [bool]$SonicClickCli
-        })
+        }
+        [void](Test-SammlerGeraeteEintrag -Eintrag $eintrag)
+        $geraeteListe.Add($eintrag)
     }
 } else {
     throw "Bitte mindestens ein Geraet ueber -Geraete oder -GeraeteDatei angeben."
@@ -1145,6 +1496,7 @@ if ($Trockenlauf) {
     Write-Host "============================================================" -ForegroundColor Cyan
 
     foreach ($g in $geraeteListe) {
+        [void](Test-SammlerGeraeteEintrag -Eintrag $g)
         $gName = $g.geraet
         $pName = $g.profil
         Write-Host ""
@@ -1156,6 +1508,7 @@ if ($Trockenlauf) {
         Write-Host "  Plink-Fingerprint  : $($hkInfo.fingerprint)"
 
         if (-not [string]::IsNullOrWhiteSpace($g.sprungserver)) {
+            [void](Test-SammlerSprungserver -Sprungserver $g.sprungserver -Kontext "Sprungserver fuer '$gName'")
             $jkInfo = ConvertFrom-SshPublicKey -PublicKeyLine $g.sprungserverHostkey -Kontext "Sprungserver '$($g.sprungserver)' (sprungserverHostkey)"
             Write-Host "  Sprungserver       : $($g.sprungserver) ($($jkInfo.fingerprint))"
         }
@@ -1212,32 +1565,40 @@ $zeitstempel = (Get-Date).ToString("yyyyMMdd-HHmmss")
 $rohBasisOrdner = Join-Path (Join-Path $AusgabeOrdner "roh") $zeitstempel
 [void](New-Item -ItemType Directory -Path $rohBasisOrdner -Force)
 
-$tempKnownHosts = Join-Path ([System.IO.Path]::GetTempPath()) ("sammler_known_hosts_" + [guid]::NewGuid().ToString("N") + ".txt")
+$sammlerTempOrdner = Get-SammlerTempOrdner
+$tempKnownHosts = Join-Path $sammlerTempOrdner ("sammler_known_hosts_" + [guid]::NewGuid().ToString("N") + ".txt")
 $tempPwFile = ""
 $tempBefehlsDateien = New-Object 'System.Collections.Generic.List[string]'
 $mindestensEinGeraetFehlgeschlagen = $false
 
 try {
-    # Passwort-Fallback nur interaktiv per Read-Host -AsSecureString
-    if ($MitPasswort -and -not $TestModus) {
-        $secPw = Read-Host -Prompt "SSH-Passwort fuer plink.exe eingeben" -AsSecureString
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPw)
-        try {
-            $plainPw = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-            $tempPwFile = Join-Path ([System.IO.Path]::GetTempPath()) ("sammler_pw_" + [guid]::NewGuid().ToString("N") + ".txt")
-            [System.IO.File]::WriteAllText($tempPwFile, $plainPw, (New-Object System.Text.UTF8Encoding($false)))
-            Protect-SammlerTempDatei -Pfad $tempPwFile
-        } finally {
-            if ($bstr -ne [IntPtr]::Zero) {
-                [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    # Passwort-Fallback nur interaktiv per Read-Host -AsSecureString (oder simuliert im TestModus)
+    if ($MitPasswort) {
+        if (-not $TestModus) {
+            [void](Test-SammlerDateiPfad -Pfad $PlinkPfad -ParameterName "PlinkPfad")
+            $secPw = Read-Host -Prompt "SSH-Passwort fuer plink.exe eingeben" -AsSecureString
+            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPw)
+            try {
+                $plainPw = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+                $tempPwFile = Join-Path $sammlerTempOrdner ("sammler_pw_" + [guid]::NewGuid().ToString("N") + ".txt")
+                # ERST leer erzeugen + ACL setzen, DANN Passwort schreiben
+                [void](New-GeschuetzteSammlerTempDatei -Pfad $tempPwFile -Inhalt $plainPw)
+            } finally {
+                if ($bstr -ne [IntPtr]::Zero) {
+                    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+                }
             }
+        } elseif ($null -ne $TestSimulationsOptionen -and $TestSimulationsOptionen.ContainsKey("SimuliertesPasswort")) {
+            $tempPwFile = Join-Path $sammlerTempOrdner ("sammler_pw_" + [guid]::NewGuid().ToString("N") + ".txt")
+            [void](New-GeschuetzteSammlerTempDatei -Pfad $tempPwFile -Inhalt ([string]$TestSimulationsOptionen["SimuliertesPasswort"]))
         }
     }
 
-    [System.IO.File]::WriteAllText($tempKnownHosts, "", (New-Object System.Text.UTF8Encoding($false)))
-    Protect-SammlerTempDatei -Pfad $tempKnownHosts
+    # known_hosts ERST leer erzeugen + ACL setzen
+    [void](New-GeschuetzteSammlerTempDatei -Pfad $tempKnownHosts -Inhalt "")
 
     foreach ($g in $geraeteListe) {
+        [void](Test-SammlerGeraeteEintrag -Eintrag $g)
         $gName = $g.geraet
         $pName = $g.profil
         $gClick = [bool]$g.sonicClickCli
@@ -1253,14 +1614,16 @@ try {
         # 1. Hostkey & optionalen Sprungserver-Hostkey validieren (kein TOFU!)
         $hkInfo = $null
         $jkInfo = $null
+        $jumpParsed = $null
         try {
             $hkInfo = ConvertFrom-SshPublicKey -PublicKeyLine $g.hostkey -Kontext "Geraet '$gName' (hostkey)"
             $khLine = Format-KnownHostsEintrag -HostName $gName -Port $g.port -KeyInfo $hkInfo
             [System.IO.File]::AppendAllText($tempKnownHosts, "$khLine`n", (New-Object System.Text.UTF8Encoding($false)))
 
             if (-not [string]::IsNullOrWhiteSpace($g.sprungserver)) {
+                $jumpParsed = Test-SammlerSprungserver -Sprungserver $g.sprungserver -Kontext "Sprungserver '$($g.sprungserver)' fuer '$gName'"
                 $jkInfo = ConvertFrom-SshPublicKey -PublicKeyLine $g.sprungserverHostkey -Kontext "Sprungserver '$($g.sprungserver)' fuer '$gName' (sprungserverHostkey)"
-                $jkLine = Format-KnownHostsEintrag -HostName $g.sprungserver -Port 22 -KeyInfo $jkInfo
+                $jkLine = Format-KnownHostsEintrag -HostName $jumpParsed.host -Port $jumpParsed.port -KeyInfo $jkInfo
                 [System.IO.File]::AppendAllText($tempKnownHosts, "$jkLine`n", (New-Object System.Text.UTF8Encoding($false)))
             }
         } catch {
@@ -1345,13 +1708,26 @@ try {
             $dateiInhalte[$dn] = New-Object 'System.Collections.Generic.List[string]'
         }
 
-        # Hilfsfunktion zum Aufbau der SSH/Plink-Argumente
+        # Hilfsfunktion zum Aufbau der SSH/Plink-Argumente (nach strenger Validierung)
         $buildSshArgs = {
             param([string]$EinzelBefehl = "", [string]$ShellBatchDatei = "")
+            [void](Test-SammlerGeraeteEintrag -Eintrag $g)
             if ($MitPasswort) {
+                [void](Test-SammlerDateiPfad -Pfad $PlinkPfad -ParameterName "PlinkPfad")
                 $pArgs = @("-batch", "-P", "$($g.port)", "-l", $g.benutzer, "-hostkey", $hkInfo.fingerprint, "-pwfile", $tempPwFile)
                 if (-not [string]::IsNullOrWhiteSpace($g.sprungserver)) {
-                    $proxyCmd = "$PlinkPfad -batch -hostkey $($jkInfo.fingerprint) -pwfile `"$tempPwFile`" -nc %host:%port $($g.sprungserver)"
+                    $jInfo = Test-SammlerSprungserver -Sprungserver $g.sprungserver -Kontext "sprungserver"
+                    $proxyParts = @((Format-WindowsProzessArgument -Argument $PlinkPfad), "-batch", "-P", "$($jInfo.port)")
+                    if (-not [string]::IsNullOrWhiteSpace($jInfo.benutzer)) {
+                        $proxyParts += @("-l", (Format-WindowsProzessArgument -Argument $jInfo.benutzer))
+                    }
+                    $proxyParts += @(
+                        "-hostkey", (Format-WindowsProzessArgument -Argument $jkInfo.fingerprint),
+                        "-pwfile", (Format-WindowsProzessArgument -Argument $tempPwFile),
+                        "-nc", "%host:%port",
+                        (Format-WindowsProzessArgument -Argument $jInfo.host)
+                    )
+                    $proxyCmd = $proxyParts -join " "
                     $pArgs += @("-proxycmd", $proxyCmd)
                 }
                 if (-not [string]::IsNullOrWhiteSpace($ShellBatchDatei)) {
@@ -1369,6 +1745,7 @@ try {
                     "-p", "$($g.port)"
                 )
                 if (-not [string]::IsNullOrWhiteSpace($SshKeyPfad)) {
+                    [void](Test-SammlerDateiPfad -Pfad $SshKeyPfad -ParameterName "SshKeyPfad")
                     $sArgs += @("-i", $SshKeyPfad)
                 }
                 if ($g.legacyKex) {
@@ -1378,6 +1755,7 @@ try {
                     )
                 }
                 if (-not [string]::IsNullOrWhiteSpace($g.sprungserver)) {
+                    [void](Test-SammlerSprungserver -Sprungserver $g.sprungserver -Kontext "sprungserver")
                     $sArgs += @("-J", $g.sprungserver)
                 }
                 if (-not [string]::IsNullOrWhiteSpace($ShellBatchDatei)) {
@@ -1401,12 +1779,11 @@ try {
                 $alleSitzungsBefehle.Add([string]$b.befehl)
             }
 
-            # Schreibe temporaere Befehlsdatei mit Benutzer-ACL und pruefe sie gegen die 2-Stufen-Allowlist
-            $tempBatchPfad = Join-Path ([System.IO.Path]::GetTempPath()) ("sammler_cmd_" + $sichererGeraeteOrdnerName + "_" + [guid]::NewGuid().ToString("N") + ".txt")
+            # Schreibe temporaere Befehlsdatei in %LOCALAPPDATA%\Anon\Temp (ERST leer + ACL setzen, DANN Inhalt schreiben)
+            $tempBatchPfad = Join-Path $sammlerTempOrdner ("sammler_cmd_" + $sichererGeraeteOrdnerName + "_" + [guid]::NewGuid().ToString("N") + ".txt")
             $tempBefehlsDateien.Add($tempBatchPfad)
             $batchText = ($alleSitzungsBefehle -join "`n") + "`n"
-            [System.IO.File]::WriteAllText($tempBatchPfad, $batchText, (New-Object System.Text.UTF8Encoding($false)))
-            Protect-SammlerTempDatei -Pfad $tempBatchPfad
+            [void](New-GeschuetzteSammlerTempDatei -Pfad $tempBatchPfad -Inhalt $batchText)
 
             # Pflichtpruefung: Befehlsdatei unterliegt derselben 2-Stufen-Allowlist-Pruefung
             [void](Test-SammlerBefehlsDateiInhalt -DateiPfad $tempBatchPfad -ProfilName $pName -ClickCli:$gClick)
@@ -1663,6 +2040,18 @@ try {
     foreach ($bf in $tempBefehlsDateien) {
         Remove-SammlerTempDateiSicher -Pfad $bf
     }
+}
+
+if ($TestModus -and $null -ne $TestSimulationsOptionen -and $TestSimulationsOptionen.ContainsKey("ProtokollPfad")) {
+    $protokollPfad = [string]$TestSimulationsOptionen["ProtokollPfad"]
+    foreach ($pEintrag in $script:SammlerTempDateiProtokoll) {
+        $pEintrag["geloeschtNachLauf"] = (-not (Test-Path -LiteralPath ([string]$pEintrag.pfad)))
+    }
+    $protokollObj = [ordered]@{
+        tempOrdner = $sammlerTempOrdner
+        dateien    = $script:SammlerTempDateiProtokoll
+    }
+    [System.IO.File]::WriteAllText($protokollPfad, ($protokollObj | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # ============================================================================

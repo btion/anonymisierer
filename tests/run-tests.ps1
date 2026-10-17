@@ -704,6 +704,153 @@ $anonTimestampDir = Get-ChildItem -LiteralPath (Join-Path $sammlerOutE2E "anonym
 $e2eBericht = Get-Content -LiteralPath (Join-Path $anonTimestampDir.FullName "bericht.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-Equal $e2eBericht.pruefergebnis "SAUBER" "Anonymisierte Sammler-Ausgabe ist im Prüfmodus SAUBER"
 
+Write-Host "`n=== 7. Prüfe Code-Review Commit 65cd5d4 (Befunde 1–3) ===" -ForegroundColor Cyan
+
+# 7.1 Befund 1: Freitext-Leck bei geschützten Wörtern im Body (LF + CRLF, inkl. Alle-freitextMuster-Schleife)
+$freitextSamplesByRule = @{
+    "Mehrzeilige oder einzeilige Banner (banner/header motd, exec, login, shell, incoming)" = "banner motd ^Kunde Mustermann Ethernet1/1/1^"
+    "SNMP Location & System-Location (CLI)"                                                 = "snmp-server system-location Kunde Mustermann Ethernet1/1/1"
+    "SNMP Contact & System-Contact (CLI)"                                                   = "snmp-server system-contact Kunde Mustermann Ethernet1/1/1"
+    "Interface Description / Alias (CLI)"                                                   = " description Kunde Mustermann Ethernet1/1/1"
+    "VLAN-Namen (CLI)"                                                                      = " name Kunde Mustermann Ethernet1/1/1"
+    "VLAN-/Objektnamen (JSON)"                                                              = '"vlan_name": "Kunde Mustermann Ethernet1/1/1"'
+    "SONiC / JSON Description, Alias, Location, Contact"                                    = '"description": "Kunde Mustermann Ethernet1/1/1"'
+    "LLDP / CDP System Description & Port Description"                                      = "System Description : Kunde Mustermann Ethernet1/1/1"
+    "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \-Fortsetzung)" = 'set [ find default-name=ether1 ] comment="Kunde Mustermann Ethernet1/1/1"'
+    "MikroTik comment= (ohne Anführungszeichen)"                                            = "set [ find default-name=ether1 ] comment=Kunde Mustermann Ethernet1/1/1"
+    "MikroTik SNMP Location (location=)"                                                    = '/snmp set location="Kunde Mustermann Ethernet1/1/1"'
+    "MikroTik SNMP Contact (contact=)"                                                      = '/snmp set contact="Kunde Mustermann Ethernet1/1/1"'
+    "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)"              = '/interface vlan add interface=bridge1 name="Kunde Mustermann Ethernet1/1/1" vlan-id=10'
+}
+Assert-Equal $rulesObj.freitextMuster.Count $freitextSamplesByRule.Count "Alle $($rulesObj.freitextMuster.Count) freitextMuster-Regeln sind im Mustermann+Ethernet1/1/1-Test abgedeckt"
+
+foreach ($eol in @("`n", "`r`n")) {
+    $eolName = if ($eol -eq "`r`n") { "CRLF" } else { "LF" }
+    $ftState = New-Object AnonTool.AnonState
+    $ftCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+    $ftLines = @(
+        "interface 1/1/10",
+        " description Uplink Praxis Dr Weber Ethernet1/1/10",
+        "snmp-server system-location Praxis Weber München Ethernet1/1/2",
+        'set [ find default-name=ether1 ] comment="Kunde Weber Gi1/0/1"',
+        "vlan 20",
+        " name Praxis_Weber_FL.10.13.1020",
+        "System Description : Switch bei Weber FL.10.13.1020",
+        "System Description : ArubaOS-CX FL.10.13.1020"
+    )
+    $ftInput = $ftLines -join $eol
+    $ftOut = [AnonTool.AnonEngine]::ProcessText($ftInput, $ftCfg, $ftState)
+
+    Assert-True ($ftOut.Contains(" description TEXT-1") -and -not $ftOut.Contains("Weber") -and -not $ftOut.Contains("Ethernet1/1/10")) "Befund 1 ($eolName): description mit Personenname + Portname (Ethernet1/1/10) wird komplett ersetzt"
+    Assert-True ($ftOut.Contains("snmp-server system-location ORT-1") -and -not $ftOut.Contains("München") -and -not $ftOut.Contains("Ethernet1/1/2")) "Befund 1 ($eolName): snmp-server system-location mit Ort + Portname wird komplett ersetzt"
+    Assert-True ($ftOut.Contains('comment="TEXT-4"') -and -not $ftOut.Contains("Gi1/0/1")) "Befund 1 ($eolName): MikroTik comment=""... Gi1/0/1"" wird komplett ersetzt"
+    Assert-True ($ftOut.Contains(" name TEXT-2")) "Befund 1 ($eolName): VLAN-name mit Name + Versionsnummer (FL.10.13.1020) wird komplett ersetzt"
+    Assert-True ($ftOut.Contains("System Description : TEXT-3") -and -not $ftOut.Contains("Switch bei Weber")) "Befund 1 ($eolName): System Description 'Switch bei Weber FL.10.13.1020' wird komplett ersetzt"
+    Assert-True ($ftOut.Contains("System Description : ArubaOS-CX FL.10.13.1020")) "Befund 1 Positivtest ($eolName): System Description 'ArubaOS-CX FL.10.13.1020' (nur Produkt + Version) bleibt erhalten"
+
+    # Schleife über ALLE freitextMuster: Body "Kunde Mustermann Ethernet1/1/1" muss bei jedem Muster ersetzt werden
+    foreach ($fRule in $rulesObj.freitextMuster) {
+        $rName = [string]$fRule.name
+        $sampleLine = $freitextSamplesByRule[$rName]
+        Assert-True (-not [string]::IsNullOrEmpty($sampleLine)) "Testzeile für freitextMuster '$rName' vorhanden"
+
+        $singleRegeln = ($rawRules | ConvertFrom-Json)
+        $singleRegeln.freitextMuster = @($fRule)
+        $singleCfg = New-TestConfig -RulesObj $singleRegeln -Netzerhaltend $true
+        $singleState = New-Object AnonTool.AnonState
+        $singleInput = $sampleLine + $eol + "next-line"
+        $singleOut = [AnonTool.AnonEngine]::ProcessText($singleInput, $singleCfg, $singleState)
+        $expectedCat = if ([string]::IsNullOrWhiteSpace($fRule.kategorie)) { "TEXT" } else { [string]$fRule.kategorie }
+        $expectedPh = "$expectedCat-1"
+        Assert-True ($singleOut.Contains($expectedPh) -and -not $singleOut.Contains("Mustermann") -and -not $singleOut.Contains("Kunde") -and -not $singleOut.Contains("Ethernet1/1/1")) "Befund 1 Alle-Muster-Test ($eolName) [$rName]: 'Kunde Mustermann Ethernet1/1/1' wird durch $expectedPh ersetzt"
+    }
+}
+
+# 7.2 Befund 2: Argument-Injection in switch-sammler.ps1 (harter Abbruch VOR Prozessstart)
+$injectionCases = @(
+    @{ Name = "benutzer = '-oProxyCommand=calc'";       Call = { Test-SammlerBenutzerName -Benutzer "-oProxyCommand=calc" } },
+    @{ Name = "geraet = '-oProxyCommand=x'";            Call = { Test-SammlerHostNameOderIp -Wert "-oProxyCommand=x" } },
+    @{ Name = "sprungserver = 'x -oProxyCommand=y'";    Call = { Test-SammlerSprungserver -Sprungserver "x -oProxyCommand=y" } },
+    @{ Name = "geraet mit Leerzeichen";                 Call = { Test-SammlerHostNameOderIp -Wert "sw01 -oProxyCommand=calc" } },
+    @{ Name = 'geraet mit Anführungszeichen (")';       Call = { Test-SammlerHostNameOderIp -Wert 'sw01"test' } },
+    @{ Name = "geraet mit einfachem Quote (')";         Call = { Test-SammlerHostNameOderIp -Wert "sw01'test" } },
+    @{ Name = "port = 0 (ungültig)";                    Call = { Test-SammlerPort -Port 0 } },
+    @{ Name = "port = 70000 (ungültig)";                Call = { Test-SammlerPort -Port 70000 } },
+    @{ Name = "SshKeyPfad mit führendem '-'";           Call = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "SshKeyPfad" } },
+    @{ Name = "PlinkPfad mit führendem '-'";            Call = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "PlinkPfad" } },
+    @{ Name = "SshKeyPfad nicht existierend";           Call = { Test-SammlerDateiPfad -Pfad (Join-Path $tempRunRoot "gibtesnicht.key") -ParameterName "SshKeyPfad" } }
+)
+foreach ($ic in $injectionCases) {
+    $hatGeworfen = $false
+    try {
+        [void](& $ic.Call)
+    } catch {
+        if ($_.Exception.Message -match "SICHERHEITSVERSTOSS") {
+            $hatGeworfen = $true
+        }
+    }
+    Assert-True $hatGeworfen "Befund 2 Argument-Injection verhindert (Funktionsprüfung): $($ic.Name)"
+}
+
+# CLI-Aufrufe von switch-sammler.ps1 mit bösartigen Parametern müssen hart abbrechen (throw vor jedem Prozessstart)
+$cliInjectionRuns = @(
+    @{ Desc = "CLI -Benutzer '-oProxyCommand=calc'";      Script = { & $sammlerPath -Geraete @("sw01") -Benutzer "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -Geraete '-oProxyCommand=x'";          Script = { & $sammlerPath -Geraete @("-oProxyCommand=x") -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -Sprungserver 'x -oProxyCommand=y'";   Script = { & $sammlerPath -Geraete @("sw01") -Sprungserver "x -oProxyCommand=y" -SprungserverHostkey $validHostkeyLine -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -Geraete mit Leerzeichen/Quotes";      Script = { & $sammlerPath -Geraete @('sw01 " -oProxyCommand=calc') -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -SshKeyPfad '-oProxyCommand=calc'";    Script = { & $sammlerPath -Geraete @("sw01") -SshKeyPfad "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } },
+    @{ Desc = "CLI -PlinkPfad '-oProxyCommand=calc'";     Script = { & $sammlerPath -Geraete @("sw01") -PlinkPfad "-oProxyCommand=calc" -Hostkey $validHostkeyLine -TestModus } }
+)
+foreach ($cr in $cliInjectionRuns) {
+    $cliThrew = $false
+    try {
+        & $cr.Script
+    } catch {
+        if ($_.Exception.Message -match "SICHERHEITSVERSTOSS") {
+            $cliThrew = $true
+        }
+    }
+    Assert-True $cliThrew "Befund 2 Harter Abbruch vor Prozessstart: $($cr.Desc)"
+}
+
+# Positivtests für gültige Geräte, MikroTik +ct Benutzer, IPv6, Sprungserver und Windows-Argument-Quoting
+Assert-True (Test-SammlerBenutzerName -Benutzer "admin+ct") "Befund 2 Positivtest: MikroTik Benutzer 'admin+ct' ist erlaubt"
+Assert-True (Test-SammlerHostNameOderIp -Wert "10.20.30.11") "Befund 2 Positivtest: Gültige IPv4-Adresse wird akzeptiert"
+Assert-True (Test-SammlerHostNameOderIp -Wert "2001:db8::1") "Befund 2 Positivtest: Gültige IPv6-Adresse wird akzeptiert"
+$parsedJump = Test-SammlerSprungserver -Sprungserver "netadmin@jump-01.intern.local:2222"
+Assert-True ($parsedJump.benutzer -eq "netadmin" -and $parsedJump.host -eq "jump-01.intern.local" -and $parsedJump.port -eq 2222) "Befund 2 Positivtest: Sprungserver 'benutzer@host:port' wird korrekt geparst"
+Assert-Equal (Format-WindowsProzessArgument -Argument 'C:\Pfad mit Space\sub\"quoted') '"C:\Pfad mit Space\sub\\\"quoted"' "Befund 2 Windows-Quoting: Backslashes vor Anführungszeichen werden korrekt verdoppelt"
+Assert-Equal (Format-WindowsProzessArgument -Argument 'C:\Pfad mit Space\Ende\') '"C:\Pfad mit Space\Ende\\"' "Befund 2 Windows-Quoting: Backslashes am Ende vor schließendem Quote werden verdoppelt"
+
+# 7.3 Befund 3: Passwort-Datei, known_hosts und Befehlsdateien unter %LOCALAPPDATA%\Anon\Temp (ERST leer + ACL, DANN Schreiben, Löschung im finally)
+$oldLocalAppData = $env:LOCALAPPDATA
+$testLocalAppData = Join-Path $tempRunRoot "localappdata_test"
+$protokollPfad = Join-Path $tempRunRoot "temp_protokoll.json"
+$sammlerOutTempTest = Join-Path $tempRunRoot "sammler_temptest"
+try {
+    $env:LOCALAPPDATA = $testLocalAppData
+    & $sammlerPath -Geraete @("sw-aoscx01") -Profil "aruba-aoscx" -Hostkey $validHostkeyLine -MitPasswort -AusgabeOrdner $sammlerOutTempTest -TestModus -TestSimulationsOptionen @{
+        SimuliertesPasswort = "GeheimesTestPasswort#2026"
+        ProtokollPfad       = $protokollPfad
+    }
+    Assert-Equal $LASTEXITCODE 0 "Befund 3: Sammler-Lauf mit Passwort-Datei, known_hosts und Befehlsdatei beendet mit Exit-Code 0"
+    Assert-True (Test-Path -LiteralPath $protokollPfad) "Befund 3: Temp-Datei-Protokoll wurde geschrieben"
+    $protObj = Get-Content -LiteralPath $protokollPfad -Raw -Encoding UTF8 | ConvertFrom-Json
+    $erwarteterTempOrdner = Join-Path (Join-Path $testLocalAppData "Anon") "Temp"
+    Assert-Equal $protObj.tempOrdner $erwarteterTempOrdner "Befund 3: Temp-Ordner liegt unter %LOCALAPPDATA%\Anon\Temp"
+    Assert-Equal $protObj.dateien.Count 3 "Befund 3: Alle 3 Temp-Dateien (Passwort-Datei, known_hosts, Befehlsdatei) wurden über New-GeschuetzteSammlerTempDatei angelegt"
+    foreach ($d in $protObj.dateien) {
+        $dName = [System.IO.Path]::GetFileName([string]$d.pfad)
+        Assert-True ([string]$d.pfad).StartsWith($erwarteterTempOrdner) "Befund 3: Datei '$dName' wurde in %LOCALAPPDATA%\Anon\Temp angelegt"
+        Assert-True ($d.aclVorSchreiben -eq $true -and $d.groesseVorAcl -eq 0 -and $d.groesseBeiAcl -eq 0) "Befund 3: Datei '$dName' wurde ERST leer erzeugt (0 Bytes) + ACL gesetzt, DANN beschrieben"
+        Assert-True ($d.geloeschtNachLauf -eq $true -and -not (Test-Path -LiteralPath ([string]$d.pfad))) "Befund 3: Datei '$dName' wurde im finally-Block sicher überschrieben und gelöscht"
+    }
+    $uebrigeTempDateien = @(Get-ChildItem -LiteralPath $erwarteterTempOrdner -File -ErrorAction SilentlyContinue)
+    Assert-Equal $uebrigeTempDateien.Count 0 "Befund 3: %LOCALAPPDATA%\Anon\Temp enthält nach dem Lauf keine verbliebenen Temp-Dateien"
+} finally {
+    $env:LOCALAPPDATA = $oldLocalAppData
+}
+
 # Aufräumen des temporären Testordners
 if (Test-Path -LiteralPath $tempRunRoot) { Remove-Item -LiteralPath $tempRunRoot -Recurse -Force }
 
@@ -711,4 +858,5 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "TESTERGEBNIS (PowerShell): $passed bestanden, $failed fehlgeschlagen" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Red" })
 Write-Host "========================================" -ForegroundColor Cyan
 if ($failed -gt 0) { exit 1 } else { exit 0 }
+
 

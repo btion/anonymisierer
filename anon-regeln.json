@@ -68,6 +68,8 @@
       "OS10",
       "AOS-CX",
       "AOS-S",
+      "ArubaOS-CX",
+      "ArubaOS-S",
       "NX-OS",
       "IOS-XE",
       "SFOS",
@@ -119,6 +121,8 @@
       "0000.0000.0000",
       "AOS-CX",
       "AOS-S",
+      "ArubaOS-CX",
+      "ArubaOS-S",
       "OS10",
       "NX-OS",
       "IOS-XE",
@@ -273,7 +277,7 @@
     {
       "name": "MikroTik comment= (ohne Anführungszeichen)",
       "kategorie": "TEXT",
-      "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)([^\"\\s\\r\\n]+)()(?=[ \\t]|\\r?$)"
+      "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)(?!\")([^\"\\r\\n]+?)()(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
     },
     {
       "name": "MikroTik SNMP Location (location=)",
@@ -288,7 +292,7 @@
     {
       "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
       "kategorie": "TEXT",
-      "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)"
+      "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
     }
   ],
   "seriennummerMuster": [

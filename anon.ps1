@@ -601,6 +601,31 @@ namespace AnonTool
                 protectedValues.Add(val);
                 return "\u0002PROT_" + idx.ToString() + "\u0003";
             };
+            Func<string, string> unprotect = (string val) =>
+            {
+                if (string.IsNullOrEmpty(val) || val.IndexOf('\u0002') < 0) return val;
+                return Regex.Replace(val, @"\u0002PROT_(\d+)\u0003", (Match pm) =>
+                {
+                    int idx;
+                    if (int.TryParse(pm.Groups[1].Value, out idx) && idx >= 0 && idx < protectedValues.Count)
+                        return protectedValues[idx];
+                    return pm.Value;
+                }, RegexOptions.None, RxTimeout);
+            };
+            Func<string, bool> isOnlyProtectedOrExempt = (string bodyVal) =>
+            {
+                if (string.IsNullOrWhiteSpace(bodyVal) || bodyVal == "*****") return true;
+                string stripped = Regex.Replace(bodyVal, @"\u0002PROT_\d+\u0003", " ", RegexOptions.None, RxTimeout).Trim();
+                if (string.IsNullOrEmpty(stripped)) return true;
+                string[] parts = Regex.Split(stripped, @"\s+", RegexOptions.None, RxTimeout);
+                foreach (string p in parts)
+                {
+                    if (string.IsNullOrEmpty(p)) continue;
+                    if (!cfg.ExakteAusnahmen.Contains(p))
+                        return false;
+                }
+                return true;
+            };
 
             // ----------------------------------------------------------------
             // STUFE 1: Geheimnisse ENTFERNEN (*****)
@@ -642,25 +667,28 @@ namespace AnonTool
                         if (m.Groups.Count >= 5 && fRule.Category == "BANNER")
                         {
                             string body = m.Groups[3].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
+                            string cleanBody = unprotect(body);
                             state.AddStat("freitext", 1);
-                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
+                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + m.Groups[2].Value + tok + m.Groups[4].Value);
                         }
                         else if (m.Groups.Count >= 4)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
+                            string cleanBody = unprotect(body);
                             state.AddStat("freitext", 1);
-                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
+                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + tok + m.Groups[3].Value);
                         }
                         else if (m.Groups.Count >= 3)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(body) || body == "*****" || cfg.ExakteAusnahmen.Contains(body) || body.IndexOf('\u0002') >= 0) return m.Value;
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
+                            string cleanBody = unprotect(body);
                             state.AddStat("freitext", 1);
-                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, body, fRule.Category);
+                            string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + tok);
                         }
                         return m.Value;
