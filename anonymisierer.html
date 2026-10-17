@@ -500,6 +500,14 @@
             <div class="small-muted" style="margin-bottom:6px;">Eine interne Domain pro Zeile (z. B. <code>intern.firma.de</code>).</div>
             <div id="interneDomainsRows" style="max-height:260px; overflow:auto;"></div>
           </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>4. Nicht anonymisieren (ausnahmen.exakteWoerter)</strong>
+              <button type="button" class="btn-sm" id="btnAddExaktRow">+ Zeile</button>
+            </div>
+            <div class="small-muted" style="margin-bottom:6px;">Exakte Werte, die im Klartext bleiben (z. B. aus der Zuordnungstabelle entfernte Einträge).</div>
+            <div id="exakteWoerterRows" style="max-height:260px; overflow:auto;"></div>
+          </div>
         </div>
       </div>
 
@@ -554,7 +562,13 @@
       </div>
 
       <div class="card" id="tablePreviewCard">
-        <h2>Vorschau der Zuordnungstabelle (nur Ansicht, kein Export)</h2>
+        <h2>Zuordnungstabelle ansehen &amp; bearbeiten</h2>
+        <div class="small-muted" style="margin-bottom:8px;">Bearbeiten (Umbenennen, Entfernen, Hinzufügen) ist nur bei „Originale anzeigen“ möglich. Das Original eines Eintrags ist nicht änderbar – stattdessen entfernen und neu hinzufügen.</div>
+        <div id="tablePendingBanner" class="warn-banner" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
+          <span>Änderungen noch nicht angewendet</span>
+          <button type="button" class="primary btn-sm" id="btnReapplyAnon">Neu anonymisieren</button>
+        </div>
+        <div id="tableEditStatus" class="small-muted" style="margin-bottom:8px;"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
@@ -565,6 +579,17 @@
             <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original...">
           </div>
         </div>
+        <div id="tableAddEntryBar" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+          <strong>Eintrag hinzufügen:</strong>
+          <input type="text" id="tableAddOriginal" placeholder="Original (Pflicht)" style="max-width:240px;">
+          <input type="text" id="tableAddPlaceholder" placeholder="Platzhalter (optional)" style="max-width:180px;">
+          <select id="tableAddCategory" style="max-width:200px;">
+            <option value="FESTE_ZUORDNUNG">FESTE_ZUORDNUNG</option>
+            <option value="FIRMA">FIRMA</option>
+            <option value="DOMAIN">DOMAIN</option>
+          </select>
+          <button type="button" class="btn-sm" id="btnTableAddEntry">Hinzufügen</button>
+        </div>
         <div id="tableCategoryCounts" class="stat-pills"></div>
         <div style="max-height:380px; overflow:auto;">
           <table class="report-table" id="mappingPreviewTable">
@@ -573,10 +598,11 @@
                 <th class="sortable-th" data-sort="category">Kategorie &#8597;</th>
                 <th class="sortable-th" data-sort="placeholder">Platzhalter &#8597;</th>
                 <th class="sortable-th" data-sort="original">Original &#8597;</th>
+                <th>Aktion</th>
               </tr>
             </thead>
             <tbody id="mappingPreviewTableBody">
-              <tr><td colspan="3" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
+              <tr><td colspan="4" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
             </tbody>
           </table>
         </div>
@@ -961,6 +987,7 @@
       this.counters = new Map();     // UPPER_PREFIX -> int
       this.netHostForward = new Map(); // UPPER_NET_TOKEN -> Map(hostOctet -> Hn)
       this.stats = new Map();        // category -> count
+      this.aliases = new Map();      // UPPER_OLD_TOKEN -> neuer Platzhalter oder "__REMOVED__" (nur für Rückübersetzung)
     }
 
     nextCounter(prefix) {
@@ -1019,13 +1046,16 @@
         Array.from(m.keys()).sort().forEach(hk => { sub[hk] = m.get(hk); });
         netzHosts[nk] = sub;
       });
+      const aliase = {};
+      Array.from(this.aliases.keys()).sort().forEach(ak => { aliase[ak] = this.aliases.get(ak); });
       return {
         version: "1.0",
         erstelltAm: new Date().toISOString(),
         vorwaerts,
         rueckwaerts,
         zaehler,
-        netzHosts
+        netzHosts,
+        aliase
       };
     }
 
@@ -1055,6 +1085,11 @@
             m.set(String(hk), String(hv));
           }
           st.netHostForward.set(nk.toUpperCase(), m);
+        }
+      }
+      if (obj.aliase) {
+        for (const [ak, av] of Object.entries(obj.aliase)) {
+          st.aliases.set(ak.toUpperCase(), String(av));
         }
       }
       return st;
@@ -1173,7 +1208,16 @@
       return rawMatch;
     }
 
+    if (cfg.exakteAusnahmen.has(ipPart.toLowerCase()) || cfg.exakteAusnahmen.has(rawMatch.toLowerCase())) {
+      return rawMatch;
+    }
+
     state.addStat("ip", 1);
+
+    const existingIpTok = state.forward.get(("IPV4|" + ipPart).toLowerCase());
+    if (existingIpTok) {
+      return existingIpTok + suffix;
+    }
 
     if (cfg.netzerhaltend) {
       const netKey = `${o1}.${o2}.${o3}`;
@@ -1232,6 +1276,9 @@
     if (lower === "::" || lower === "::1" || lower === "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff") {
       return rawMatch;
     }
+    if (cfg.exakteAusnahmen.has(lower) || cfg.exakteAusnahmen.has(rawMatch.toLowerCase())) {
+      return rawMatch;
+    }
     if (!lower.includes("::")) {
       const segs = lower.split(":");
       if (segs.length < 6) return rawMatch;
@@ -1262,8 +1309,11 @@
     };
     const isOnlyProtectedOrExempt = (bodyVal) => {
       if (!bodyVal || !bodyVal.trim() || bodyVal === "*****") return true;
+      const rawUnprot = unprotect(bodyVal).trim();
+      if (cfg.exakteAusnahmen.has(rawUnprot.toLowerCase())) return true;
       const stripped = bodyVal.replace(/\u0002PROT_\d+\u0003/g, " ").trim();
       if (!stripped) return true;
+      if (cfg.exakteAusnahmen.has(stripped.toLowerCase())) return true;
       const parts = stripped.split(/\s+/);
       for (const p of parts) {
         if (!p) continue;
@@ -1306,22 +1356,25 @@
           const groups = args.slice(1, -2);
           if (groups.length >= 4 && fRule.category === "BANNER") {
             const body = (groups[2] || "").trim();
-            if (isOnlyProtectedOrExempt(body)) return m;
             const cleanBody = unprotect(body);
+            if (cfg.exakteAusnahmen.has(cleanBody.trim().toLowerCase())) return protect(m);
+            if (isOnlyProtectedOrExempt(body)) return m;
             state.addStat("freitext", 1);
             const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + groups[1] + tok + groups[3]);
           } else if (groups.length >= 3) {
             const body = (groups[1] || "").trim();
-            if (isOnlyProtectedOrExempt(body)) return m;
             const cleanBody = unprotect(body);
+            if (cfg.exakteAusnahmen.has(cleanBody.trim().toLowerCase())) return protect(m);
+            if (isOnlyProtectedOrExempt(body)) return m;
             state.addStat("freitext", 1);
             const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + tok + (groups[2] || ""));
           } else if (groups.length >= 2) {
             const body = (groups[1] || "").trim();
-            if (isOnlyProtectedOrExempt(body)) return m;
             const cleanBody = unprotect(body);
+            if (cfg.exakteAusnahmen.has(cleanBody.trim().toLowerCase())) return protect(m);
+            if (isOnlyProtectedOrExempt(body)) return m;
             state.addStat("freitext", 1);
             const tok = state.getOrCreateToken("FREITEXT_" + fRule.category, cleanBody, fRule.category);
             return protect(groups[0] + tok);
@@ -1335,7 +1388,7 @@
     if (cfg.catEigeneBegriffe) {
       const sortedFixed = Object.entries(cfg.festeZuordnung).sort((a, b) => b[0].length - a[0].length);
       for (const [key, val] of sortedFixed) {
-        if (!key) continue;
+        if (!key || cfg.exakteAusnahmen.has(key.trim().toLowerCase())) continue;
         state.registerFixed(key, val);
         const rx = new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(key)}(?![A-Za-z0-9-])`, "gi");
         text = text.replace(rx, () => {
@@ -1344,11 +1397,12 @@
         });
       }
 
-      const validTerms = cfg.firmenUndStandorte.filter(s => s && s.trim()).map(s => s.trim());
+      const validTerms = cfg.firmenUndStandorte.filter(s => s && s.trim() && !cfg.exakteAusnahmen.has(s.trim().toLowerCase())).map(s => s.trim());
       if (validTerms.length > 0) {
         const sortedByLen = [...validTerms].sort((a, b) => b.length - a.length).map(s => escapeRegExp(s));
         const combinedRx = new RegExp(`(?<![A-Za-z0-9-])(?:${sortedByLen.join("|")})(?![A-Za-z0-9-])`, "gi");
         text = text.replace(combinedRx, (m) => {
+          if (cfg.exakteAusnahmen.has(m.trim().toLowerCase())) return m;
           state.addStat("eigeneBegriffe", 1);
           const matchedCanonical = validTerms.find(t => t.toLowerCase() === m.toLowerCase()) || m;
           const tok = state.getOrCreateToken("FIRMA", matchedCanonical, "FIRMA");
@@ -1392,11 +1446,13 @@
     // STUFE 7: E-Mail & URLs
     if (cfg.catHostnamen) {
       text = text.replace(RxEmail, (m) => {
+        if (cfg.exakteAusnahmen.has(m.toLowerCase())) return m;
         state.addStat("hostnamen", 1);
         const tok = state.getOrCreateToken("MAIL", m, "MAIL");
         return protect(tok);
       });
       text = text.replace(RxUrl, (m) => {
+        if (cfg.exakteAusnahmen.has(m.toLowerCase())) return m;
         state.addStat("hostnamen", 1);
         const tok = state.getOrCreateToken("URL", m, "URL");
         return protect(tok);
@@ -1408,6 +1464,7 @@
       text = text.replace(RxMacColonDash, (m) => {
         const norm = normalizeMac(m);
         if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        if (cfg.exakteAusnahmen.has(m.toLowerCase()) || cfg.exakteAusnahmen.has(norm)) return m;
         state.addStat("mac", 1);
         const key = cfg.macNormalisieren ? norm : m.toLowerCase();
         const tok = state.getOrCreateToken("MAC", key, "MAC", m);
@@ -1417,6 +1474,7 @@
       text = text.replace(RxMacDot, (m) => {
         const norm = normalizeMac(m);
         if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        if (cfg.exakteAusnahmen.has(m.toLowerCase()) || cfg.exakteAusnahmen.has(norm)) return m;
         state.addStat("mac", 1);
         const key = cfg.macNormalisieren ? norm : m.toLowerCase();
         const tok = state.getOrCreateToken("MAC", key, "MAC", m);
@@ -1426,6 +1484,7 @@
       text = text.replace(RxMacRawContext, (m, g1, g2, g3) => {
         const norm = normalizeMac(g2);
         if (norm === "000000000000" || norm === "ffffffffffff") return m;
+        if (cfg.exakteAusnahmen.has(g2.toLowerCase()) || cfg.exakteAusnahmen.has(norm)) return m;
         state.addStat("mac", 1);
         const key = cfg.macNormalisieren ? norm : g2.toLowerCase();
         const tok = state.getOrCreateToken("MAC", key, "MAC", g2);
@@ -1508,14 +1567,15 @@
         const cleanDom = dom.trim();
         const fqdnRx = new RegExp(`\\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)\\.${escapeRegExp(cleanDom)}\\b`, "gi");
         text = text.replace(fqdnRx, (m, hostPart) => {
-          if (cfg.exakteAusnahmen.has(hostPart.toLowerCase())) return m;
+          if (cfg.exakteAusnahmen.has(m.toLowerCase()) || cfg.exakteAusnahmen.has(hostPart.toLowerCase())) return m;
           state.addStat("hostnamen", 1);
           const hTok = state.getOrCreateToken("HOST", m, "HOST");
           return protect(hTok);
         });
 
         const domRx = new RegExp(`\\b${escapeRegExp(cleanDom)}\\b`, "gi");
-        text = text.replace(domRx, () => {
+        text = text.replace(domRx, (m) => {
+          if (cfg.exakteAusnahmen.has(cleanDom.toLowerCase())) return m;
           state.addStat("hostnamen", 1);
           const dTok = state.getOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
           return protect(dTok);
@@ -1672,12 +1732,14 @@
       }
       if (rxBlock) {
         for (const m of pathCheck.matchAll(rxBlock)) {
+          if (isAllowedInAudit(m[0], cfg)) continue;
           const fund = canonicalTerms.get(m[0].toLowerCase()) || m[0];
           findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Sperrbegriff", fund, kontext: "Dateipfad: " + fileName });
         }
       }
       if (rxDom) {
         for (const m of pathCheck.matchAll(rxDom)) {
+          if (isAllowedInAudit(m[0], cfg)) continue;
           const fund = canonicalDoms.get(m[0].toLowerCase()) || m[0];
           findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Domain", fund, kontext: "Dateipfad: " + fileName });
         }
@@ -1706,6 +1768,11 @@
     let cleanText = text;
     for (const vr of cfg.versionKontextRegex) cleanText = cleanText.replace(vr, spaceMasker);
     for (const ar of cfg.ausnahmenRegex) cleanText = cleanText.replace(ar, spaceMasker);
+    const multiWordExempt = Array.from(cfg.exakteAusnahmen).filter(w => w && w.trim().indexOf(" ") >= 0).sort((a, b) => b.length - a.length);
+    for (const mw of multiWordExempt) {
+      const mwRx = new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(mw.trim())}(?![A-Za-z0-9-])`, "gi");
+      cleanText = cleanText.replace(mwRx, spaceMasker);
+    }
 
     const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
     const rxCryptHash = /\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}/g;
@@ -1752,6 +1819,7 @@
     // 5. Prüfe auf eigene Begriffe / Sperrliste (Firmen, Standorte, Feste Zuordnung Keys)
     if (rxBlock) {
       for (const m of cleanText.matchAll(rxBlock)) {
+        if (isAllowedInAudit(m[0], cfg)) continue;
         const ln = getLineNumberFromIndex(lineStarts, m.index);
         const fund = canonicalTerms.get(m[0].toLowerCase()) || m[0];
         findings.push({ datei: fileName, zeile: ln, kategorie: "Sperrbegriff", fund, kontext: getLineCtx(ln) });
@@ -1760,6 +1828,7 @@
 
     if (rxDom) {
       for (const m of cleanText.matchAll(rxDom)) {
+        if (isAllowedInAudit(m[0], cfg)) continue;
         const ln = getLineNumberFromIndex(lineStarts, m.index);
         const fund = canonicalDoms.get(m[0].toLowerCase()) || m[0];
         findings.push({ datei: fileName, zeile: ln, kategorie: "Interne-Domain", fund, kontext: getLineCtx(ln) });
@@ -2295,10 +2364,18 @@
     const rawDomains = Array.isArray(inp.interneDomains)
       ? inp.interneDomains
       : (typeof inp.interneDomains === "string" ? inp.interneDomains.split(/\r?\n/) : []);
+    let rawExakt = inp.exakteWoerter;
+    if (rawExakt === undefined && inp.ausnahmen && typeof inp.ausnahmen === "object") {
+      rawExakt = inp.ausnahmen.exakteWoerter;
+    }
+    rawExakt = Array.isArray(rawExakt)
+      ? rawExakt
+      : (typeof rawExakt === "string" ? rawExakt.split(/\r?\n/) : []);
     return {
       festeRows,
       firmenList: rawFirmen.map(x => String(x == null ? "" : x)),
-      domainsList: rawDomains.map(x => String(x == null ? "" : x))
+      domainsList: rawDomains.map(x => String(x == null ? "" : x)),
+      exakteList: rawExakt.map(x => String(x == null ? "" : x))
     };
   }
 
@@ -2317,8 +2394,22 @@
       base.eigeneBegriffe.interneDomains = [];
     }
 
-    const { festeRows, firmenList, domainsList } = normalizeCustomInputRows(customInput);
+    const { festeRows, firmenList, domainsList, exakteList } = normalizeCustomInputRows(customInput);
     const errors = [];
+
+    const cleanExakt = [];
+    const seenExaktLower = new Set();
+    for (let i = 0; i < exakteList.length; i++) {
+      const eTrim = exakteList[i].trim();
+      if (!eTrim) continue; // leere Zeilen ignorieren
+      const lower = eTrim.toLowerCase();
+      if (seenExaktLower.has(lower)) {
+        errors.push(`Duplikat in ausnahmen.exakteWoerter: '${eTrim}'`);
+        continue;
+      }
+      seenExaktLower.add(lower);
+      cleanExakt.push(eTrim);
+    }
 
     // 1. Alle echten Begriffe sammeln (aus Basisregeln + Eingabe), um Kollisionen Platzhalter <-> echter Begriff zu erkennen
     const allRealTermsLower = new Set();
@@ -2334,6 +2425,7 @@
       const t = String(d || "").trim();
       if (t) allRealTermsLower.add(t.toLowerCase());
     }
+    for (const e of cleanExakt) allRealTermsLower.add(e.toLowerCase());
 
     const nonEmptyFeste = [];
     for (let i = 0; i < festeRows.length; i++) {
@@ -2463,6 +2555,18 @@
       }
     }
 
+    if (cleanExakt.length > 0) {
+      if (!base.ausnahmen || typeof base.ausnahmen !== "object") base.ausnahmen = {};
+      if (!Array.isArray(base.ausnahmen.exakteWoerter)) base.ausnahmen.exakteWoerter = [];
+      const existingExaktLower = new Set(base.ausnahmen.exakteWoerter.map(x => String(x).trim().toLowerCase()));
+      for (const e of cleanExakt) {
+        if (!existingExaktLower.has(e.toLowerCase())) {
+          base.ausnahmen.exakteWoerter.push(e);
+          existingExaktLower.add(e.toLowerCase());
+        }
+      }
+    }
+
     return {
       valid: errors.length === 0,
       errors,
@@ -2470,7 +2574,8 @@
       normalizedCustom: {
         festeZuordnung: customFesteMap,
         firmenUndStandorte: cleanFirmen,
-        interneDomains: cleanDomains
+        interneDomains: cleanDomains,
+        exakteWoerter: cleanExakt
       }
     };
   }
@@ -2485,6 +2590,9 @@
         festeZuordnung: res.normalizedCustom.festeZuordnung,
         firmenUndStandorte: res.normalizedCustom.firmenUndStandorte,
         interneDomains: res.normalizedCustom.interneDomains
+      },
+      ausnahmen: {
+        exakteWoerter: res.normalizedCustom.exakteWoerter
       }
     }, null, 2);
   }
@@ -2497,18 +2605,22 @@
     const section = (parsed.eigeneBegriffe && typeof parsed.eigeneBegriffe === "object")
       ? parsed.eigeneBegriffe
       : parsed;
+    const hasAusnahmen = parsed.ausnahmen && typeof parsed.ausnahmen === "object" && parsed.ausnahmen.exakteWoerter !== undefined;
     if (
       section.festeZuordnung === undefined &&
       section.firmenUndStandorte === undefined &&
-      section.interneDomains === undefined
+      section.interneDomains === undefined &&
+      !hasAusnahmen
     ) {
       throw new Error("JSON enthält keinen Abschnitt 'eigeneBegriffe'.");
     }
     const norm = normalizeCustomInputRows(section);
+    const exaktNorm = hasAusnahmen ? normalizeCustomInputRows({ exakteWoerter: parsed.ausnahmen.exakteWoerter }).exakteList : [];
     return {
       festeZuordnung: norm.festeRows,
       firmenUndStandorte: norm.firmenList.map(s => s.trim()).filter(Boolean),
-      interneDomains: norm.domainsList.map(s => s.trim()).filter(Boolean)
+      interneDomains: norm.domainsList.map(s => s.trim()).filter(Boolean),
+      exakteWoerter: exaktNorm.map(s => s.trim()).filter(Boolean)
     };
   }
 
@@ -2580,7 +2692,7 @@
       let cat = "TEXT";
       if (rawCat === "fixed") cat = "FESTE_ZUORDNUNG";
       else if (rawCat === "domain") cat = "DOMAIN";
-      else if (rawCat === "firm") cat = "FIRMA";
+      else if (rawCat.startsWith("firm")) cat = "FIRMA";
       else if (rawCat === "host") cat = "HOST";
       else if (rawCat === "user") cat = "USER";
       else if (rawCat === "serial") cat = "SERIAL";
@@ -2593,18 +2705,55 @@
 
     const entries = [];
     const categoryCounts = {};
+    const netTokensUpper = collectNetTokensUpper(st);
     for (const [upperKey, originalVal] of st.reverse.entries()) {
+      // Aliase (umbenannte oder entfernte Platzhalter) bleiben nur für die Rückübersetzung erhalten
+      if (st.aliases && st.aliases.has(upperKey)) continue;
       const canonicalPlaceholder = st.reverseKeys.get(upperKey) || upperKey;
       const category = inferCategoryForMapping(canonicalPlaceholder, forwardPrefixMap);
       entries.push({
         category,
         placeholder: String(canonicalPlaceholder),
-        original: String(originalVal)
+        original: String(originalVal),
+        editable: !netTokensUpper.has(upperKey)
       });
       categoryCounts[category] = (categoryCounts[category] || 0) + 1;
     }
 
     return { entries, categoryCounts };
+  }
+
+  function collectNetTokensUpper(st) {
+    const res = new Set();
+    for (const [fk, token] of st.forward.entries()) {
+      if (fk.startsWith("ipv4net|")) res.add(String(token).toUpperCase());
+    }
+    return res;
+  }
+
+  // Natürliche Sortierung: TEXT-1, TEXT-2, ... TEXT-10 (unabhängig von Locale-Regeln für Bindestriche)
+  function compareNatural(a, b) {
+    const sa = String(a == null ? "" : a).toLowerCase();
+    const sb = String(b == null ? "" : b).toLowerCase();
+    const ca = sa.match(/(\d+|\D+)/g) || [];
+    const cb = sb.match(/(\d+|\D+)/g) || [];
+    const n = Math.min(ca.length, cb.length);
+    for (let i = 0; i < n; i++) {
+      const x = ca[i];
+      const y = cb[i];
+      if (x === y) continue;
+      const xNum = /^\d+$/.test(x);
+      const yNum = /^\d+$/.test(y);
+      if (xNum && yNum) {
+        const diff = parseInt(x, 10) - parseInt(y, 10);
+        if (diff !== 0) return diff < 0 ? -1 : 1;
+        if (x.length !== y.length) return x.length < y.length ? -1 : 1;
+        continue;
+      }
+      return x < y ? -1 : 1;
+    }
+    if (ca.length !== cb.length) return ca.length < cb.length ? -1 : 1;
+    return 0;
   }
 
   function filterAndSortMappingEntries(entries, options) {
@@ -2623,11 +2772,11 @@
     });
 
     filtered.sort((a, b) => {
-      const fieldA = String(a[sortBy] != null ? a[sortBy] : a.placeholder);
-      const fieldB = String(b[sortBy] != null ? b[sortBy] : b.placeholder);
-      const cmp = fieldA.localeCompare(fieldB, "de", { numeric: true, sensitivity: "base" });
+      const fieldA = a[sortBy] != null ? a[sortBy] : a.placeholder;
+      const fieldB = b[sortBy] != null ? b[sortBy] : b.placeholder;
+      const cmp = compareNatural(fieldA, fieldB);
       if (cmp !== 0) return cmp * sortDir;
-      return String(a.placeholder).localeCompare(String(b.placeholder), "de", { numeric: true, sensitivity: "base" }) * sortDir;
+      return compareNatural(a.placeholder, b.placeholder) * sortDir;
     });
 
     return filtered;
@@ -2635,8 +2784,9 @@
 
   function renderMappingTableRowsHtml(entries, options) {
     const showOriginals = Boolean(options && options.showOriginals);
+    const editable = Boolean(options && options.editable) && showOriginals;
     if (!Array.isArray(entries) || entries.length === 0) {
-      return `<tr><td colspan="3" class="small-muted">Keine Einträge vorhanden.</td></tr>`;
+      return `<tr><td colspan="4" class="small-muted">Keine Einträge vorhanden.</td></tr>`;
     }
     return entries.map(item => {
       const catCell = escapeHtml(item.category);
@@ -2645,8 +2795,214 @@
       const origCell = showOriginals
         ? `<code>${escapeHtml(item.original)}</code>`
         : `<span class="masked-val">••••</span>`;
-      return `<tr><td>${catCell}</td><td><code>${phCell}</code></td><td>${origCell}</td></tr>`;
+      // Aktionen nur im Bearbeitungsmodus ("Originale anzeigen"); das Original selbst ist nie editierbar
+      let actionCell = "";
+      if (editable && item.editable !== false) {
+        actionCell = `<button type="button" class="btn-sm map-rename-btn" data-ph="${phCell}">Umbenennen</button> ` +
+          `<button type="button" class="btn-sm danger map-remove-btn" data-ph="${phCell}">Entfernen</button>`;
+      } else if (editable) {
+        actionCell = `<span class="small-muted">Netz (nicht editierbar)</span>`;
+      }
+      return `<tr data-ph="${phCell}"><td>${catCell}</td><td class="map-ph-cell"><code>${phCell}</code></td><td>${origCell}</td><td class="map-action-cell">${actionCell}</td></tr>`;
     }).join("");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bearbeitung der Zuordnungstabelle (Umbenennen / Entfernen / Hinzufügen)
+  // customTerms-Format: { festeZuordnung: [{original, placeholder}], firmenUndStandorte: [], interneDomains: [], exakteWoerter: [] }
+  // ---------------------------------------------------------------------------
+  function cloneCustomTerms(customTerms) {
+    const norm = normalizeCustomInputRows(customTerms || {});
+    return {
+      festeZuordnung: norm.festeRows.map(r => ({ original: r.original, placeholder: r.placeholder })),
+      firmenUndStandorte: norm.firmenList.slice(),
+      interneDomains: norm.domainsList.slice(),
+      exakteWoerter: norm.exakteList.slice()
+    };
+  }
+
+  function collectRealTermsLower(state, baseRules, customTerms) {
+    const set = new Set();
+    const add = (v) => { const t = String(v == null ? "" : v).trim(); if (t) set.add(t.toLowerCase()); };
+    if (state) for (const v of state.reverse.values()) add(v);
+    const eb = (baseRules && baseRules.eigeneBegriffe) || {};
+    Object.keys(eb.festeZuordnung || {}).forEach(add);
+    (eb.firmenUndStandorte || []).forEach(add);
+    (eb.interneDomains || []).forEach(add);
+    const ct = cloneCustomTerms(customTerms);
+    ct.festeZuordnung.forEach(r => add(r.original));
+    ct.firmenUndStandorte.forEach(add);
+    ct.interneDomains.forEach(add);
+    ct.exakteWoerter.forEach(add);
+    return set;
+  }
+
+  function validateNewPlaceholder(state, newPh, baseRules, customTerms) {
+    const ph = String(newPh == null ? "" : newPh).trim();
+    if (!CUSTOM_PLACEHOLDER_REGEX.test(ph)) {
+      return `Ungültiger Platzhalter '${ph}': erlaubt sind nur [A-Z0-9-]{1,32}.`;
+    }
+    const upper = ph.toUpperCase();
+    if (state && state.reverse.has(upper)) {
+      return `Platzhalter '${ph}' ist bereits vergeben (auch frühere Namen bleiben als Alias reserviert).`;
+    }
+    const eb = (baseRules && baseRules.eigeneBegriffe) || {};
+    for (const p of Object.values(eb.festeZuordnung || {})) {
+      if (String(p).trim().toUpperCase() === upper) return `Platzhalter '${ph}' ist bereits in der Regeldatei vergeben.`;
+    }
+    for (const r of cloneCustomTerms(customTerms).festeZuordnung) {
+      if (String(r.placeholder).trim().toUpperCase() === upper) return `Platzhalter '${ph}' ist bereits in 'Eigene Begriffe' vergeben.`;
+    }
+    if (collectRealTermsLower(state, baseRules, customTerms).has(ph.toLowerCase())) {
+      return `Platzhalter '${ph}' darf nicht mit einem echten Begriff übereinstimmen.`;
+    }
+    return null;
+  }
+
+  function renameMappingTableEntry(state, oldPlaceholder, newPlaceholder, baseRules, customTerms) {
+    const oldUpper = String(oldPlaceholder || "").trim().toUpperCase();
+    const newPh = String(newPlaceholder || "").trim();
+    const ct = cloneCustomTerms(customTerms);
+    if (!state || !state.reverse.has(oldUpper) || state.aliases.has(oldUpper)) {
+      return { ok: false, error: `Platzhalter '${oldPlaceholder}' ist nicht (mehr) aktiv.`, customTerms: ct };
+    }
+    if (collectNetTokensUpper(state).has(oldUpper)) {
+      return { ok: false, error: "Netz-Platzhalter können nicht umbenannt werden (einzelne Hosts wie NET-1.H2 schon).", customTerms: ct };
+    }
+    const err = validateNewPlaceholder(state, newPh, baseRules, ct);
+    if (err) return { ok: false, error: err, customTerms: ct };
+
+    const original = state.reverse.get(oldUpper);
+    const newUpper = newPh.toUpperCase();
+    let isFixed = false;
+    for (const [fk, v] of Array.from(state.forward.entries())) {
+      if (String(v).toUpperCase() === oldUpper) {
+        state.forward.set(fk, newPh);
+        if (fk.startsWith("fixed|")) isFixed = true;
+      }
+    }
+    state.reverse.set(newUpper, original);
+    state.reverseKeys.set(newUpper, newPh);
+    state.aliases.set(oldUpper, newPh);
+    for (const [ak, av] of Array.from(state.aliases.entries())) {
+      if (String(av).toUpperCase() === oldUpper) state.aliases.set(ak, newPh);
+    }
+
+    // Feste Zuordnungen werden bei jedem Lauf aus der Regel übernommen -> neuen Namen in "Eigene Begriffe" verankern
+    const baseFeste = (baseRules && baseRules.eigeneBegriffe && baseRules.eigeneBegriffe.festeZuordnung) || {};
+    const inBase = Object.keys(baseFeste).some(k => k.trim().toLowerCase() === String(original).trim().toLowerCase());
+    const row = ct.festeZuordnung.find(r => r.original.trim().toLowerCase() === String(original).trim().toLowerCase());
+    if (row) {
+      row.placeholder = newPh;
+    } else if (isFixed || inBase) {
+      ct.festeZuordnung.push({ original: String(original), placeholder: newPh });
+    }
+    return { ok: true, original: String(original), oldPlaceholder: oldPlaceholder, newPlaceholder: newPh, customTerms: ct };
+  }
+
+  const REMOVE_CONFIRM_HINT = "Dieser Wert steht danach im Klartext in der Ausgabe.";
+
+  function removeMappingTableEntry(state, placeholder, customTerms, confirmFn) {
+    const upper = String(placeholder || "").trim().toUpperCase();
+    const ct = cloneCustomTerms(customTerms);
+    if (!state || !state.reverse.has(upper) || state.aliases.has(upper)) {
+      return { ok: false, error: `Platzhalter '${placeholder}' ist nicht (mehr) aktiv.`, customTerms: ct };
+    }
+    if (collectNetTokensUpper(state).has(upper)) {
+      return { ok: false, error: "Netz-Platzhalter können nicht entfernt werden – bitte einzelne Hosts entfernen.", customTerms: ct };
+    }
+    const original = String(state.reverse.get(upper));
+    const confirmMessage = `Eintrag '${placeholder}' entfernen ("wird nicht anonymisiert")?\n\n${REMOVE_CONFIRM_HINT}`;
+    const confirmed = typeof confirmFn === "function" ? Boolean(confirmFn(confirmMessage)) : false;
+    if (!confirmed) {
+      return { ok: false, cancelled: true, confirmMessage, customTerms: ct };
+    }
+
+    for (const [fk, v] of Array.from(state.forward.entries())) {
+      if (String(v).toUpperCase() === upper) state.forward.delete(fk);
+    }
+    const hostMatch = upper.match(/^(.+)\.(H\d+)$/);
+    if (hostMatch && state.netHostForward.has(hostMatch[1])) {
+      const hm = state.netHostForward.get(hostMatch[1]);
+      for (const [hk, hv] of Array.from(hm.entries())) {
+        if (String(hv).toUpperCase() === hostMatch[2]) hm.delete(hk);
+      }
+    }
+    // Rückwärts-Eintrag bleibt für die Rückübersetzung alter Texte erhalten, wird aber nicht mehr als aktiv gelistet
+    state.aliases.set(upper, "__REMOVED__");
+
+    const low = original.trim().toLowerCase();
+    ct.festeZuordnung = ct.festeZuordnung.filter(r => r.original.trim().toLowerCase() !== low);
+    ct.firmenUndStandorte = ct.firmenUndStandorte.filter(s => s.trim().toLowerCase() !== low);
+    ct.interneDomains = ct.interneDomains.filter(s => s.trim().toLowerCase() !== low);
+    if (!ct.exakteWoerter.some(s => s.trim().toLowerCase() === low)) {
+      ct.exakteWoerter.push(original.trim());
+    }
+    return { ok: true, original, placeholder, confirmMessage, customTerms: ct };
+  }
+
+  function addMappingTableEntry(state, entry, baseRules, customTerms) {
+    const e = entry || {};
+    const original = String(e.original == null ? "" : e.original).trim();
+    const placeholder = String(e.placeholder == null ? "" : e.placeholder).trim();
+    const category = String(e.category || "FESTE_ZUORDNUNG").toUpperCase();
+    const ct = cloneCustomTerms(customTerms);
+    if (!original) return { ok: false, error: "Original darf nicht leer sein.", customTerms: ct };
+    const low = original.toLowerCase();
+
+    if (placeholder) {
+      const err = validateNewPlaceholder(state, placeholder, baseRules, ct);
+      if (err) return { ok: false, error: err, customTerms: ct };
+    }
+    // Ein bisher ausgenommener Wert wird wieder anonymisiert
+    ct.exakteWoerter = ct.exakteWoerter.filter(s => s.trim().toLowerCase() !== low);
+
+    const exists = ct.festeZuordnung.some(r => r.original.trim().toLowerCase() === low) ||
+      ct.firmenUndStandorte.some(s => s.trim().toLowerCase() === low) ||
+      ct.interneDomains.some(s => s.trim().toLowerCase() === low);
+    if (exists) return { ok: false, error: `'${original}' ist bereits in 'Eigene Begriffe' enthalten.`, customTerms: cloneCustomTerms(customTerms) };
+
+    if (placeholder || category === "FESTE_ZUORDNUNG") {
+      ct.festeZuordnung.push({ original, placeholder });
+    } else if (category === "FIRMA") {
+      ct.firmenUndStandorte.push(original);
+    } else if (category === "DOMAIN") {
+      ct.interneDomains.push(original);
+    } else {
+      ct.festeZuordnung.push({ original, placeholder: "" });
+    }
+    const res = validateAndMergeEigeneBegriffe(baseRules || DEFAULT_RULES, ct);
+    if (!res.valid) {
+      return { ok: false, error: res.errors.join(" | "), customTerms: cloneCustomTerms(customTerms) };
+    }
+    return { ok: true, original, placeholder, category, customTerms: ct };
+  }
+
+  function reprocessFilesWithState(inputFiles, baseRules, customTerms, state, options) {
+    const opts = options || {};
+    const mergeRes = validateAndMergeEigeneBegriffe(baseRules || DEFAULT_RULES, customTerms || {});
+    if (!mergeRes.valid) {
+      return { ok: false, errors: mergeRes.errors, results: [], findings: [], skipped: [] };
+    }
+    const cfg = buildEngineConfig(mergeRes.mergedRules, opts.overrides || {});
+    state.stats = new Map();
+    const results = [];
+    const findingsAll = [];
+    const skipped = [];
+    for (const item of (inputFiles || [])) {
+      const bytes = item.bytes || (typeof item.text === "string" ? new TextEncoder().encode(item.text) : new Uint8Array(0));
+      if (isBinaryBytes(bytes)) {
+        skipped.push(processPath(item.path, cfg, state));
+        continue;
+      }
+      const origText = typeof item.text === "string" ? item.text : decodeBytesWithBom(bytes);
+      const anonRelPath = processPath(item.path, cfg, state);
+      const anonText = processText(origText, cfg, state);
+      const findings = auditText(anonText, anonRelPath, cfg);
+      for (const f of findings) findingsAll.push(f);
+      results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings });
+    }
+    return { ok: true, errors: [], results, findings: findingsAll, skipped, cfg, mergedRules: mergeRes.mergedRules };
   }
 
   function buildReleaseZipEntries(processedResults) {
@@ -2673,12 +3029,31 @@
     let tablePreviewShowOriginals = false;
     let tablePreviewSortBy = "category";
     let tablePreviewSortDir = "asc";
+    // Bearbeitungszustand der Zuordnungstabelle
+    let tableHasPendingChanges = false;   // Änderungen noch nicht per "Neu anonymisieren" angewendet
+    let unsavedTableChanges = false;      // Zuordnungstabelle seit letzter Änderung nicht exportiert
+    let unsavedLocalTermsChanges = false; // anon-regeln.lokal.json seit letzter Änderung nicht exportiert
+    let openInlineEdit = null;            // { ph, input, initial }
 
     const rulesTextarea = document.getElementById("rulesTextarea");
     rulesTextarea.value = JSON.stringify(currentRules, null, 2);
 
+    function hasDirtyInlineEdit() {
+      return Boolean(openInlineEdit && openInlineEdit.input && openInlineEdit.input.value !== openInlineEdit.initial);
+    }
+
+    // Gibt false zurück, wenn der Benutzer das Verwerfen einer offenen Bearbeitung abbricht
+    function discardInlineEditWithConfirm() {
+      if (hasDirtyInlineEdit()) {
+        if (!window.confirm("Eine Umbenennung ist noch nicht übernommen. Verwerfen?")) return false;
+      }
+      openInlineEdit = null;
+      return true;
+    }
+
     function maskTablePreviewOriginals() {
       tablePreviewShowOriginals = false;
+      openInlineEdit = null;
       const btnShow = document.getElementById("btnShowTableOriginals");
       const btnHide = document.getElementById("btnHideTableOriginals");
       if (btnShow) btnShow.style.display = "";
@@ -2686,11 +3061,33 @@
       renderTablePreviewUI();
     }
 
+    function setTableEditStatus(msg, isError) {
+      const el = document.getElementById("tableEditStatus");
+      if (!el) return;
+      el.style.color = isError ? "#fca5a5" : "#86efac";
+      el.textContent = msg || "";
+    }
+
+    function updatePendingBannerUI() {
+      const banner = document.getElementById("tablePendingBanner");
+      if (banner) banner.style.display = tableHasPendingChanges ? "flex" : "none";
+    }
+
+    function markTablePending() {
+      tableHasPendingChanges = true;
+      unsavedTableChanges = true;
+      unsavedLocalTermsChanges = true;
+      updatePendingBannerUI();
+    }
+
     function renderTablePreviewUI() {
       const tbody = document.getElementById("mappingPreviewTableBody");
       const countsEl = document.getElementById("tableCategoryCounts");
       const searchEl = document.getElementById("tablePreviewSearch");
+      const addBar = document.getElementById("tableAddEntryBar");
+      if (addBar) addBar.style.display = tablePreviewShowOriginals ? "flex" : "none";
       if (!tbody || !countsEl) return;
+      openInlineEdit = null;
 
       const { entries, categoryCounts } = extractMappingTableEntries(currentState);
       countsEl.innerHTML = "";
@@ -2718,12 +3115,13 @@
         sortBy: tablePreviewSortBy,
         sortDir: tablePreviewSortDir
       });
-      tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals });
+      tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals, editable: tablePreviewShowOriginals });
     }
 
     // Tab-Navigation (verdeckt beim Tab-Wechsel automatisch wieder die Originale in der Zuordnungstabelle)
     document.querySelectorAll("nav.tabs button").forEach(btn => {
       btn.addEventListener("click", () => {
+        if (!discardInlineEditWithConfirm()) return;
         document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
         document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
         btn.classList.add("active");
@@ -2862,16 +3260,22 @@
       document.querySelectorAll("#interneDomainsRows .domain-input").forEach(inp => {
         interneDomains.push(inp.value);
       });
-      return { festeZuordnung, firmenUndStandorte, interneDomains };
+      const exakteWoerter = [];
+      document.querySelectorAll("#exakteWoerterRows .exakt-input").forEach(inp => {
+        exakteWoerter.push(inp.value);
+      });
+      return { festeZuordnung, firmenUndStandorte, interneDomains, exakteWoerter };
     }
 
     function populateCustomTermsUI(data) {
       const fContainer = document.getElementById("festeZuordnungRows");
       const fiContainer = document.getElementById("firmenUndStandorteRows");
       const dContainer = document.getElementById("interneDomainsRows");
+      const eContainer = document.getElementById("exakteWoerterRows");
       fContainer.innerHTML = "";
       fiContainer.innerHTML = "";
       dContainer.innerHTML = "";
+      eContainer.innerHTML = "";
 
       const norm = normalizeCustomInputRows(data || {});
       if (norm.festeRows.length === 0) {
@@ -2888,6 +3292,11 @@
         addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "");
       } else {
         norm.domainsList.forEach(v => addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", v));
+      }
+      if (norm.exakteList.length === 0) {
+        addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", "");
+      } else {
+        norm.exakteList.forEach(v => addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", v));
       }
       refreshCustomTermsValidationUI();
     }
@@ -2908,8 +3317,9 @@
         const countFeste = Object.keys(res.normalizedCustom.festeZuordnung).length;
         const countFirmen = res.normalizedCustom.firmenUndStandorte.length;
         const countDomains = res.normalizedCustom.interneDomains.length;
+        const countExakt = res.normalizedCustom.exakteWoerter.length;
         msgEl.style.color = "#86efac";
-        msgEl.textContent = `Eigene Begriffe gültig (${countFeste} feste Zuordnungen, ${countFirmen} Firmen/Standorte, ${countDomains} Domains) – aktiv für den nächsten Lauf.`;
+        msgEl.textContent = `Eigene Begriffe gültig (${countFeste} feste Zuordnungen, ${countFirmen} Firmen/Standorte, ${countDomains} Domains, ${countExakt} Ausnahmen) – aktiv für den nächsten Lauf.`;
       }
       return res;
     }
@@ -2921,6 +3331,9 @@
     document.getElementById("btnAddDomainRow").addEventListener("click", () =>
       addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "")
     );
+    document.getElementById("btnAddExaktRow").addEventListener("click", () =>
+      addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", "")
+    );
 
     document.getElementById("btnDownloadLocalTerms").addEventListener("click", () => {
       try {
@@ -2928,6 +3341,7 @@
         try { base = JSON.parse(rulesTextarea.value); } catch (_) {}
         const jsonOut = exportLokaleBegriffeJson(readCustomTermsFromUI(), base);
         triggerDownload(jsonOut, "anon-regeln.lokal.json", "application/json");
+        unsavedLocalTermsChanges = false;
       } catch (err) {
         alert(err.message);
       }
@@ -2985,6 +3399,119 @@
         }
         renderTablePreviewUI();
       });
+    });
+
+    function currentBaseRulesForEdit() {
+      try { return JSON.parse(rulesTextarea.value); } catch (_) { return currentRules; }
+    }
+
+    function startInlineRename(tr, ph) {
+      if (!tablePreviewShowOriginals) return;
+      if (!discardInlineEditWithConfirm()) return;
+      renderTablePreviewUI();
+      const freshRow = Array.from(document.querySelectorAll("#mappingPreviewTableBody tr")).find(r => r.dataset.ph === ph);
+      if (!freshRow) return;
+      const cell = freshRow.querySelector(".map-ph-cell");
+      const actionCell = freshRow.querySelector(".map-action-cell");
+      cell.textContent = "";
+      actionCell.textContent = "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = ph; // Werte nur über .value, nie über innerHTML
+      input.maxLength = 32;
+      input.style.maxWidth = "180px";
+      const btnOk = document.createElement("button");
+      btnOk.type = "button";
+      btnOk.className = "btn-sm primary";
+      btnOk.textContent = "Übernehmen";
+      const btnCancel = document.createElement("button");
+      btnCancel.type = "button";
+      btnCancel.className = "btn-sm";
+      btnCancel.textContent = "Abbrechen";
+      cell.appendChild(input);
+      actionCell.append(btnOk, document.createTextNode(" "), btnCancel);
+      openInlineEdit = { ph, input, initial: ph };
+      input.focus();
+      const commit = () => {
+        const res = renameMappingTableEntry(currentState, ph, input.value.trim(), currentBaseRulesForEdit(), readCustomTermsFromUI());
+        if (!res.ok) {
+          setTableEditStatus(res.error, true);
+          return;
+        }
+        populateCustomTermsUI(res.customTerms);
+        openInlineEdit = null;
+        markTablePending();
+        setTableEditStatus(`'${res.oldPlaceholder}' → '${res.newPlaceholder}' umbenannt (alter Name bleibt als Alias für die Rückübersetzung).`, false);
+        renderTablePreviewUI();
+      };
+      btnOk.addEventListener("click", commit);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") commit();
+        if (ev.key === "Escape") { openInlineEdit = null; renderTablePreviewUI(); }
+      });
+      btnCancel.addEventListener("click", () => { openInlineEdit = null; renderTablePreviewUI(); });
+    }
+
+    document.getElementById("mappingPreviewTableBody").addEventListener("click", (ev) => {
+      const target = ev.target;
+      if (!target || !target.classList || !tablePreviewShowOriginals) return;
+      const ph = target.dataset ? target.dataset.ph : null;
+      if (!ph) return;
+      if (target.classList.contains("map-rename-btn")) {
+        startInlineRename(target.closest("tr"), ph);
+      } else if (target.classList.contains("map-remove-btn")) {
+        if (!discardInlineEditWithConfirm()) return;
+        const res = removeMappingTableEntry(currentState, ph, readCustomTermsFromUI(), (msg) => window.confirm(msg));
+        if (res.cancelled) return;
+        if (!res.ok) { setTableEditStatus(res.error, true); return; }
+        populateCustomTermsUI(res.customTerms);
+        markTablePending();
+        setTableEditStatus(`'${ph}' entfernt – Wert wird nicht mehr anonymisiert (in ausnahmen.exakteWoerter übernommen).`, false);
+        renderTablePreviewUI();
+      }
+    });
+
+    document.getElementById("btnTableAddEntry").addEventListener("click", () => {
+      if (!tablePreviewShowOriginals) return;
+      const origEl = document.getElementById("tableAddOriginal");
+      const phEl = document.getElementById("tableAddPlaceholder");
+      const catEl = document.getElementById("tableAddCategory");
+      const res = addMappingTableEntry(currentState, {
+        original: origEl.value,
+        placeholder: phEl.value,
+        category: catEl.value
+      }, currentBaseRulesForEdit(), readCustomTermsFromUI());
+      if (!res.ok) { setTableEditStatus(res.error, true); return; }
+      populateCustomTermsUI(res.customTerms);
+      origEl.value = "";
+      phEl.value = "";
+      markTablePending();
+      setTableEditStatus("Eintrag zu 'Eigene Begriffe' hinzugefügt – wird beim Neu-Anonymisieren ersetzt.", false);
+      renderTablePreviewUI();
+    });
+
+    document.getElementById("btnReapplyAnon").addEventListener("click", async () => {
+      if (loadedInputFiles.length === 0) {
+        setTableEditStatus("Keine Dateien geladen – die Änderungen gelten automatisch beim nächsten Lauf.", false);
+        tableHasPendingChanges = false;
+        updatePendingBannerUI();
+        return;
+      }
+      const ok = await executeRun(false);
+      if (ok) {
+        tableHasPendingChanges = false;
+        updatePendingBannerUI();
+        setTableEditStatus("Neu anonymisiert – Prüfung und Vorschau aktualisiert. Unveränderte Platzhalter sind gleich geblieben.", false);
+      }
+    });
+
+    window.addEventListener("beforeunload", (ev) => {
+      if (unsavedTableChanges || unsavedLocalTermsChanges || hasDirtyInlineEdit()) {
+        ev.preventDefault();
+        ev.returnValue = "";
+        return "";
+      }
+      return undefined;
     });
 
     async function ingestFileList(fileList) {
@@ -3102,20 +3629,20 @@
     async function executeRun(isProbe) {
       if (loadedInputFiles.length === 0) {
         alert("Bitte zuerst Dateien auswählen oder 'Beispieldaten laden' klicken.");
-        return;
+        return false;
       }
       try {
         currentRules = JSON.parse(rulesTextarea.value);
       } catch (e) {
         alert("Fehler in der Regeldatei (JSON ungültig): " + e.message);
-        return;
+        return false;
       }
 
       const mergeRes = validateAndMergeEigeneBegriffe(currentRules, readCustomTermsFromUI());
       refreshCustomTermsValidationUI();
       if (!mergeRes.valid) {
         alert("Fehler in 'Eigene Begriffe':\n" + mergeRes.errors.join("\n"));
-        return;
+        return false;
       }
       const effectiveRules = mergeRes.mergedRules;
 
@@ -3252,7 +3779,12 @@
 
         document.getElementById("btnDownloadZip").disabled = isProbe || processedResults.length === 0;
         document.getElementById("btnDownloadReport").disabled = false;
+        if (!isProbe) {
+          tableHasPendingChanges = false;
+          updatePendingBannerUI();
+        }
         updateTableStatusUI();
+        return true;
       } finally {
         btnAnon.disabled = false;
         btnProbe.disabled = false;
@@ -3347,6 +3879,7 @@
       const plain = JSON.stringify(currentState.toJSON(), null, 2);
       const encrypted = await encryptTableWebCrypto(plain, pass);
       triggerDownload(encrypted, "zuordnungstabelle.anon-tab", "application/json");
+      unsavedTableChanges = false;
       document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (PBKDF2 600.000 Iterationen) heruntergeladen.";
     });
 
@@ -3423,7 +3956,13 @@
       preparePreviewCopy,
       extractMappingTableEntries,
       filterAndSortMappingEntries,
-      renderMappingTableRowsHtml
+      renderMappingTableRowsHtml,
+      compareNatural,
+      renameMappingTableEntry,
+      removeMappingTableEntry,
+      addMappingTableEntry,
+      reprocessFilesWithState,
+      REMOVE_CONFIRM_HINT
     };
   }
   </script>

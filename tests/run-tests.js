@@ -717,7 +717,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   const customAudit = core.auditText(anonCustomText, "test.txt", customCfg);
   assert(customAudit.length === 0, "Eigene Begriffe Wirkung: Anonymisierter Text mit eigenen Begriffen und Auto-Platzhalter ist im Prüfmodus SAUBER");
 
-  // Export enthält NUR eigeneBegriffe
+  // Export enthält NUR eigeneBegriffe + ausnahmen.exakteWoerter (keine sonstigen Regeln)
   const exportedLocalJson = core.exportLokaleBegriffeJson({
     festeZuordnung: [{ original: "sw-spezial-01", placeholder: "SW-CORE-99" }],
     firmenUndStandorte: ["Klinikum-Suedstadt"],
@@ -725,10 +725,11 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   }, diskRules);
   const parsedLocalObj = JSON.parse(exportedLocalJson);
   assert(
-    Object.keys(parsedLocalObj).length === 1 &&
+    Object.keys(parsedLocalObj).sort().join(",") === "ausnahmen,eigeneBegriffe" &&
     parsedLocalObj.eigeneBegriffe &&
-    Object.keys(parsedLocalObj.eigeneBegriffe).sort().join(",") === "festeZuordnung,firmenUndStandorte,interneDomains",
-    "Eigene Begriffe Export: anon-regeln.lokal.json enthält ausschließlich den Abschnitt 'eigeneBegriffe'"
+    Object.keys(parsedLocalObj.eigeneBegriffe).sort().join(",") === "festeZuordnung,firmenUndStandorte,interneDomains" &&
+    Object.keys(parsedLocalObj.ausnahmen).join(",") === "exakteWoerter",
+    "Eigene Begriffe Export: anon-regeln.lokal.json enthält ausschließlich 'eigeneBegriffe' und 'ausnahmen.exakteWoerter'"
   );
   const reimportedLocal = core.importLokaleBegriffeJson(exportedLocalJson);
   assert(
@@ -880,6 +881,215 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     /querySelectorAll\("nav\.tabs button"\)[\s\S]{1,400}?maskTablePreviewOriginals\(\)/.test(htmlContent),
     "Tabellen-Vorschau Tab-Wechsel: Beim Wechsel des Reiters wird maskTablePreviewOriginals() automatisch aufgerufen"
   );
+
+  // ============================================================================
+  // 17. PRÜFE EDITIERBARE ZUORDNUNGSTABELLE & ANON-REGELN.LOKAL.JSON
+  // ============================================================================
+  console.log(`--- 17. Prüfe editierbare Zuordnungstabelle & anon-regeln.lokal.json (ausnahmen.exakteWoerter) ---`);
+
+  // 17.1 Natürliche Sortierung (TEXT-1, TEXT-2, ... TEXT-10)
+  assert(core.compareNatural("TEXT-1", "TEXT-2") < 0, "Natürliche Sortierung: TEXT-1 vor TEXT-2");
+  assert(core.compareNatural("TEXT-2", "TEXT-10") < 0, "Natürliche Sortierung: TEXT-2 vor TEXT-10 (nicht lexikographisch TEXT-10 vor TEXT-2)");
+  assert(core.compareNatural("TEXT-10", "TEXT-2") > 0, "Natürliche Sortierung: TEXT-10 nach TEXT-2");
+  assert(core.compareNatural("NET-1.H2", "NET-1.H10") < 0, "Natürliche Sortierung: NET-1.H2 vor NET-1.H10");
+
+  const naturalTestList = [
+    { category: "TEXT", placeholder: "TEXT-10", original: "zehn" },
+    { category: "TEXT", placeholder: "TEXT-2", original: "zwei" },
+    { category: "TEXT", placeholder: "TEXT-1", original: "eins" },
+    { category: "HOST", placeholder: "HOST-1", original: "host01" }
+  ];
+  const sortedNatural = core.filterAndSortMappingEntries(naturalTestList, { sortBy: "category", sortDir: "asc" });
+  assert(
+    sortedNatural.map(x => x.placeholder).join(",") === "HOST-1,TEXT-1,TEXT-2,TEXT-10",
+    "Standardsortierung nach Kategorie + natürlicher Platzhalter-Reihenfolge: HOST-1, TEXT-1, TEXT-2, TEXT-10"
+  );
+
+  // 17.2 Platzhalter umbenennen (TEXT-x -> VLAN-GAESTE), Alias-Erhalt, Rückübersetzung mit BEIDEN Namen
+  const editState = new core.AnonState();
+  const editSampleText = [
+    "hostname rz1-sw-core01",
+    "vlan 100",
+    "   name WAN_GUEST_10.20.30.0",
+    "interface 1/1/1",
+    "   description Uplink Praxis Dr Weber",
+    "   ip address 10.50.60.1/24"
+  ].join("\n");
+  const editCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+  const editAnon1 = core.processText(editSampleText, editCfg, editState);
+
+  const initialMapping = core.extractMappingTableEntries(editState);
+  const textRow = initialMapping.entries.find(e => e.original === "Uplink Praxis Dr Weber");
+  assert(Boolean(textRow), "Freitext-Zeile wurde erfasst");
+  const oldTextPh = textRow.placeholder;
+
+  let localCustomTerms = { festeZuordnung: [], firmenUndStandorte: [], interneDomains: [], exakteWoerter: [] };
+  const renameRes = core.renameMappingTableEntry(editState, oldTextPh, "VLAN-GAESTE", diskRules, localCustomTerms);
+  assert(renameRes.ok === true, "Platzhalter erfolgreich umbenannt");
+  localCustomTerms = renameRes.customTerms;
+
+  // Neuer Lauf mit geänderter Tabelle erzeugt neuen Platzhalter
+  const editAnon2 = core.processText(editSampleText, editCfg, editState);
+  assert(editAnon2.includes("VLAN-GAESTE"), "Neu anonymisierte Ausgabe enthält neuen Platzhalter 'VLAN-GAESTE'");
+  assert(!editAnon2.includes(oldTextPh), "Neu anonymisierte Ausgabe enthält den alten Platzhalter nicht mehr");
+
+  // Rückübersetzung funktioniert mit BEIDEN Namen (alt und neu)
+  const deanomNew = core.deanonymizeText("Prüfen Sie VLAN-GAESTE auf dem Switch", editState);
+  assert(deanomNew.includes("Uplink Praxis Dr Weber"), "Rückübersetzung mit neuem Namen ('VLAN-GAESTE') erfolgreich");
+  const deanomOld = core.deanonymizeText(`Prüfen Sie ${oldTextPh} auf dem Switch`, editState);
+  assert(deanomOld.includes("Uplink Praxis Dr Weber"), "Rückübersetzung mit altem Alias-Namen erfolgreich");
+
+  // Aktive Tabelle listet nur neuen Namen, alten Namen nicht mehr
+  const mappingAfterRename = core.extractMappingTableEntries(editState);
+  assert(mappingAfterRename.entries.some(e => e.placeholder === "VLAN-GAESTE"), "Aktive Tabelle enthält 'VLAN-GAESTE'");
+  assert(!mappingAfterRename.entries.some(e => e.placeholder === oldTextPh), "Aktive Tabelle blendet alten Alias-Platzhalter aus");
+
+  // 17.3 Eintrag entfernen ("wird nicht anonymisiert")
+  const vlanRow = mappingAfterRename.entries.find(e => e.original === "WAN_GUEST_10.20.30.0");
+  assert(Boolean(vlanRow), "VLAN-Name in Tabelle vorhanden");
+  const oldVlanPh = vlanRow.placeholder;
+
+  // Abbruch bei nicht bestätigtem Dialog
+  const cancelRemove = core.removeMappingTableEntry(editState, oldVlanPh, localCustomTerms, () => false);
+  assert(cancelRemove.cancelled === true, "Entfernen bricht bei Nicht-Bestätigung ab");
+
+  // Bestätigtes Entfernen
+  let removePromptMessage = "";
+  const removeRes = core.removeMappingTableEntry(editState, oldVlanPh, localCustomTerms, (msg) => {
+    removePromptMessage = msg;
+    return true;
+  });
+  assert(removeRes.ok === true, "Eintrag erfolgreich entfernt");
+  assert(removePromptMessage.includes(core.REMOVE_CONFIRM_HINT), "Bestätigungshinweis 'Dieser Wert steht danach im Klartext in der Ausgabe.' vorhanden");
+  localCustomTerms = removeRes.customTerms;
+
+  assert(
+    localCustomTerms.exakteWoerter.includes("WAN_GUEST_10.20.30.0"),
+    "Entfernter Originalwert wurde in 'ausnahmen.exakteWoerter' aufgenommen"
+  );
+
+  // Neu-Anonymisieren mit reprocessFilesWithState: entfernter Wert bleibt im Klartext
+  const reprocessRes = core.reprocessFilesWithState(
+    [{ path: "switch.txt", text: editSampleText }],
+    diskRules,
+    localCustomTerms,
+    editState,
+    { overrides: { netzerhaltend: true } }
+  );
+  assert(reprocessRes.ok === true, "reprocessFilesWithState erfolgreich");
+  const reprocessedText = reprocessRes.results[0].anonText;
+  assert(
+    reprocessedText.includes("name WAN_GUEST_10.20.30.0"),
+    "Entfernter Begriff steht im Klartext in der neu anonymisierten Ausgabe"
+  );
+
+  // Rückübersetzung alter Texte mit dem alten Platzhalter funktioniert weiterhin
+  const deanomRemovedOld = core.deanonymizeText(`Konfiguriere ${oldVlanPh}`, editState);
+  assert(deanomRemovedOld.includes("WAN_GUEST_10.20.30.0"), "Alte KI-Antworten mit entferntem Platzhalter bleiben rückübersetzbar");
+
+  // 17.4 Eintrag hinzufügen (addMappingTableEntry)
+  const addRes = core.addMappingTableEntry(
+    editState,
+    { original: "extern-gw-01", placeholder: "GW-EXTERN", category: "FESTE_ZUORDNUNG" },
+    diskRules,
+    localCustomTerms
+  );
+  assert(addRes.ok === true, "Eintrag hinzufügen erfolgreich");
+  localCustomTerms = addRes.customTerms;
+
+  const textWithAdded = editSampleText + "\nroute 0.0.0.0/0 via extern-gw-01";
+  const reprocessWithAdd = core.reprocessFilesWithState(
+    [{ path: "switch.txt", text: textWithAdded }],
+    diskRules,
+    localCustomTerms,
+    editState,
+    { overrides: { netzerhaltend: true } }
+  );
+  assert(reprocessWithAdd.results[0].anonText.includes("GW-EXTERN"), "Neu hinzugefügter Begriff wird durch seinen Platzhalter ersetzt");
+
+  // 17.5 Unveränderte Platzhalter bleiben nach "Neu anonymisieren" identisch
+  const origIpPh = editAnon1.match(/\b(NET-\d+\.H\d+)\b/)[1];
+  const newIpPh = reprocessWithAdd.results[0].anonText.match(/\b(NET-\d+\.H\d+)\b/)[1];
+  assert(origIpPh === newIpPh, "Unveränderte Platzhalter (z. B. IP) bleiben nach 'Neu anonymisieren' 100 % identisch");
+
+  // 17.6 Ungültige und doppelte Platzhalter werden abgelehnt
+  const invPh1 = core.renameMappingTableEntry(editState, "VLAN-GAESTE", "klein_und_ungueltig!", diskRules, localCustomTerms);
+  assert(invPh1.ok === false && invPh1.error.includes("[A-Z0-9-]{1,32}"), "Ungültige Syntax für Platzhalter wird abgelehnt");
+
+  const invPh2 = core.renameMappingTableEntry(editState, "VLAN-GAESTE", "GW-EXTERN", diskRules, localCustomTerms);
+  assert(invPh2.ok === false, "Bereits vergebener Platzhalter wird abgelehnt");
+
+  const invPh3 = core.renameMappingTableEntry(editState, "VLAN-GAESTE", "WERK-STUTTGART", diskRules, localCustomTerms);
+  assert(invPh3.ok === false && invPh3.error.includes("echten Begriff"), "Platzhalter, der einem echten Begriff entspricht, wird abgelehnt");
+
+  // 17.7 Paritätstest mit anon.ps1 beim Einlesen von anon-regeln.lokal.json (ausnahmen.exakteWoerter)
+  if (pwshCheck.status === 0) {
+    const tmpParityDir = fs.mkdtempSync(path.join(os.tmpdir(), "anon-lokal-parity-"));
+    const lokalRulesPath = path.join(tmpParityDir, "anon-regeln.lokal.json");
+    const testInputPath = path.join(tmpParityDir, "input.txt");
+    const testOutDir = path.join(tmpParityDir, "out");
+    const testTabPath = path.join(tmpParityDir, "tab.json");
+
+    const lokalRulesJson = JSON.stringify({
+      eigeneBegriffe: {
+        festeZuordnung: {
+          "sw-core-lokal01": "CORE-LOKAL"
+        }
+      },
+      ausnahmen: {
+        exakteWoerter: [
+          "Rechenzentrum-Nord Raum 2.04",
+          "10.99.88.77"
+        ]
+      }
+    }, null, 2);
+    fs.writeFileSync(lokalRulesPath, lokalRulesJson, "utf8");
+
+    const sampleParityInput = [
+      "hostname sw-core-lokal01",
+      "snmp-server location Rechenzentrum-Nord Raum 2.04",
+      "interface 1/1/1",
+      "   ip address 10.99.88.77/24",
+      "   description Uplink zu Server"
+    ].join("\n");
+    fs.writeFileSync(testInputPath, sampleParityInput, "utf8");
+
+    // JS-Ergebnis mit den lokalen Regeln
+    const jsLokalLoaded = core.importLokaleBegriffeJson(lokalRulesJson);
+    const jsMerged = core.validateAndMergeEigeneBegriffe(diskRules, jsLokalLoaded);
+    const jsCfg = core.buildEngineConfig(jsMerged.mergedRules, { netzerhaltend: true });
+    const jsState = new core.AnonState();
+    const jsAnonOut = core.processText(sampleParityInput, jsCfg, jsState);
+
+    // PowerShell CLI mit -LokaleRegeln
+    const psCmd = `& "${PS1_PATH.replace(/\\/g, "\\\\")}" -Eingabe "${testInputPath.replace(/\\/g, "\\\\")}" -Ausgabe "${testOutDir.replace(/\\/g, "\\\\")}" -Regeln "${RULES_PATH.replace(/\\/g, "\\\\")}" -LokaleRegeln "${lokalRulesPath.replace(/\\/g, "\\\\")}" -TabellenPfad "${testTabPath.replace(/\\/g, "\\\\")}" -Unverschluesselt > $null`;
+    const psRun = spawnSync("pwsh", ["-NoProfile", "-Command", psCmd], { encoding: "utf8" });
+    assert(psRun.status === 0, `anon.ps1 mit -LokaleRegeln beendet mit Exit-Code 0 (${psRun.stderr || "ok"})`);
+
+    const psOutFile = path.join(testOutDir, "anonym", "input.txt");
+    assert(fs.existsSync(psOutFile), "anon.ps1 hat anonymisierte Datei erzeugt");
+    const psAnonOut = fs.readFileSync(psOutFile, "utf8");
+
+    assert(
+      jsAnonOut.includes("hostname CORE-LOKAL") && psAnonOut.includes("hostname CORE-LOKAL"),
+      "Parität: festeZuordnung aus anon-regeln.lokal.json wird von beiden Engines ersetzt"
+    );
+    assert(
+      jsAnonOut.includes("snmp-server location Rechenzentrum-Nord Raum 2.04") &&
+      psAnonOut.includes("snmp-server location Rechenzentrum-Nord Raum 2.04"),
+      "Parität: Freitext-Ausnahme aus ausnahmen.exakteWoerter bleibt in beiden Engines im Klartext"
+    );
+    assert(
+      jsAnonOut.includes("10.99.88.77") && psAnonOut.includes("10.99.88.77"),
+      "Parität: IP-Ausnahme aus ausnahmen.exakteWoerter bleibt in beiden Engines im Klartext"
+    );
+    assert(
+      jsAnonOut === psAnonOut,
+      "Parität: 100 % identische Ausgabe zwischen anonymisierer.html und anon.ps1 mit anon-regeln.lokal.json"
+    );
+
+    fs.rmSync(tmpParityDir, { recursive: true, force: true });
+  }
 
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);

@@ -859,6 +859,77 @@ try {
 $htmlRawContent = [System.IO.File]::ReadAllText((Join-Path $rootDir "anonymisierer.html"), [System.Text.Encoding]::UTF8)
 Assert-True (-not [regex]::IsMatch($htmlRawContent, '(?i)\b(?:localStorage|sessionStorage|indexedDB)\b')) "Statischer Check (PowerShell): anonymisierer.html enthält kein localStorage, sessionStorage oder indexedDB"
 
+Write-Host "=== 8. Prüfe editierbare Zuordnungstabelle & anon-regeln.lokal.json (ausnahmen.exakteWoerter) ===" -ForegroundColor Cyan
+# 8.1 anon.ps1 mit -LokaleRegeln (festeZuordnung + ausnahmen.exakteWoerter)
+$lokalTestDir = Join-Path $tempRunRoot "lokal_test"
+[void](New-Item -ItemType Directory -Path $lokalTestDir -Force)
+$lokalRegelnDatei = Join-Path $lokalTestDir "anon-regeln.lokal.json"
+$lokalEingabeDatei = Join-Path $lokalTestDir "eingabe.txt"
+$lokalAusgabeOrdner = Join-Path $lokalTestDir "ausgabe"
+$lokalTabelleDatei = Join-Path $lokalTestDir "tabelle.json"
+
+$lokalJsonContent = @'
+{
+  "eigeneBegriffe": {
+    "festeZuordnung": {
+      "sw-core-lokal01": "CORE-LOKAL"
+    }
+  },
+  "ausnahmen": {
+    "exakteWoerter": [
+      "Rechenzentrum-Nord Raum 2.04",
+      "10.99.88.77"
+    ]
+  }
+}
+'@
+[System.IO.File]::WriteAllText($lokalRegelnDatei, $lokalJsonContent, [System.Text.Encoding]::UTF8)
+
+$lokalInputText = @"
+hostname sw-core-lokal01
+snmp-server location Rechenzentrum-Nord Raum 2.04
+interface 1/1/1
+   ip address 10.99.88.77/24
+   description Uplink zu Server
+"@
+[System.IO.File]::WriteAllText($lokalEingabeDatei, $lokalInputText, [System.Text.Encoding]::UTF8)
+
+& $anonScript -Eingabe $lokalEingabeDatei -Ausgabe $lokalAusgabeOrdner -Regeln $rulesPath -LokaleRegeln $lokalRegelnDatei -TabellenPfad $lokalTabelleDatei -Unverschluesselt > $null
+Assert-Equal $LASTEXITCODE 0 "anon.ps1 CLI mit -LokaleRegeln beendet mit Exit-Code 0"
+
+$lokalOutFile = Join-Path (Join-Path $lokalAusgabeOrdner "anonym") "eingabe.txt"
+Assert-True (Test-Path -LiteralPath $lokalOutFile) "Ausgabedatei wurde erzeugt"
+$lokalOutText = [System.IO.File]::ReadAllText($lokalOutFile, [System.Text.Encoding]::UTF8)
+
+Assert-True ($lokalOutText.Contains("hostname CORE-LOKAL")) "festeZuordnung aus -LokaleRegeln wird korrekt angewendet ('CORE-LOKAL')"
+Assert-True ($lokalOutText.Contains("snmp-server location Rechenzentrum-Nord Raum 2.04")) "Freitext-Ausnahme aus ausnahmen.exakteWoerter bleibt im Klartext"
+Assert-True ($lokalOutText.Contains("10.99.88.77")) "IP-Ausnahme aus ausnahmen.exakteWoerter bleibt im Klartext"
+
+# Prüfmodus auf der Ausgabedatei über CLI (-Pruefen)
+& $anonScript -Eingabe $lokalOutFile -Regeln $rulesPath -LokaleRegeln $lokalRegelnDatei -Pruefen > $null
+Assert-Equal $LASTEXITCODE 0 "Prüfmodus: Ausgabedatei mit ausnahmen.exakteWoerter ist SAUBER (Exit-Code 0)"
+
+# 8.2 Zuordnungstabelle: Aliase werden beim Export/Import beibehalten und für Rückübersetzung genutzt
+$tabJson = [System.IO.File]::ReadAllText($lokalTabelleDatei, [System.Text.Encoding]::UTF8)
+$tabObj = ConvertFrom-Json -InputObject $tabJson
+Assert-True ($null -ne $tabObj.aliase) "Exportierte Tabelle enthält Feld 'aliase'"
+
+# Ergänze einen Alias in der Tabelle für den CLI-Rückübersetzungstest
+$tabObj.aliase | Add-Member -NotePropertyName "TEXT-23" -NotePropertyValue "VLAN-GAESTE"
+$tabObj.rueckwaerts | Add-Member -NotePropertyName "VLAN-GAESTE" -NotePropertyValue "Uplink Praxis Dr Weber"
+$tabObj.rueckwaerts | Add-Member -NotePropertyName "TEXT-23" -NotePropertyValue "Uplink Praxis Dr Weber"
+[System.IO.File]::WriteAllText($lokalTabelleDatei, ($tabObj | ConvertTo-Json -Depth 8), [System.Text.Encoding]::UTF8)
+
+# Rückübersetzung über CLI (-Zurueck)
+$kiAntwortPfad = Join-Path $lokalTestDir "ki-antwort.txt"
+$kiRueckPfad = Join-Path $lokalTestDir "ki-rueck.txt"
+[System.IO.File]::WriteAllText($kiAntwortPfad, "Prüfe TEXT-23 und VLAN-GAESTE", [System.Text.Encoding]::UTF8)
+& $anonScript -Zurueck -Eingabe $kiAntwortPfad -Ausgabe $kiRueckPfad -TabellenPfad $lokalTabelleDatei -Unverschluesselt > $null
+Assert-Equal $LASTEXITCODE 0 "Rückübersetzung mit Aliastabelle beendet mit Exit-Code 0"
+
+$kiRueckText = [System.IO.File]::ReadAllText($kiRueckPfad, [System.Text.Encoding]::UTF8)
+Assert-True ($kiRueckText.Trim() -eq "Prüfe Uplink Praxis Dr Weber und Uplink Praxis Dr Weber") "Rückübersetzung (-Zurueck) funktioniert sowohl für neuen Namen als auch für alten Alias 'TEXT-23'"
+
 # Aufräumen des temporären Testordners
 if (Test-Path -LiteralPath $tempRunRoot) { Remove-Item -LiteralPath $tempRunRoot -Recurse -Force }
 

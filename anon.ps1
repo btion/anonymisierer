@@ -70,6 +70,9 @@ param(
     [string]$Regeln,
 
     [Parameter(Mandatory = $false)]
+    [string]$LokaleRegeln,
+
+    [Parameter(Mandatory = $false)]
     [Alias("Tabelle")]
     [string]$TabellenPfad,
 
@@ -124,6 +127,7 @@ namespace AnonTool
         public Dictionary<string, string> Reverse = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> Counters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, Dictionary<string, string>> NetHostForward = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> Aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> Stats = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public string LoadedProtection = "NONE";
 
@@ -508,7 +512,16 @@ namespace AnonTool
             if (IsSubnetMaskOrSpecialIpv4(o1, o2, o3, o4, cfg.SubnetzmaskenBehalten))
                 return rawMatch;
 
+            if (cfg.ExakteAusnahmen.Contains(ipPart) || cfg.ExakteAusnahmen.Contains(rawMatch))
+                return rawMatch;
+
             state.AddStat("ip", 1);
+
+            string existingIpTok;
+            if (state.Forward.TryGetValue("IPV4|" + ipPart, out existingIpTok) && !string.IsNullOrEmpty(existingIpTok))
+            {
+                return existingIpTok + suffix;
+            }
 
             if (cfg.Netzerhaltend)
             {
@@ -572,6 +585,9 @@ namespace AnonTool
             if (lower == "::" || lower == "::1" || lower == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
                 return rawMatch;
 
+            if (cfg.ExakteAusnahmen.Contains(lower) || cfg.ExakteAusnahmen.Contains(rawMatch))
+                return rawMatch;
+
             // Schutz vor Uhrzeiten / Timestamps wie 12:34:56 (genau 2 Doppelpunkte, keine :: und alle Blöcke <= 2 Ziffern dezimal)
             if (!lower.Contains("::"))
             {
@@ -615,8 +631,11 @@ namespace AnonTool
             Func<string, bool> isOnlyProtectedOrExempt = (string bodyVal) =>
             {
                 if (string.IsNullOrWhiteSpace(bodyVal) || bodyVal == "*****") return true;
+                string rawUnprot = unprotect(bodyVal).Trim();
+                if (cfg.ExakteAusnahmen.Contains(rawUnprot)) return true;
                 string stripped = Regex.Replace(bodyVal, @"\u0002PROT_\d+\u0003", " ", RegexOptions.None, RxTimeout).Trim();
                 if (string.IsNullOrEmpty(stripped)) return true;
+                if (cfg.ExakteAusnahmen.Contains(stripped)) return true;
                 string[] parts = Regex.Split(stripped, @"\s+", RegexOptions.None, RxTimeout);
                 foreach (string p in parts)
                 {
@@ -667,8 +686,9 @@ namespace AnonTool
                         if (m.Groups.Count >= 5 && fRule.Category == "BANNER")
                         {
                             string body = m.Groups[3].Value.Trim();
-                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             string cleanBody = unprotect(body);
+                            if (cfg.ExakteAusnahmen.Contains(cleanBody.Trim())) return protect(m.Value);
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + m.Groups[2].Value + tok + m.Groups[4].Value);
@@ -676,8 +696,9 @@ namespace AnonTool
                         else if (m.Groups.Count >= 4)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             string cleanBody = unprotect(body);
+                            if (cfg.ExakteAusnahmen.Contains(cleanBody.Trim())) return protect(m.Value);
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + tok + m.Groups[3].Value);
@@ -685,8 +706,9 @@ namespace AnonTool
                         else if (m.Groups.Count >= 3)
                         {
                             string body = m.Groups[2].Value.Trim();
-                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             string cleanBody = unprotect(body);
+                            if (cfg.ExakteAusnahmen.Contains(cleanBody.Trim())) return protect(m.Value);
+                            if (isOnlyProtectedOrExempt(body)) return m.Value;
                             state.AddStat("freitext", 1);
                             string tok = state.GetOrCreateToken("FREITEXT_" + fRule.Category, cleanBody, fRule.Category);
                             return protect(m.Groups[1].Value + tok);
@@ -705,7 +727,7 @@ namespace AnonTool
                 var sortedFixed = cfg.FesteZuordnung.OrderByDescending(kv => kv.Key.Length).ToList();
                 foreach (var kv in sortedFixed)
                 {
-                    if (string.IsNullOrEmpty(kv.Key)) continue;
+                    if (string.IsNullOrEmpty(kv.Key) || cfg.ExakteAusnahmen.Contains(kv.Key.Trim())) continue;
                     state.RegisterFixed(kv.Key, kv.Value);
                     string pat = "(?<![A-Za-z0-9-])" + Regex.Escape(kv.Key) + "(?![A-Za-z0-9-])";
                     text = Regex.Replace(text, pat, (Match m) =>
@@ -716,13 +738,14 @@ namespace AnonTool
                 }
 
                 // Firmen-, Standort- und Personennamen (mit Wort-/Token-Grenzen (?<![A-Za-z0-9-])...(?![A-Za-z0-9-]))
-                var validTerms = cfg.FirmenUndStandorte.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+                var validTerms = cfg.FirmenUndStandorte.Where(s => !string.IsNullOrWhiteSpace(s) && !cfg.ExakteAusnahmen.Contains(s.Trim())).Select(s => s.Trim()).ToList();
                 if (validTerms.Count > 0)
                 {
                     var sortedByLen = validTerms.OrderByDescending(s => s.Length).Select(s => Regex.Escape(s)).ToArray();
                     string combinedPat = "(?<![A-Za-z0-9-])(?:" + string.Join("|", sortedByLen) + ")(?![A-Za-z0-9-])";
                     text = Regex.Replace(text, combinedPat, (Match m) =>
                     {
+                        if (cfg.ExakteAusnahmen.Contains(m.Value.Trim())) return m.Value;
                         state.AddStat("eigeneBegriffe", 1);
                         // Kanonischen Namen aus Liste suchen
                         string matchedCanonical = validTerms.FirstOrDefault(t => string.Equals(t, m.Value, StringComparison.OrdinalIgnoreCase)) ?? m.Value;
@@ -779,6 +802,7 @@ namespace AnonTool
             {
                 text = RxEmail.Replace(text, (Match m) =>
                 {
+                    if (cfg.ExakteAusnahmen.Contains(m.Value)) return m.Value;
                     state.AddStat("hostnamen", 1);
                     string tok = state.GetOrCreateToken("MAIL", m.Value, "MAIL");
                     return protect(tok);
@@ -786,6 +810,7 @@ namespace AnonTool
 
                 text = RxUrl.Replace(text, (Match m) =>
                 {
+                    if (cfg.ExakteAusnahmen.Contains(m.Value)) return m.Value;
                     state.AddStat("hostnamen", 1);
                     string tok = state.GetOrCreateToken("URL", m.Value, "URL");
                     return protect(tok);
@@ -802,6 +827,7 @@ namespace AnonTool
                 {
                     string norm = NormalizeMac(m.Value);
                     if (norm == "000000000000" || norm == "ffffffffffff") return m.Value;
+                    if (cfg.ExakteAusnahmen.Contains(m.Value) || cfg.ExakteAusnahmen.Contains(norm)) return m.Value;
                     state.AddStat("mac", 1);
                     string key = cfg.MacNormalisieren ? norm : m.Value.ToLowerInvariant();
                     string tok = state.GetOrCreateToken("MAC", key, "MAC", m.Value);
@@ -813,6 +839,7 @@ namespace AnonTool
                 {
                     string norm = NormalizeMac(m.Value);
                     if (norm == "000000000000" || norm == "ffffffffffff") return m.Value;
+                    if (cfg.ExakteAusnahmen.Contains(m.Value) || cfg.ExakteAusnahmen.Contains(norm)) return m.Value;
                     state.AddStat("mac", 1);
                     string key = cfg.MacNormalisieren ? norm : m.Value.ToLowerInvariant();
                     string tok = state.GetOrCreateToken("MAC", key, "MAC", m.Value);
@@ -825,6 +852,7 @@ namespace AnonTool
                     string rawHex = m.Groups[2].Value;
                     string norm = NormalizeMac(rawHex);
                     if (norm == "000000000000" || norm == "ffffffffffff") return m.Value;
+                    if (cfg.ExakteAusnahmen.Contains(rawHex) || cfg.ExakteAusnahmen.Contains(norm)) return m.Value;
                     state.AddStat("mac", 1);
                     string key = cfg.MacNormalisieren ? norm : rawHex.ToLowerInvariant();
                     string tok = state.GetOrCreateToken("MAC", key, "MAC", rawHex);
@@ -933,7 +961,7 @@ namespace AnonTool
                     text = Regex.Replace(text, fqdnPat, (Match m) =>
                     {
                         string hostPart = m.Groups[1].Value;
-                        if (cfg.ExakteAusnahmen.Contains(hostPart)) return m.Value;
+                        if (cfg.ExakteAusnahmen.Contains(m.Value) || cfg.ExakteAusnahmen.Contains(hostPart)) return m.Value;
                         state.AddStat("hostnamen", 1);
                         string hTok = state.GetOrCreateToken("HOST", m.Value, "HOST");
                         return protect(hTok);
@@ -943,6 +971,7 @@ namespace AnonTool
                     string domPat = @"\b" + Regex.Escape(cleanDom) + @"\b";
                     text = Regex.Replace(text, domPat, (Match m) =>
                     {
+                        if (cfg.ExakteAusnahmen.Contains(cleanDom)) return m.Value;
                         state.AddStat("hostnamen", 1);
                         string dTok = state.GetOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
                         return protect(dTok);
@@ -1155,6 +1184,7 @@ namespace AnonTool
                 {
                     foreach (Match m in rxBlock.Matches(pathCheck))
                     {
+                        if (IsAllowedInAudit(m.Value, cfg)) continue;
                         string fund = canonicalTerms.ContainsKey(m.Value) ? canonicalTerms[m.Value] : m.Value;
                         findings.Add(new AuditFinding { Datei = fileName, Zeile = 0, Kategorie = "Pfad-Sperrbegriff", Fund = fund, Kontext = "Dateipfad: " + fileName });
                     }
@@ -1163,6 +1193,7 @@ namespace AnonTool
                 {
                     foreach (Match m in rxDom.Matches(pathCheck))
                     {
+                        if (IsAllowedInAudit(m.Value, cfg)) continue;
                         string fund = canonicalDoms.ContainsKey(m.Value) ? canonicalDoms[m.Value] : m.Value;
                         findings.Add(new AuditFinding { Datei = fileName, Zeile = 0, Kategorie = "Pfad-Domain", Fund = fund, Kontext = "Dateipfad: " + fileName });
                     }
@@ -1212,6 +1243,12 @@ namespace AnonTool
                 cleanText = vr.Replace(cleanText, spaceMasker);
             foreach (Regex ar in cfg.AusnahmenRegex)
                 cleanText = ar.Replace(cleanText, spaceMasker);
+            var multiWordExempt = cfg.ExakteAusnahmen.Where(w => !string.IsNullOrWhiteSpace(w) && w.Trim().IndexOf(' ') >= 0).OrderByDescending(w => w.Length).ToList();
+            foreach (string mw in multiWordExempt)
+            {
+                Regex mwRx = new Regex("(?<![A-Za-z0-9-])" + Regex.Escape(mw.Trim()) + "(?![A-Za-z0-9-])", RegexOptions.IgnoreCase, RxTimeout);
+                cleanText = mwRx.Replace(cleanText, spaceMasker);
+            }
 
             Regex rxSuspiciousLongHexOrB64 = new Regex(@"\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b", RegexOptions.Compiled, RxTimeout);
             Regex rxCryptHash = new Regex(@"\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}", RegexOptions.Compiled, RxTimeout);
@@ -1269,6 +1306,7 @@ namespace AnonTool
             {
                 foreach (Match m in rxBlock.Matches(cleanText))
                 {
+                    if (IsAllowedInAudit(m.Value, cfg)) continue;
                     int ln = GetLineNumber(lineStarts, m.Index);
                     string fund = canonicalTerms.ContainsKey(m.Value) ? canonicalTerms[m.Value] : m.Value;
                     findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Sperrbegriff", Fund = fund, Kontext = getLineCtx(ln) });
@@ -1279,6 +1317,7 @@ namespace AnonTool
             {
                 foreach (Match m in rxDom.Matches(cleanText))
                 {
+                    if (IsAllowedInAudit(m.Value, cfg)) continue;
                     int ln = GetLineNumber(lineStarts, m.Index);
                     string fund = canonicalDoms.ContainsKey(m.Value) ? canonicalDoms[m.Value] : m.Value;
                     findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Interne-Domain", Fund = fund, Kontext = getLineCtx(ln) });
@@ -1335,6 +1374,7 @@ function Get-JsonProp {
 function Load-EngineConfig {
     param(
         [string]$RegelDatei,
+        [string]$LokaleRegelDatei,
         [Nullable[bool]]$OverrideNetzerhaltend,
         [string[]]$AktivKategorien
     )
@@ -1442,6 +1482,60 @@ function Load-EngineConfig {
         if ($null -ne $mR) {
             foreach ($pat in $mR) {
                 $cfg.AusnahmenRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
+            }
+        }
+    }
+
+    # Optional: Lokale Regeldatei (anon-regeln.lokal.json) zusammenführen (eigeneBegriffe + ausnahmen.exakteWoerter)
+    $effLokaleDatei = $LokaleRegelDatei
+    if (-not [string]::IsNullOrEmpty($effLokaleDatei)) {
+        if (-not (Test-Path -LiteralPath $effLokaleDatei)) {
+            throw "Lokale Regeldatei nicht gefunden: $effLokaleDatei"
+        }
+        $rawLokal = [AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $effLokaleDatei).Path))
+        $lokalObj = ConvertFrom-Json -InputObject $rawLokal
+        $lokEig = Get-JsonProp $lokalObj "eigeneBegriffe"
+        if ($null -eq $lokEig) { $lokEig = $lokalObj }
+        if ($null -ne $lokEig) {
+            $lFeste = Get-JsonProp $lokEig "festeZuordnung"
+            if ($null -ne $lFeste) {
+                foreach ($prop in $lFeste.PSObject.Properties) {
+                    $origKey = ([string]$prop.Name).Trim()
+                    $phVal = ([string]$prop.Value).Trim()
+                    if (-not [string]::IsNullOrEmpty($origKey) -and -not [string]::IsNullOrEmpty($phVal)) {
+                        $cfg.FesteZuordnung[$origKey] = $phVal
+                    }
+                }
+            }
+            $lFirmen = Get-JsonProp $lokEig "firmenUndStandorte"
+            if ($null -ne $lFirmen) {
+                foreach ($item in $lFirmen) {
+                    $sItem = ([string]$item).Trim()
+                    if (-not [string]::IsNullOrEmpty($sItem) -and -not ($cfg.FirmenUndStandorte | Where-Object { $_ -ieq $sItem })) {
+                        $cfg.FirmenUndStandorte.Add($sItem)
+                    }
+                }
+            }
+            $lDoms = Get-JsonProp $lokEig "interneDomains"
+            if ($null -ne $lDoms) {
+                foreach ($item in $lDoms) {
+                    $sDom = ([string]$item).Trim()
+                    if (-not [string]::IsNullOrEmpty($sDom) -and -not ($cfg.InterneDomains | Where-Object { $_ -ieq $sDom })) {
+                        $cfg.InterneDomains.Add($sDom)
+                    }
+                }
+            }
+        }
+        $lokAus = Get-JsonProp $lokalObj "ausnahmen"
+        if ($null -ne $lokAus) {
+            $lokExW = Get-JsonProp $lokAus "exakteWoerter"
+            if ($null -ne $lokExW) {
+                foreach ($w in $lokExW) {
+                    $sw = ([string]$w).Trim()
+                    if (-not [string]::IsNullOrEmpty($sw)) {
+                        [void]$cfg.ExakteAusnahmen.Add($sw)
+                    }
+                }
             }
         }
     }
@@ -1846,6 +1940,12 @@ function Import-AnonState {
             $state.NetHostForward[$netProp.Name] = $dict
         }
     }
+    $als = Get-JsonProp $tObj "aliase"
+    if ($null -ne $als) {
+        foreach ($p in $als.PSObject.Properties) {
+            $state.Aliases[$p.Name] = [string]$p.Value
+        }
+    }
     return $state
 }
 
@@ -1871,6 +1971,10 @@ function Export-AnonState {
         }
         $nh[$nk] = $sub
     }
+    $als = [ordered]@{}
+    if ($null -ne $State.Aliases) {
+        foreach ($ak in ($State.Aliases.Keys | Sort-Object)) { $als[$ak] = $State.Aliases[$ak] }
+    }
 
     $payload = [ordered]@{
         version     = "1.0"
@@ -1879,6 +1983,7 @@ function Export-AnonState {
         rueckwaerts = $rev
         zaehler     = $cnt
         netzHosts   = $nh
+        aliase      = $als
     }
     $plainJson = $payload | ConvertTo-Json -Depth 8
 
@@ -1932,7 +2037,7 @@ if ([string]::IsNullOrEmpty($Regeln)) {
     $Regeln = Join-Path $scriptDir "anon-regeln.json"
 }
 
-$cfg = Load-EngineConfig -RegelDatei $Regeln -OverrideNetzerhaltend $Netzerhaltend -AktivKategorien $Kategorien
+$cfg = Load-EngineConfig -RegelDatei $Regeln -LokaleRegelDatei $LokaleRegeln -OverrideNetzerhaltend $Netzerhaltend -AktivKategorien $Kategorien
 
 # ----------------------------------------------------------------------------
 # MODUS 1: Nur Prüfmodus (-Pruefen ohne Anonymisierungslauf)
