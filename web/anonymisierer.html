@@ -880,33 +880,39 @@
         "ersetzen": "*****"
       },
       {
+        "name": "Zugangsdaten in URLs (schema://benutzer:passwort@host)",
+        "suche": "(?i)((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\\s/@:\"'<>]+:)([^\\s/@\"'<>]+)(@)",
+        "ersetzen": "$1*****$3",
+        "nurWertSchuetzen": true
+      },
+      {
         "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
         "hersteller": "FortiGate/Sophos",
-        "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Aruba AOS-CX / AOS-S ciphertext, Passwörter, Keys",
         "hersteller": "Aruba",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "HPE Comware password/key (cipher|simple|hash) & snmp-agent community",
         "hersteller": "HPE Comware",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "MikroTik RouterOS Passwörter, Secrets, WireGuard Keys (inkl. public-key=) & PSKs",
         "hersteller": "MikroTik",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"[^\"]+\"|[^\\s\\r\\n]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^\\s\\r\\n]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
         "hersteller": "Cisco",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -916,14 +922,19 @@
         "ersetzen": "$1*****$3"
       },
       {
+        "name": "JSON-Geheimnisse mit Zahl oder Wahrheitswert (bleibt gültiges JSON)",
+        "suche": "(?i)(\"(?:password|passkey|auth_key|priv_key|secret|encrypted_password|community|psk|radius_key|tacacs_key|api_key|token|private_key)\"[ \\t]*:[ \\t]*)(-?[0-9][0-9.eE+-]*|true|false)(?![A-Za-z0-9_.])",
+        "ersetzen": "$1\"*****\""
+      },
+      {
         "name": "SNMP Community & SNMPv3 Auth/Priv Keys (CLI)",
         "hersteller": "Alle",
-        "suche": "(?i)((?<![A-Za-z0-9_])snmp-server[ \\t]+community[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])snmp-server[ \\t]+community[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Aruba AOS-CX snmpv3 auth-pass / priv-pass",
-        "suche": "(?i)((?<![A-Za-z0-9_-])(?:auth|priv)-pass[ \\t]+(?:(?:plaintext|ciphertext)[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:auth|priv)-pass[ \\t]+(?:(?:plaintext|ciphertext)[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n]+)",
         "ersetzen": "$1*****"
       },
       {
@@ -946,63 +957,63 @@
       },
       {
         "name": "OSPF authentication-key (Cisco ip ospf)",
-        "suche": "(?i)((?<![A-Za-z0-9_-])ip[ \\t]+ospf[ \\t]+authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])ip[ \\t]+ospf[ \\t]+authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "OSPF message-digest-key md5",
-        "suche": "(?i)((?<![A-Za-z0-9_-])(?:ip[ \\t]+ospf[ \\t]+)?message-digest-key[ \\t]+[0-9]+[ \\t]+md5(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:ip[ \\t]+ospf[ \\t]+)?message-digest-key[ \\t]+[0-9]+[ \\t]+md5(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "HSRP standby authentication (text oder ohne Typ)",
-        "suche": "(?i)((?<![A-Za-z0-9_-])standby(?:[ \\t]+[0-9]+)?[ \\t]+authentication(?:[ \\t]+text)?[ \\t]+)(?!md5(?![A-Za-z0-9]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])standby(?:[ \\t]+[0-9]+)?[ \\t]+authentication(?:[ \\t]+text)?[ \\t]+)(?!md5(?![A-Za-z0-9]))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "NTP authentication-key",
-        "suche": "(?i)((?<![A-Za-z0-9_-])ntp[ \\t]+authentication-key[ \\t]+[0-9]+[ \\t]+(?:md5|sha1|sha256|hmac-sha[0-9-]*|cmac-aes-128)[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])ntp[ \\t]+authentication-key[ \\t]+[0-9]+[ \\t]+(?:md5|sha1|sha256|hmac-sha[0-9-]*|cmac-aes-128)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "IS-IS password, domain-password, area-password",
-        "suche": "(?i)((?<![A-Za-z0-9_-])(?:isis[ \\t]+password|domain-password|area-password)[ \\t]+(?:(?:clear|encrypted|hmac-md5|md5|text|[0-9])[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:isis[ \\t]+password|domain-password|area-password)[ \\t]+(?:(?:clear|encrypted|hmac-md5|md5|text|[0-9])[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "SNMP-Community in snmp-server host",
-        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3[ \\t]+(?:auth|noauth|priv)))?[ \\t]+)()(?!(?:version|informs|traps|vrf)(?![A-Za-z0-9_-]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3[ \\t]+(?:auth|noauth|priv)))?[ \\t]+)()(?!(?:version|informs|traps|vrf)(?![A-Za-z0-9_-]))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Juniper simple-password",
-        "suche": "(?i)((?<![A-Za-z0-9_-])simple-password[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])simple-password[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "LDAP ldap-login-password",
-        "suche": "(?i)((?<![A-Za-z0-9_-])ldap-login-password(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])ldap-login-password(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "RADIUS/TACACS key in server host-Zeile",
-        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Alleinstehende key <Typ> <Wert>-Zeile (Key-Chain)",
-        "suche": "(?im)^([ \\t]*key[ \\t]+[0-9][ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)(?=[ \\t]*\\r?$)",
+        "suche": "(?im)^([ \\t]*key[ \\t]+[0-9][ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)(?=[ \\t]*\\r?$)",
         "ersetzen": "$1*****"
       },
       {
         "name": "IS-IS hello-authentication-key",
-        "suche": "(?i)((?<![A-Za-z0-9_-])hello-authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])hello-authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Generische Zugangsdaten (Schlüsselwort + Trenner + Wert)",
-        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?)(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))([^ \\t\\r\\n\"',;\\u0002]+)(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002))(\"?)",
-        "ersetzen": "$1*****$3"
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
+        "ersetzen": "$1*****"
       },
       {
         "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
@@ -2025,6 +2036,56 @@
     return result;
   }
 
+  // Beide Richtungen einer importierten Tabelle passen zusammen (zulässig: MAC-Normalisierung, Groß-/Kleinschreibung)
+  // (identisch zu AnonEngine.ValidateStateConsistency in anon.ps1)
+  function validateStateConsistency(state) {
+    const fehler = [];
+    for (const fk of Array.from(state.forward.keys()).sort()) {
+      const tok = state.forward.get(fk);
+      if (!tok || !String(tok).trim()) { fehler.push("Leerer Platzhalter in der Vorwärtsrichtung"); continue; }
+      const bar = fk.indexOf("|");
+      const kat = bar >= 0 ? fk.slice(0, bar).toUpperCase() : "";
+      const raw = (bar >= 0 ? fk.slice(bar + 1) : fk).trim().toLowerCase();
+      const upper = String(tok).toUpperCase();
+      if (!state.reverse.has(upper)) { fehler.push(`Platzhalter ${upper} fehlt in der Rückrichtung`); continue; }
+      let rv = String(state.reverse.get(upper)).trim().toLowerCase();
+      if (kat === "MAC") rv = rv.replace(/[^0-9a-f]/g, "");
+      if (rv !== raw) fehler.push(`Platzhalter ${upper}: Vorwärts- und Rückrichtung widersprechen sich`);
+    }
+    return fehler;
+  }
+
+  // Schema, Formatversion, Konsistenz und Eindeutigkeit einer (entschlüsselten) Zuordnungstabelle prüfen.
+  // Liefert { ok, fehler, state }; bei ok === false darf der bisherige Zustand nicht ersetzt werden.
+  function validateImportedTable(obj, festeZuordnung) {
+    const fehler = [];
+    const istObjekt = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    if (!istObjekt(obj)) return { ok: false, fehler: ["kein Tabellenobjekt"], state: null };
+    if (obj.version !== "1.0") fehler.push("unbekannte Formatversion");
+    for (const teil of ["vorwaerts", "rueckwaerts"]) {
+      if (!istObjekt(obj[teil])) { fehler.push(`Abschnitt '${teil}' fehlt oder ist kein Objekt`); continue; }
+      for (const [k, v] of Object.entries(obj[teil])) {
+        if (typeof v !== "string" || !String(k).trim()) { fehler.push(`ungültiger Eintrag in '${teil}'`); break; }
+      }
+    }
+    if (obj.zaehler !== undefined) {
+      if (!istObjekt(obj.zaehler)) fehler.push("Abschnitt 'zaehler' ist kein Objekt");
+      else if (Object.values(obj.zaehler).some(v => !Number.isInteger(Number(v)) || Number(v) < 0)) fehler.push("ungültiger Zähler");
+    }
+    if (obj.netzHosts !== undefined) {
+      if (!istObjekt(obj.netzHosts) || Object.values(obj.netzHosts).some(sub => !istObjekt(sub) || Object.values(sub).some(v => typeof v !== "string"))) {
+        fehler.push("ungültiger Eintrag in 'netzHosts'");
+      }
+    }
+    if (obj.aliase !== undefined && (!istObjekt(obj.aliase) || Object.values(obj.aliase).some(v => typeof v !== "string"))) {
+      fehler.push("ungültiger Eintrag in 'aliase'");
+    }
+    if (fehler.length > 0) return { ok: false, fehler, state: null };
+    const state = AnonState.fromJSON(obj);
+    const weitere = validateStateConsistency(state).concat(findPlaceholderCollisions(state, festeZuordnung || {}));
+    return { ok: weitere.length === 0, fehler: weitere, state: weitere.length === 0 ? state : null };
+  }
+
   function deanonymizeText(input, state) {
     if (!input || !state || !state.reverse || state.reverse.size === 0) return input;
     const sortedUpperKeys = Array.from(state.reverse.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
@@ -2090,6 +2151,7 @@
       pruefungErlaubtMuster: ((rulesObj && rulesObj.pruefung && rulesObj.pruefung.erlaubtMuster) || []).map(p => compileDotNetPatternToJS(p, false)),
       geheimnisMuster: ((rulesObj && rulesObj.geheimnisMuster) || []).map(g => ({
         name: g.name,
+        nurWertSchuetzen: g.nurWertSchuetzen === true,
         replacement: g.ersetzen,
         compiled: compileDotNetPatternToJS(g.suche, true)
       })),
@@ -2474,7 +2536,9 @@
   }
 
   // Gelernte Werte: keine CLI-Schlüsselwörter/Tabellenköpfe; Hosts und Seriennummern brauchen Ziffer oder Bindestrich
-  function isLearnable(category, value, cfg) {
+  // kontextgebunden = Wert steht in einem eindeutig bezeichneten Feld (hostname X, Serial Number: X, user X ...):
+  // dann gilt nur die Stoppliste. Kontextfreie Heuristik (CLI-Prompt, Tabellenspalten) verlangt zusätzlich Ziffer oder Bindestrich.
+  function isLearnable(category, value, cfg, kontextgebunden) {
     const v = String(value == null ? "" : value).trim();
     if (!v) return false;
     const stop = cfg.lernStoppwoerter || new Set();
@@ -2483,7 +2547,7 @@
     const parts = v.match(/[A-Za-z0-9]+/g) || [];
     const onlyDashOrSpace = /^[A-Za-z0-9 \t-]*$/.test(v);
     if (parts.length > 0 && onlyDashOrSpace && parts.every(p => stop.has(p.toLowerCase()))) return false;
-    if ((category === "HOST" || category === "SERIAL") && !/[0-9-]/.test(v)) return false;
+    if (!kontextgebunden && (category === "HOST" || category === "SERIAL") && !/[0-9-]/.test(v)) return false;
     return true;
   }
 
@@ -2492,7 +2556,7 @@
     if (!cfg.catGeheimnisse || !value) return value;
     let v = value;
     for (const rule of cfg.geheimnisMuster) {
-      v = v.replace(rule.compiled, (...args) => applySecretReplacement(rule.replacement, args));
+      v = v.replace(rule.compiled, (...args) => secretReplacement(rule, args));
     }
     return v;
   }
@@ -2521,12 +2585,33 @@
     return part.replace(rx, (m) => known.map.get(m.toLowerCase()) || m);
   }
 
+  const RxPartialMask = /"[^"\r\n]*\*{5}[^"\r\n]*"|'[^'\r\n]*\*{5}[^'\r\n]*'|[A-Za-z0-9]\*{5}|\*{5}[A-Za-z0-9]/g;
   const RxCredentialSuspect = /(?<![A-Za-z0-9_-])(password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token|authorization)(?:[ \t]*[:=][ \t]*|[ \t]+)"?([^ \t\r\n"',;]+)/gi;
   const CREDENTIAL_STOP_WORDS = new Set(["for", "from", "is", "was", "has", "of", "to", "required", "expired", "changed", "incorrect", "invalid", "accepted", "failed",
     "authentication", "policy", "prompt", "plaintext", "ciphertext", "cipher", "simple", "hash", "encrypted", "level", "basic", "bearer",
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 
   // Ersetzungstext eines Geheimnismusters: nur $1..$9, nicht teilnehmende Gruppen werden leer (wie .NET Match.Result)
+  // Ersetzung eines Geheimnisses; war der Wert in Anführungszeichen, bleiben sie um ***** erhalten
+  // (Wertgruppe = höchste nicht im Ersetzungstext verwendete Gruppe, identisch zu anon.ps1)
+  function secretReplacement(rule, groups) {
+    let rep = applySecretReplacement(rule.replacement, groups);
+    if (rule.valueGroup === undefined) {
+      const anzahl = new RegExp(rule.compiled.source + "|", rule.compiled.flags.replace("g", "")).exec("").length - 1;
+      let vg = 0;
+      for (let g = 1; g <= Math.min(anzahl, 9); g++) {
+        if (String(rule.replacement).indexOf("$" + g) < 0) vg = g;
+      }
+      rule.valueGroup = vg;
+    }
+    const v = rule.valueGroup > 0 && typeof groups[rule.valueGroup] === "string" ? groups[rule.valueGroup] : "";
+    const star = rep.indexOf("*****");
+    if (star >= 0 && v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0]) {
+      rep = rep.slice(0, star) + v[0] + "*****" + v[0] + rep.slice(star + 5);
+    }
+    return rep;
+  }
+
   function applySecretReplacement(replacement, groups) {
     return String(replacement).replace(/\$([1-9])/g, (_, d) => {
       const gIdx = parseInt(d, 10);
@@ -2619,7 +2704,9 @@
       for (const rule of cfg.geheimnisMuster) {
         text = text.replace(rule.compiled, (...args) => {
           state.addStat("geheimnisseEntfernen", 1);
-          return protect(applySecretReplacement(rule.replacement, args));
+          const ersatz = secretReplacement(rule, args);
+          // nurWertSchuetzen: nur ***** schützen, der Rest (z. B. die URL) bleibt für spätere Stufen erkennbar
+          return rule.nurWertSchuetzen ? ersatz.split("*****").join(protect("*****")) : protect(ersatz);
         });
       }
     }
@@ -2703,7 +2790,7 @@
           const g1 = args[1] || "";
           const g2 = (args[2] || "").trim();
           const g3 = typeof args[3] === "string" ? args[3] : "";
-          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("SERIAL", g2, cfg)) return m;
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("SERIAL", g2, cfg, true)) return m;
           state.addStat("seriennummern", 1);
           const tok = state.getOrCreateToken("SERIAL", g2, "SERIAL");
           return protect(g1 + tok + g3);
@@ -2719,7 +2806,7 @@
           const g1 = args[1] || "";
           const g2 = (args[2] || "").trim();
           const g3 = typeof args[3] === "string" ? args[3] : "";
-          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("USER", g2, cfg)) return m;
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("USER", g2, cfg, true)) return m;
           state.addStat("benutzer", 1);
           const tok = state.getOrCreateToken("USER", g2, "USER");
           return protect(g1 + tok + g3);
@@ -2732,13 +2819,14 @@
       text = text.replace(RxEmail, (m) => {
         if (cfg.exakteAusnahmen.has(m.toLowerCase())) return m;
         state.addStat("hostnamen", 1);
-        const tok = state.getOrCreateToken("MAIL", m, "MAIL");
+        const tok = state.getOrCreateToken("MAIL", unprotect(m), "MAIL");
         return protect(tok);
       });
       text = text.replace(RxUrl, (m) => {
         if (cfg.exakteAusnahmen.has(m.toLowerCase())) return m;
         state.addStat("hostnamen", 1);
-        const tok = state.getOrCreateToken("URL", m, "URL");
+        // Original ohne Schutz-Marker speichern (enthaltene Zugangsdaten sind bereits *****)
+        const tok = state.getOrCreateToken("URL", unprotect(m), "URL");
         return protect(tok);
       });
     }
@@ -2814,14 +2902,14 @@
             const g1 = groups[0] || "";
             const hVal = (groups[1] || "").trim();
             const g3 = typeof groups[2] === "string" ? groups[2] : "";
-            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg)) return m;
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg, true)) return m;
             state.addStat("hostnamen", 1);
             const tok = state.getOrCreateToken("HOST", hVal, "HOST");
             if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
             return protect(g1 + tok + g3);
           } else {
             const hVal = (groups.length >= 1 && groups[0] !== undefined ? groups[0] : m).trim();
-            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg)) return m;
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg, true)) return m;
             state.addStat("hostnamen", 1);
             const tok = state.getOrCreateToken("HOST", hVal, "HOST");
             if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
@@ -2990,7 +3078,7 @@
 
     // 2. Geheimnisse: nur "*****" wird geschützt, Präfixe (Schlüsselwörter) werden geformt
     for (const rule of cfg.geheimnisMuster) {
-      text = text.replace(rule.compiled, (...args) => applySecretReplacement(rule.replacement, args).split("*****").join(protect("*****")));
+      text = text.replace(rule.compiled, (...args) => secretReplacement(rule, args).split("*****").join(protect("*****")));
     }
 
     // 3. Freitext-Felder komplett ersetzen (ohne Ausnahmen)
@@ -3365,7 +3453,7 @@
     // 6b. Geheimnismuster: Fundstellen, an denen die Ersetzung noch etwas ändern würde, sind nicht entfernte Geheimnisse
     for (const sRule of cfg.geheimnisMuster) {
       for (const m of cleanText.matchAll(sRule.compiled)) {
-        if (applySecretReplacement(sRule.replacement, m) === m[0]) continue;
+        if (secretReplacement(sRule, m) === m[0]) continue;
         const ln = getLineNumberFromIndex(lineStarts, m.index);
         findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-Geheimnis", fund: m[0], kontext: getLineCtx(ln) });
       }
@@ -3381,6 +3469,14 @@
       findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Zugangsdaten", fund: m[0], kontext: getLineCtx(ln) });
     }
 
+    // 6d. Teilweise maskierte Werte ("***** Rest", "*****x", "x*****")
+    for (const m of cleanText.matchAll(RxPartialMask)) {
+      const inner = m[0].replace(/^["']+|["']+$/g, "");
+      if (inner === "*****") continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Teilmaskierung", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
     // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
     const lernKategorie = { "Rest-Hostname": "HOST", "Rest-Seriennummer": "SERIAL", "Rest-Benutzer": "USER" };
     const patternGroups = [
@@ -3394,7 +3490,7 @@
           const val = pickGroupValue(m);
           if (!val || val.indexOf("\u0002") >= 0 || isAllowedInAudit(val, cfg) || areAllPartsAllowed(val, cfg)) continue;
           // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
-          if (!isLearnable(lernKategorie[kat], val, cfg)) continue;
+          if (!isLearnable(lernKategorie[kat], val, cfg, true)) continue;
           const ln = getLineNumberFromIndex(lineStarts, m.index);
           findings.push({ datei: fileName, zeile: ln, kategorie: kat, fund: val, kontext: getLineCtx(ln) });
         }
@@ -4423,6 +4519,47 @@
     return (groups || []).every(g => decisions && (decisions[g.schluessel] === "ersetzen" || decisions[g.schluessel] === "fehlalarm"));
   }
 
+  // Zentrale Exportfreigabe: Ergebnis gilt nur für den Eingabestand, mit dem der Lauf begonnen hat.
+  // Jede relevante Änderung (Dateien, Regeln, eigene Begriffe, Optionen, Tabelle) macht es ungültig.
+  function createReleaseGuard() {
+    let stand = 0;           // Eingabestand, erhöht bei jeder relevanten Änderung
+    let freigegebenFuer = -1;
+    let grund = "kein Lauf";
+    return {
+      markChanged(neuerGrund) {
+        stand++;
+        freigegebenFuer = -1;
+        grund = neuerGrund || "geaendert";
+      },
+      startRun() {
+        freigegebenFuer = -1;
+        grund = "Lauf läuft";
+        return stand;
+      },
+      finishRun(laufStand, ergebnis) {
+        const e = ergebnis || {};
+        const ok = laufStand === stand && !e.isProbe && (e.resultCount || 0) > 0 && Array.isArray(e.findings) && e.findings.length === 0;
+        freigegebenFuer = ok ? stand : -1;
+        grund = ok ? "" : (laufStand !== stand ? "Eingabe während des Laufs geändert" : (e.isProbe ? "Trockenlauf" : "Restfunde"));
+        return ok;
+      },
+      isAllowed() { return freigegebenFuer === stand; },
+      reason() { return grund; }
+    };
+  }
+
+  // Ausgabepfade müssen eindeutig sein (Windows-Dateisysteme unterscheiden keine Groß-/Kleinschreibung)
+  function findPathCollisions(paths) {
+    const seen = new Map();
+    const kollisionen = [];
+    (paths || []).forEach((p, idx) => {
+      const k = String(p).replace(/\\/g, "/").toLowerCase();
+      if (seen.has(k)) kollisionen.push(`Ausgabepfad-Kollision: Datei Nr. ${seen.get(k) + 1} und Nr. ${idx + 1} ergeben denselben anonymisierten Ausgabepfad`);
+      else seen.set(k, idx);
+    });
+    return kollisionen;
+  }
+
   // Freigabe (ZIP, Anonymisiert kopieren) nur nach einem echten Lauf mit KEINE_RESTFUNDE
   function isReleaseAllowed(findings, isProbe, results) {
     return !isProbe && Array.isArray(results) && results.length > 0 && Array.isArray(findings) && findings.length === 0;
@@ -4774,6 +4911,10 @@
       const anonText = processText(origText, cfg, state);
       results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
     }
+    const pfadKollisionen = findPathCollisions(results.map(r => r.path));
+    if (pfadKollisionen.length > 0) {
+      return { ok: false, errors: pfadKollisionen, results: [], findings: [], skipped, cfg, mergedRules: mergeRes.mergedRules };
+    }
     // Prüfung mit allen im Lauf erkannten Werten
     for (const r of results) {
       r.findings = auditText(r.anonText, r.path, cfg, state);
@@ -4783,6 +4924,8 @@
   }
 
   function buildReleaseZipEntries(processedResults) {
+    const kollisionen = findPathCollisions((processedResults || []).map(r => r.path));
+    if (kollisionen.length > 0) throw new Error(kollisionen[0] + ". Es wird kein ZIP erzeugt.");
     const enc = new TextEncoder();
     // Wichtig (Befund 2): bericht.json wird NICHT ins Freigabe-ZIP gelegt, Pfade sind bereits anonymisiert.
     return processedResults.map(r => ({
@@ -4804,6 +4947,17 @@
     let skippedBinaryFiles = [];
     let lastReportObj = null;
     let releaseAllowed = false;      // ZIP und "Anonymisiert kopieren" nur bei KEINE_RESTFUNDE
+    const releaseGuard = createReleaseGuard();
+    // Jede relevante Änderung macht das bisherige Ergebnis ungültig (zentral, siehe createReleaseGuard)
+    function markiereGeaendert(grund) {
+      releaseGuard.markChanged(grund);
+      releaseAllowed = releaseGuard.isAllowed();
+      if (typeof updateReleaseUI === "function") updateReleaseUI();
+    }
+    function onCustomTermsInput() {
+      refreshCustomTermsValidationUI();
+      markiereGeaendert("eigeneBegriffe");
+    }
     let findingGroups = [];          // Fundgruppen des letzten Laufs
     let findingDecisions = {};       // schluessel -> "ersetzen" | "fehlalarm"
 
@@ -4857,6 +5011,7 @@
     }
 
     function markTablePending() {
+      markiereGeaendert("tabelleGeaendert");
       tableHasPendingChanges = true;
       unsavedTableChanges = true;
       unsavedLocalTermsChanges = true;
@@ -4996,10 +5151,10 @@
       btnDel.title = "Zeile löschen";
       btnDel.addEventListener("click", () => {
         row.remove();
-        refreshCustomTermsValidationUI();
+        onCustomTermsInput();
       });
-      inpOrig.addEventListener("input", refreshCustomTermsValidationUI);
-      inpPh.addEventListener("input", refreshCustomTermsValidationUI);
+      inpOrig.addEventListener("input", onCustomTermsInput);
+      inpPh.addEventListener("input", onCustomTermsInput);
       row.append(inpOrig, inpPh, btnDel);
       container.appendChild(row);
     }
@@ -5020,9 +5175,9 @@
       btnDel.title = "Zeile löschen";
       btnDel.addEventListener("click", () => {
         row.remove();
-        refreshCustomTermsValidationUI();
+        onCustomTermsInput();
       });
-      inp.addEventListener("input", refreshCustomTermsValidationUI);
+      inp.addEventListener("input", onCustomTermsInput);
       row.append(inp, btnDel);
       container.appendChild(row);
     }
@@ -5101,6 +5256,7 @@
         norm.exakteList.forEach(v => addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", v));
       }
       refreshCustomTermsValidationUI();
+      markiereGeaendert("eigeneBegriffe");
     }
 
     function refreshCustomTermsValidationUI() {
@@ -5127,7 +5283,7 @@
     }
 
     document.getElementById("btnAddFesteRow").addEventListener("click", () => addFesteRowUI("", ""));
-    document.getElementById("eigeneHostnamenMusterInput").addEventListener("input", refreshCustomTermsValidationUI);
+    document.getElementById("eigeneHostnamenMusterInput").addEventListener("input", onCustomTermsInput);
     document.getElementById("btnAddFirmaRow").addEventListener("click", () =>
       addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "")
     );
@@ -5319,6 +5475,7 @@
 
     async function ingestFileList(fileList) {
       if (!fileList || fileList.length === 0) return;
+      markiereGeaendert("dateien");
       const statusEl = document.getElementById("fileCountInfo");
       statusEl.textContent = `Lade ${fileList.length} Datei(en) in den Arbeitsspeicher...`;
       await new Promise(r => setTimeout(r, 15));
@@ -5427,10 +5584,12 @@
         { path: "sonic-config_db.json", bytes: enc.encode(demoSonicJson) }
       ];
       document.getElementById("fileCountInfo").textContent = "2 realistische Beispieldateien (Aruba AOS-CX & Dell SONiC JSON) geladen.";
+      markiereGeaendert("dateien");
     });
 
     async function executeRun(isProbe) {
       // Während eines Laufs und bis zum neuen Prüfergebnis ist nichts freigegeben
+      const laufStand = releaseGuard.startRun();
       releaseAllowed = false;
       updateReleaseUI();
       if (loadedInputFiles.length === 0) {
@@ -5599,7 +5758,12 @@
           pruefTrefferAnzahl: allFindings.length
         };
 
-        releaseAllowed = isReleaseAllowed(allFindings, isProbe, processedResults);
+        const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
+        if (pfadKollisionen.length > 0) {
+          alert(pfadKollisionen.join("\n") + ". Export gesperrt.");
+        }
+        releaseGuard.finishRun(laufStand, { findings: pfadKollisionen.length > 0 ? [{ kategorie: "Ausgabepfad-Kollision" }] : allFindings, isProbe, resultCount: processedResults.length });
+        releaseAllowed = releaseGuard.isAllowed();
         updateReleaseUI();
         findingGroups = groupAuditFindings(allFindings);
         findingDecisions = {};
@@ -5633,7 +5797,7 @@
       document.getElementById("previewOriginal").textContent = "";
       document.getElementById("previewAnon").textContent = "";
       document.getElementById("fileCountInfo").textContent = "Arbeitsspeicher vollständig geleert.";
-      releaseAllowed = false;
+      markiereGeaendert("dateien");
       findingGroups = [];
       findingDecisions = {};
       updateReleaseUI();
@@ -5768,12 +5932,18 @@
       rulesTextarea.value = txt;
       document.getElementById("rulesStatus").textContent = `Regeldatei '${f.name}' geladen.`;
       refreshCustomTermsValidationUI();
+      markiereGeaendert("regeln");
     });
+    rulesTextarea.addEventListener("input", () => markiereGeaendert("regeln"));
+    document.getElementById("optNetzerhaltend").addEventListener("change", () => markiereGeaendert("optionen"));
+    document.getElementById("optIpPrivPub").addEventListener("change", () => markiereGeaendert("optionen"));
+    document.querySelectorAll(".cat-toggle").forEach(cb => cb.addEventListener("change", () => markiereGeaendert("optionen")));
     document.getElementById("btnApplyRules").addEventListener("click", () => {
       try {
         currentRules = JSON.parse(rulesTextarea.value);
         document.getElementById("rulesStatus").textContent = "Regeln erfolgreich geprüft und im RAM aktiviert.";
         refreshCustomTermsValidationUI();
+        markiereGeaendert("regeln");
       } catch (e) {
         alert("Ungültiges JSON: " + e.message);
       }
@@ -5786,6 +5956,7 @@
       rulesTextarea.value = JSON.stringify(currentRules, null, 2);
       document.getElementById("rulesStatus").textContent = "Standardregeln wiederhergestellt.";
       refreshCustomTermsValidationUI();
+      markiereGeaendert("regeln");
     });
 
     // Zuordnungstabelle-Aktionen (Export nur verschlüsselt über diesen Weg)
@@ -5830,17 +6001,17 @@
           return;
         }
         const obj = await decryptTableWebCrypto(raw, pass);
-        const kandidat = AnonState.fromJSON(obj);
-        // Eindeutigkeit: Tabelle und festeZuordnung dürfen keinen Platzhalter doppelt vergeben
+        // Schema, Formatversion, beide Richtungen und Eindeutigkeit prüfen; bei Ablehnung bleibt der bisherige Zustand
         let ladeRegeln = currentRules;
         try { ladeRegeln = JSON.parse(rulesTextarea.value); } catch (_) {}
         const ladeMerge = validateAndMergeEigeneBegriffe(ladeRegeln, readCustomTermsFromUI());
-        const ladeKollisionen = findPlaceholderCollisions(kandidat, ladeMerge.mergedRules.eigeneBegriffe.festeZuordnung);
-        if (ladeKollisionen.length > 0) {
-          alert("Zuordnungstabelle abgelehnt: " + ladeKollisionen.join("; ") + ". Die Tabelle wird nicht verwendet.");
+        const pruefung = validateImportedTable(obj, ladeMerge.mergedRules.eigeneBegriffe.festeZuordnung);
+        if (!pruefung.ok) {
+          alert("Zuordnungstabelle abgelehnt: " + pruefung.fehler.slice(0, 5).join("; ") + ". Die Tabelle wird nicht verwendet.");
           return;
         }
-        currentState = kandidat;
+        currentState = pruefung.state;
+        markiereGeaendert("tabelleGeladen");
         maskTablePreviewOriginals();
         updateTableStatusUI();
         alert(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge).`);
@@ -5853,6 +6024,7 @@
       currentState = new AnonState();
       maskTablePreviewOriginals();
       updateTableStatusUI();
+      markiereGeaendert("tabelleZurueckgesetzt");
     });
 
     // Rückübersetzen
@@ -5899,6 +6071,10 @@
       removeMappingTableEntry,
       addMappingTableEntry,
       reprocessFilesWithState,
+      createReleaseGuard,
+      findPathCollisions,
+      validateImportedTable,
+      validateStateConsistency,
       groupAuditFindings,
       applyFindingDecisions,
       findPlaceholderCollisions,

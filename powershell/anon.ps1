@@ -307,6 +307,8 @@ namespace AnonTool
         public string Pattern;
         public string Replacement;
         public Regex Compiled;
+        public int ValueGroup = -1; // Gruppe mit dem Geheimnis (höchste nicht im Ersetzungstext verwendete Gruppe)
+        public bool NurWertSchuetzen; // nur ***** schützen, Rest bleibt für spätere Stufen erkennbar (z.B. URL)
     }
 
     public class FreeTextRule
@@ -1026,7 +1028,14 @@ namespace AnonTool
         }
 
         // Gelernte Werte: keine CLI-Schlüsselwörter/Tabellenköpfe; Hosts und Seriennummern brauchen Ziffer oder Bindestrich
+        // kontextgebunden = Wert steht in einem eindeutig bezeichneten Feld (hostname X, Serial Number: X, user X ...):
+        // dann gilt nur die Stoppliste. Kontextfreie Heuristik (CLI-Prompt, Tabellenspalten) verlangt zusätzlich Ziffer oder Bindestrich.
         public static bool IsLearnable(string category, string value, EngineConfig cfg)
+        {
+            return IsLearnable(category, value, cfg, false);
+        }
+
+        public static bool IsLearnable(string category, string value, EngineConfig cfg, bool kontextgebunden)
         {
             string v = (value ?? "").Trim();
             if (v.Length == 0) return false;
@@ -1048,13 +1057,38 @@ namespace AnonTool
                 }
             }
             if (anyPart && allStop && onlyDashOrSpace) return false;
-            if (category == "HOST" || category == "SERIAL")
+            if (!kontextgebunden && (category == "HOST" || category == "SERIAL"))
             {
                 bool digitOrDash = false;
                 foreach (char c in v) { if ((c >= '0' && c <= '9') || c == '-') { digitOrDash = true; break; } }
                 if (!digitOrDash) return false;
             }
             return true;
+        }
+
+        // Ersetzung eines Geheimnisses; war der Wert in Anführungszeichen, bleiben sie um ***** erhalten
+        public static string SecretReplacement(SecretRule rule, Match m)
+        {
+            string rep = m.Result(rule.Replacement);
+            if (rule.ValueGroup < 0)
+            {
+                int[] nums = rule.Compiled.GetGroupNumbers();
+                int vg = 0;
+                foreach (int g in nums)
+                {
+                    if (g == 0 || g > 9) continue;
+                    if (rule.Replacement.IndexOf("$" + g.ToString(), StringComparison.Ordinal) < 0 && g > vg) vg = g;
+                }
+                rule.ValueGroup = vg;
+            }
+            if (rule.ValueGroup > 0 && rule.ValueGroup < m.Groups.Count && m.Groups[rule.ValueGroup].Success)
+            {
+                string v = m.Groups[rule.ValueGroup].Value;
+                int star = rep.IndexOf("*****", StringComparison.Ordinal);
+                if (star >= 0 && v.Length >= 2 && (v[0] == '"' || v[0] == '\'') && v[v.Length - 1] == v[0])
+                    rep = rep.Substring(0, star) + v[0] + "*****" + v[0] + rep.Substring(star + 5);
+            }
+            return rep;
         }
 
         // Geheimnisse in einem Wert entfernen, bevor er als Original in die Zuordnungstabelle gelangt
@@ -1064,7 +1098,7 @@ namespace AnonTool
             string v = value;
             foreach (SecretRule rule in cfg.GeheimnisMuster)
             {
-                v = rule.Compiled.Replace(v, (Match m) => m.Result(rule.Replacement));
+                v = rule.Compiled.Replace(v, (Match m) => SecretReplacement(rule, m));
             }
             return v;
         }
@@ -1101,6 +1135,33 @@ namespace AnonTool
                 string tok;
                 return known.TryGetValue(m.Value.ToLowerInvariant(), out tok) ? tok : m.Value;
             }, RegexOptions.IgnoreCase, RxTimeout);
+        }
+
+        // Beide Richtungen einer importierten Tabelle passen zusammen (zulässig: MAC-Normalisierung, Groß-/Kleinschreibung)
+        public static List<string> ValidateStateConsistency(AnonState state)
+        {
+            List<string> fehler = new List<string>();
+            List<string> keys = new List<string>(state.Forward.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            foreach (string fk in keys)
+            {
+                string tok = state.Forward[fk];
+                if (string.IsNullOrWhiteSpace(tok)) { fehler.Add("Leerer Platzhalter in der Vorwärtsrichtung"); continue; }
+                int bar = fk.IndexOf('|');
+                string kat = bar >= 0 ? fk.Substring(0, bar).ToUpperInvariant() : "";
+                string raw = (bar >= 0 ? fk.Substring(bar + 1) : fk).Trim().ToLowerInvariant();
+                string rv;
+                if (!state.Reverse.TryGetValue(tok, out rv))
+                {
+                    fehler.Add("Platzhalter " + tok.ToUpperInvariant() + " fehlt in der Rückrichtung");
+                    continue;
+                }
+                string rvNorm = (rv ?? "").Trim().ToLowerInvariant();
+                if (kat == "MAC") rvNorm = NormalizeMac(rvNorm);
+                if (rvNorm != raw)
+                    fehler.Add("Platzhalter " + tok.ToUpperInvariant() + ": Vorwärts- und Rückrichtung widersprechen sich");
+            }
+            return fehler;
         }
 
         // Eindeutigkeit der Platzhalter: ein Platzhalter darf nur für einen Originalwert stehen
@@ -1251,8 +1312,8 @@ namespace AnonTool
                     text = rule.Compiled.Replace(text, (Match m) =>
                     {
                         state.AddStat("geheimnisseEntfernen", 1);
-                        string rep = m.Result(rule.Replacement);
-                        return protect(rep);
+                        string rep = SecretReplacement(rule, m);
+                        return rule.NurWertSchuetzen ? rep.Replace("*****", protect("*****")) : protect(rep);
                     });
                 }
             }
@@ -1360,7 +1421,7 @@ namespace AnonTool
                     text = sRx.Replace(text, (Match m) =>
                     {
                         string val = m.Groups[2].Value.Trim();
-                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("SERIAL", val, cfg))
+                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("SERIAL", val, cfg, true))
                             return m.Value;
                         state.AddStat("seriennummern", 1);
                         string tok = state.GetOrCreateToken("SERIAL", val, "SERIAL");
@@ -1380,7 +1441,7 @@ namespace AnonTool
                     text = uRx.Replace(text, (Match m) =>
                     {
                         string val = m.Groups[2].Value.Trim();
-                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("USER", val, cfg))
+                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("USER", val, cfg, true))
                             return m.Value;
                         state.AddStat("benutzer", 1);
                         string tok = state.GetOrCreateToken("USER", val, "USER");
@@ -1399,7 +1460,7 @@ namespace AnonTool
                 {
                     if (cfg.ExakteAusnahmen.Contains(m.Value)) return m.Value;
                     state.AddStat("hostnamen", 1);
-                    string tok = state.GetOrCreateToken("MAIL", m.Value, "MAIL");
+                    string tok = state.GetOrCreateToken("MAIL", unprotect(m.Value), "MAIL");
                     return protect(tok);
                 });
 
@@ -1407,7 +1468,8 @@ namespace AnonTool
                 {
                     if (cfg.ExakteAusnahmen.Contains(m.Value)) return m.Value;
                     state.AddStat("hostnamen", 1);
-                    string tok = state.GetOrCreateToken("URL", m.Value, "URL");
+                    // Original ohne Schutz-Marker speichern (enthaltene Zugangsdaten sind bereits *****)
+                    string tok = state.GetOrCreateToken("URL", unprotect(m.Value), "URL");
                     return protect(tok);
                 });
             }
@@ -1502,7 +1564,7 @@ namespace AnonTool
                         if (m.Groups.Count >= 3 && m.Groups[2].Success)
                         {
                             string hVal = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg))
+                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg, true))
                                 return m.Value;
                             state.AddStat("hostnamen", 1);
                             string tok = state.GetOrCreateToken("HOST", hVal, "HOST");
@@ -1513,7 +1575,7 @@ namespace AnonTool
                         else
                         {
                             string hVal = (m.Groups.Count >= 2 && m.Groups[1].Success) ? m.Groups[1].Value.Trim() : m.Value.Trim();
-                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg))
+                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg, true))
                                 return m.Value;
                             state.AddStat("hostnamen", 1);
                             string tok = state.GetOrCreateToken("HOST", hVal, "HOST");
@@ -1723,7 +1785,7 @@ namespace AnonTool
             {
                 text = rule.Compiled.Replace(text, (Match m) =>
                 {
-                    string rep = m.Result(rule.Replacement);
+                    string rep = SecretReplacement(rule, m);
                     return rep.Replace("*****", protect("*****"));
                 });
             }
@@ -1943,6 +2005,7 @@ namespace AnonTool
             "for", "from", "is", "was", "has", "of", "to", "required", "expired", "changed", "incorrect", "invalid", "accepted", "failed",
             "authentication", "policy", "prompt", "plaintext", "ciphertext", "cipher", "simple", "hash", "encrypted", "level", "basic", "bearer",
             "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }, StringComparer.Ordinal);
+        private static readonly Regex RxPartialMask = new Regex("\"[^\"\\r\\n]*\\*{5}[^\"\\r\\n]*\"|'[^'\\r\\n]*\\*{5}[^'\\r\\n]*'|[A-Za-z0-9]\\*{5}|\\*{5}[A-Za-z0-9]", RegexOptions.Compiled, RxTimeout);
         private static readonly string[] KnownValueCategories = new string[] { "HOST|", "SERIAL|", "USER|", "MAIL|", "URL|", "FIRMA|", "DOMAIN|", "FIXED|" };
 
         private static int GetLineNumber(List<int> lineStarts, int charIndex)
@@ -2245,7 +2308,7 @@ namespace AnonTool
             {
                 foreach (Match m in sRule.Compiled.Matches(cleanText))
                 {
-                    if (m.Result(sRule.Replacement) == m.Value) continue;
+                    if (SecretReplacement(sRule, m) == m.Value) continue;
                     int ln = GetLineNumber(lineStarts, m.Index);
                     findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-Geheimnis", Fund = m.Value, Kontext = getLineCtx(ln) });
                 }
@@ -2260,6 +2323,15 @@ namespace AnonTool
                 if (Regex.IsMatch(cleanText.Substring(m.Index + m.Length), "^[ \t]+\\*{5}", RegexOptions.None, RxTimeout)) continue;
                 int ln = GetLineNumber(lineStarts, m.Index);
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Zugangsdaten", Fund = m.Value, Kontext = getLineCtx(ln) });
+            }
+
+            // 6d. Teilweise maskierte Werte ("***** Rest", "*****x", "x*****")
+            foreach (Match m in RxPartialMask.Matches(cleanText))
+            {
+                string inner = m.Value.Trim('"', '\'');
+                if (inner == "*****") continue;
+                int ln = GetLineNumber(lineStarts, m.Index);
+                findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Teilmaskierung", Fund = m.Value, Kontext = getLineCtx(ln) });
             }
 
             // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
@@ -2280,7 +2352,7 @@ namespace AnonTool
                         string val = PickGroupValue(m);
                         if (string.IsNullOrEmpty(val) || val.IndexOf('\u0002') >= 0 || IsAllowedInAudit(val, cfg) || AreAllPartsAllowed(val, cfg)) continue;
                         // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
-                        if (!IsLearnable(lernKategorie[pg.Key], val, cfg)) continue;
+                        if (!IsLearnable(lernKategorie[pg.Key], val, cfg, true)) continue;
                         int ln = GetLineNumber(lineStarts, m.Index);
                         findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = pg.Key, Fund = val, Kontext = getLineCtx(ln) });
                     }
@@ -2591,6 +2663,7 @@ function Load-EngineConfig {
         $sr.Name = [string](Get-JsonProp $gm "name")
         $sr.Pattern = [string](Get-JsonProp $gm "suche")
         $sr.Replacement = [string](Get-JsonProp $gm "ersetzen")
+        $sr.NurWertSchuetzen = ((Get-JsonProp $gm "nurWertSchuetzen") -eq $true)
         $sr.Compiled = New-Object System.Text.RegularExpressions.Regex ($sr.Pattern, $rxCompiled, $rxTimeout)
         $cfg.GeheimnisMuster.Add($sr)
     }
@@ -2986,6 +3059,43 @@ function Unprotect-TableContent {
     return $RawFileContent
 }
 
+# Schema und Formatversion einer (entschlüsselten) Zuordnungstabelle; bei Fehlern Abbruch ohne Zustandsänderung
+function Assert-TabellenSchema {
+    param($Obj)
+    $abbruch = "Zuordnungstabelle abgelehnt: {0}. Die Tabelle wird nicht verwendet und nicht überschrieben."
+    if ($null -eq $Obj -or $Obj -is [System.Array] -or -not ($Obj -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "kein Tabellenobjekt") }
+    $version = Get-JsonProp $Obj "version"
+    if ([string]$version -ne "1.0") { throw ($abbruch -f "unbekannte Formatversion") }
+    foreach ($pflicht in @("vorwaerts", "rueckwaerts")) {
+        $teil = Get-JsonProp $Obj $pflicht
+        if ($null -eq $teil -or -not ($teil -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "Abschnitt '$pflicht' fehlt oder ist kein Objekt") }
+        foreach ($p in $teil.PSObject.Properties) {
+            if (-not ($p.Value -is [string]) -or [string]::IsNullOrWhiteSpace($p.Name)) { throw ($abbruch -f "ungültiger Eintrag in '$pflicht'") }
+        }
+    }
+    $zaehl = Get-JsonProp $Obj "zaehler"
+    if ($null -ne $zaehl) {
+        if (-not ($zaehl -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "Abschnitt 'zaehler' ist kein Objekt") }
+        foreach ($p in $zaehl.PSObject.Properties) {
+            $zahl = 0
+            if (-not [int]::TryParse([string]$p.Value, [ref]$zahl) -or $zahl -lt 0) { throw ($abbruch -f "ungültiger Zähler") }
+        }
+    }
+    $nh = Get-JsonProp $Obj "netzHosts"
+    if ($null -ne $nh) {
+        if (-not ($nh -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "Abschnitt 'netzHosts' ist kein Objekt") }
+        foreach ($p in $nh.PSObject.Properties) {
+            if (-not ($p.Value -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "ungültiger Eintrag in 'netzHosts'") }
+            foreach ($h in $p.Value.PSObject.Properties) { if (-not ($h.Value -is [string])) { throw ($abbruch -f "ungültiger Eintrag in 'netzHosts'") } }
+        }
+    }
+    $al = Get-JsonProp $Obj "aliase"
+    if ($null -ne $al) {
+        if (-not ($al -is [System.Management.Automation.PSCustomObject])) { throw ($abbruch -f "Abschnitt 'aliase' ist kein Objekt") }
+        foreach ($p in $al.PSObject.Properties) { if (-not ($p.Value -is [string])) { throw ($abbruch -f "ungültiger Eintrag in 'aliase'") } }
+    }
+}
+
 function Import-AnonState {
     param(
         [string]$TablePath,
@@ -3000,6 +3110,7 @@ function Import-AnonState {
     $jsonText = Unprotect-TableContent -RawFileContent $raw -PasswordSecure $PasswordSecure
     $state.LoadedProtection = $script:LastLoadedProtection
     $tObj = ConvertFrom-Json -InputObject $jsonText
+    Assert-TabellenSchema $tObj
 
     $vorw = Get-JsonProp $tObj "vorwaerts"
     if ($null -ne $vorw) {
@@ -3034,6 +3145,10 @@ function Import-AnonState {
         foreach ($p in $als.PSObject.Properties) {
             $state.Aliases[$p.Name] = [string]$p.Value
         }
+    }
+    $konsistenz = [AnonTool.AnonEngine]::ValidateStateConsistency($state)
+    if ($konsistenz.Count -gt 0) {
+        throw ("Zuordnungstabelle abgelehnt: " + (@($konsistenz | Select-Object -First 5) -join "; ") + ". Die Tabelle wird nicht verwendet und nicht überschrieben.")
     }
     return $state
 }
@@ -3154,6 +3269,21 @@ function Stop-MitNummer {
     $art = "Fehler"
     if ($null -ne $Fehler -and $null -ne $Fehler.Exception) { $art = $Fehler.Exception.GetType().Name }
     throw ("Abbruch bei Datei Nr. {0} (Schritt: {1}, Fehlerart: {2})." -f $Nummer, $Schritt, $art)
+}
+
+# Pfadvergleich ohne Groß-/Kleinschreibung (Windows), mit Trennzeichen am Ende
+function Test-PfadGleich {
+    param([string]$A, [string]$B)
+    return [string]::Equals($A.TrimEnd('\', '/'), $B.TrimEnd('\', '/'), [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-PfadInnerhalb {
+    param([string]$Kind, [string]$Eltern)
+    if (Test-PfadGleich $Kind $Eltern) { return $true }
+    $e = $Eltern.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $k = $Kind.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    $e = $e.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    return $k.StartsWith($e, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 # Rückübersetzter Klartext darf NIE unterhalb von anonym\ oder in einem Ausgabeordner eines Laufs liegen
@@ -3419,6 +3549,25 @@ if ([string]::IsNullOrEmpty($TabellenPfad)) {
     $TabellenPfad = Join-Path $defaultTabDir "tabelle-$stamp.json"
 }
 
+# Kanonische Pfade prüfen, BEVOR etwas angelegt oder gelöscht wird: Eingaben dürfen sich nicht mit dem
+# Ausgabeordner überschneiden (er enthält anonym\, bericht.json und wird teilweise gelöscht), und die
+# Zuordnungstabelle darf nicht in einer Eingabe liegen.
+$kanonTabelle = [System.IO.Path]::GetFullPath($TabellenPfad)
+$kanonAusgabe = if ([string]::IsNullOrEmpty($Ausgabe)) { $null } else { [System.IO.Path]::GetFullPath($Ausgabe) }
+$einNr = 0
+foreach ($ein in $Eingabe) {
+    $einNr++
+    if (-not (Test-Path -LiteralPath $ein)) { throw "Eingabe Nr. $einNr nicht gefunden." }
+    $kanonEin = (Resolve-Path -LiteralPath $ein).ProviderPath
+    $istOrdner = Test-Path -LiteralPath $ein -PathType Container
+    if ($null -ne $kanonAusgabe -and ((Test-PfadInnerhalb $kanonEin $kanonAusgabe) -or ($istOrdner -and (Test-PfadInnerhalb $kanonAusgabe $kanonEin)))) {
+        throw "SICHERHEITSFEHLER: Eingabe Nr. $einNr überschneidet sich mit dem Ausgabeordner (-Ausgabe). Es wurde nichts verändert."
+    }
+    if (($istOrdner -and (Test-PfadInnerhalb $kanonTabelle $kanonEin)) -or (Test-PfadGleich $kanonTabelle $kanonEin)) {
+        throw "SICHERHEITSFEHLER: Die Zuordnungstabelle überschneidet sich mit Eingabe Nr. $einNr. Es wurde nichts verändert."
+    }
+}
+
 if (-not [string]::IsNullOrEmpty($Ausgabe)) {
     if (-not (Test-Path -LiteralPath $Ausgabe)) {
         [void](New-Item -ItemType Directory -Path $Ausgabe -Force)
@@ -3556,6 +3705,18 @@ try {
         }
     }
     $state.Stats = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    # Ausgabepfade vor dem ersten Schreiben auf Eindeutigkeit prüfen (Windows: ohne Groß-/Kleinschreibung)
+    $zielPfade = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $dateiNr = 0
+    foreach ($eintrag in $dateiListe) {
+        $dateiNr++
+        $vorschauPfad = ([AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)) -replace '\\', '/'
+        if ($zielPfade.ContainsKey($vorschauPfad)) {
+            throw ("Ausgabepfad-Kollision: Datei Nr. {0} und Nr. {1} ergeben denselben anonymisierten Ausgabepfad. Es wurde nichts geschrieben." -f $zielPfade[$vorschauPfad], $dateiNr)
+        }
+        $zielPfade[$vorschauPfad] = $dateiNr
+    }
 
     # Durchlauf 2: Endgültige Ausgabe mit vollständiger Zuordnungstabelle
     $anonErgebnisse = New-Object 'System.Collections.Generic.List[psobject]'

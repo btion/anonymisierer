@@ -156,33 +156,39 @@
       "ersetzen": "*****"
     },
     {
+      "name": "Zugangsdaten in URLs (schema://benutzer:passwort@host)",
+      "suche": "(?i)((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\\s/@:\"'<>]+:)([^\\s/@\"'<>]+)(@)",
+      "ersetzen": "$1*****$3",
+      "nurWertSchuetzen": true
+    },
+    {
       "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
       "hersteller": "FortiGate/Sophos",
-      "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"[^\"]+\"|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Aruba AOS-CX / AOS-S ciphertext, Passwörter, Keys",
       "hersteller": "Aruba",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "HPE Comware password/key (cipher|simple|hash) & snmp-agent community",
       "hersteller": "HPE Comware",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "MikroTik RouterOS Passwörter, Secrets, WireGuard Keys (inkl. public-key=) & PSKs",
       "hersteller": "MikroTik",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"[^\"]+\"|[^\\s\\r\\n]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^\\s\\r\\n]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
       "hersteller": "Cisco",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
       "ersetzen": "$1*****"
     },
     {
@@ -192,14 +198,19 @@
       "ersetzen": "$1*****$3"
     },
     {
+      "name": "JSON-Geheimnisse mit Zahl oder Wahrheitswert (bleibt gültiges JSON)",
+      "suche": "(?i)(\"(?:password|passkey|auth_key|priv_key|secret|encrypted_password|community|psk|radius_key|tacacs_key|api_key|token|private_key)\"[ \\t]*:[ \\t]*)(-?[0-9][0-9.eE+-]*|true|false)(?![A-Za-z0-9_.])",
+      "ersetzen": "$1\"*****\""
+    },
+    {
       "name": "SNMP Community & SNMPv3 Auth/Priv Keys (CLI)",
       "hersteller": "Alle",
-      "suche": "(?i)((?<![A-Za-z0-9_])snmp-server[ \\t]+community[ \\t]+)(\"[^\"]+\"|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])snmp-server[ \\t]+community[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Aruba AOS-CX snmpv3 auth-pass / priv-pass",
-      "suche": "(?i)((?<![A-Za-z0-9_-])(?:auth|priv)-pass[ \\t]+(?:(?:plaintext|ciphertext)[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:auth|priv)-pass[ \\t]+(?:(?:plaintext|ciphertext)[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n]+)",
       "ersetzen": "$1*****"
     },
     {
@@ -222,63 +233,63 @@
     },
     {
       "name": "OSPF authentication-key (Cisco ip ospf)",
-      "suche": "(?i)((?<![A-Za-z0-9_-])ip[ \\t]+ospf[ \\t]+authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ip[ \\t]+ospf[ \\t]+authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "OSPF message-digest-key md5",
-      "suche": "(?i)((?<![A-Za-z0-9_-])(?:ip[ \\t]+ospf[ \\t]+)?message-digest-key[ \\t]+[0-9]+[ \\t]+md5(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:ip[ \\t]+ospf[ \\t]+)?message-digest-key[ \\t]+[0-9]+[ \\t]+md5(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "HSRP standby authentication (text oder ohne Typ)",
-      "suche": "(?i)((?<![A-Za-z0-9_-])standby(?:[ \\t]+[0-9]+)?[ \\t]+authentication(?:[ \\t]+text)?[ \\t]+)(?!md5(?![A-Za-z0-9]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])standby(?:[ \\t]+[0-9]+)?[ \\t]+authentication(?:[ \\t]+text)?[ \\t]+)(?!md5(?![A-Za-z0-9]))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "NTP authentication-key",
-      "suche": "(?i)((?<![A-Za-z0-9_-])ntp[ \\t]+authentication-key[ \\t]+[0-9]+[ \\t]+(?:md5|sha1|sha256|hmac-sha[0-9-]*|cmac-aes-128)[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ntp[ \\t]+authentication-key[ \\t]+[0-9]+[ \\t]+(?:md5|sha1|sha256|hmac-sha[0-9-]*|cmac-aes-128)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "IS-IS password, domain-password, area-password",
-      "suche": "(?i)((?<![A-Za-z0-9_-])(?:isis[ \\t]+password|domain-password|area-password)[ \\t]+(?:(?:clear|encrypted|hmac-md5|md5|text|[0-9])[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:isis[ \\t]+password|domain-password|area-password)[ \\t]+(?:(?:clear|encrypted|hmac-md5|md5|text|[0-9])[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "SNMP-Community in snmp-server host",
-      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3[ \\t]+(?:auth|noauth|priv)))?[ \\t]+)()(?!(?:version|informs|traps|vrf)(?![A-Za-z0-9_-]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3[ \\t]+(?:auth|noauth|priv)))?[ \\t]+)()(?!(?:version|informs|traps|vrf)(?![A-Za-z0-9_-]))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Juniper simple-password",
-      "suche": "(?i)((?<![A-Za-z0-9_-])simple-password[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])simple-password[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "LDAP ldap-login-password",
-      "suche": "(?i)((?<![A-Za-z0-9_-])ldap-login-password(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ldap-login-password(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "RADIUS/TACACS key in server host-Zeile",
-      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Alleinstehende key <Typ> <Wert>-Zeile (Key-Chain)",
-      "suche": "(?im)^([ \\t]*key[ \\t]+[0-9][ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)(?=[ \\t]*\\r?$)",
+      "suche": "(?im)^([ \\t]*key[ \\t]+[0-9][ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)(?=[ \\t]*\\r?$)",
       "ersetzen": "$1*****"
     },
     {
       "name": "IS-IS hello-authentication-key",
-      "suche": "(?i)((?<![A-Za-z0-9_-])hello-authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])hello-authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
       "name": "Generische Zugangsdaten (Schlüsselwort + Trenner + Wert)",
-      "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?)(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))([^ \\t\\r\\n\"',;\\u0002]+)(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002))(\"?)",
-      "ersetzen": "$1*****$3"
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
+      "ersetzen": "$1*****"
     },
     {
       "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",

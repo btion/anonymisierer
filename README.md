@@ -273,6 +273,14 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 - **Eindeutige Platzhalter:** Automatisch vergebene Platzhalter überspringen alle bereits vergebenen, fest zugeordneten und als Alias reservierten. Stehen in einer geladenen Tabelle und in `festeZuordnung` verschiedene Originalwerte für denselben Platzhalter, wird die Tabelle abgelehnt (A und B).
 - **Tabellenspalten** können mit `"vorkommen": 2` das zweite gleichnamige Kopfwort meinen (z. B. `Number` in `show module`).
 
+### Geheimnisse, Pfade, Freigabe und Tabellenimport (Paket B)
+- **Geheimnisse vollständig:** Werte in doppelten oder einfachen Anführungszeichen werden samt Leerzeichen und Escapes entfernt; die Anführungszeichen bleiben (`password "*****"`). Numerische und boolesche JSON-Werte werden zu `"*****"` (gültiges JSON). Zugangsdaten in URLs (`https://benutzer:passwort@host`) werden vor dem Anlegen von Zuordnungen entfernt; die Zuordnungstabelle enthält dann `https://benutzer:*****@host`.
+- **Prüfmodus:** meldet teilweise maskierte Werte (`"***** Rest"`, `*****x`) als `Verdacht-Teilmaskierung`.
+- **Eindeutig bezeichnete Felder** (`hostname X`, `System Name: X`, `Serial Number: X`, `user X`) werden auch mit rein alphabetischen Werten anonymisiert; nur kontextfreie Heuristiken (CLI-Prompt, Tabellenspalten) verlangen Ziffer oder Bindestrich.
+- **Ein- und Ausgabe:** `anon.ps1` prüft vor jeder Änderung im Dateisystem, dass sich keine Eingabe mit dem Ausgabeordner überschneidet und die Zuordnungstabelle nicht in einer Eingabe liegt. Ergeben zwei Eingaben denselben anonymisierten Ausgabepfad (Groß-/Kleinschreibung zählt nicht), bricht der Lauf ab, bevor eine Datei geschrieben wird; `anonymisierer.html` erzeugt dann kein ZIP.
+- **Exportfreigabe:** Jede Änderung an Dateien, Regeln, eigenen Begriffen, Optionen oder der Zuordnungstabelle macht das bisherige Ergebnis ungültig; ZIP und „Anonymisiert kopieren“ sind erst nach einem neuen Lauf ohne Restfunde wieder frei.
+- **Tabellenimport:** Formatversion `1.0`, Pflichtabschnitte `vorwaerts`/`rueckwaerts`, nur Textwerte, beide Richtungen müssen zusammenpassen (zulässig: MAC-Normalisierung, Groß-/Kleinschreibung, Aliase umbenannter Platzhalter), keine doppelt vergebenen Platzhalter. Eine abgelehnte Tabelle wird nicht verwendet und nicht überschrieben; der bisherige Zustand bleibt.
+
 ### E. Reihenfolge der Engine (identisch in `anon.ps1` und `anonymisierer.html`)
 0. JSON-Escapes dekodieren, feste Zuordnungen reservieren; Tabellenspalten (`tabellenSpalten`) über Spaltenpositionen der Kopfzeile (Geheimnisse im Spaltenwert werden vorher entfernt)
 1. Geheimnisse entfernen (`*****`)
@@ -326,7 +334,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 - In `anon-regeln.json` sind `\w`, `\d` und `\b` verboten (in .NET Unicode, in JavaScript nur ASCII). Stattdessen `[0-9]`, `[A-Za-z0-9_]`, `(?<![A-Za-z0-9_])` / `(?![A-Za-z0-9_])`. Ersetzungstexte dürfen nur `$1` bis `$9` verwenden.
 - Alle `.ps1`-Dateien sind UTF-8 **mit BOM** gespeichert (sonst liest PS 5.1 sie als ANSI) und enthalten keine Gedankenstriche.
 
-Der Ordner `tests\` enthält **82 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
+Der Ordner `tests\` enthält **87 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
 
 - **PowerShell-Testsuite starten:**
   ```powershell
@@ -340,6 +348,11 @@ Der Ordner `tests\` enthält **82 synthetische Test- und Grenzfälle** (`tests\f
   ```bash
   node tests/run-tests-text.js
   ```
+- **Browser-Test (echte UI-Handler in headless Chrome/Chromium, z. B. Exportfreigabe):**
+  ```bash
+  node tests/run-tests-browser.js
+  ```
+  Ohne Browser meldet er „NICHT AUSGEFÜHRT“; mit `BROWSER_PFLICHT=1` (CI) schlägt er dann fehl.
 - **CI** (`.github/workflows/ci.yml`): Node, Windows PowerShell 5.1 (Pflicht), PowerShell 7 und gitleaks (`.gitleaks.toml`, Allowlist nur für eindeutig erfundene Testwerte).
 - **Sicherheitslücken melden:** siehe [`SECURITY.md`](./SECURITY.md).
 - **Gemeinsamer Kern:** `core/` und `regeln/anon-regeln.json` werden mit `node tools/einbetten.js` in beide HTML-Seiten eingebettet; `node tools/einbetten.js --pruefen` (und die Testsuite) meldet Abweichungen.

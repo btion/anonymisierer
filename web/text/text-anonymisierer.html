@@ -1894,6 +1894,56 @@
     return result;
   }
 
+  // Beide Richtungen einer importierten Tabelle passen zusammen (zulässig: MAC-Normalisierung, Groß-/Kleinschreibung)
+  // (identisch zu AnonEngine.ValidateStateConsistency in anon.ps1)
+  function validateStateConsistency(state) {
+    const fehler = [];
+    for (const fk of Array.from(state.forward.keys()).sort()) {
+      const tok = state.forward.get(fk);
+      if (!tok || !String(tok).trim()) { fehler.push("Leerer Platzhalter in der Vorwärtsrichtung"); continue; }
+      const bar = fk.indexOf("|");
+      const kat = bar >= 0 ? fk.slice(0, bar).toUpperCase() : "";
+      const raw = (bar >= 0 ? fk.slice(bar + 1) : fk).trim().toLowerCase();
+      const upper = String(tok).toUpperCase();
+      if (!state.reverse.has(upper)) { fehler.push(`Platzhalter ${upper} fehlt in der Rückrichtung`); continue; }
+      let rv = String(state.reverse.get(upper)).trim().toLowerCase();
+      if (kat === "MAC") rv = rv.replace(/[^0-9a-f]/g, "");
+      if (rv !== raw) fehler.push(`Platzhalter ${upper}: Vorwärts- und Rückrichtung widersprechen sich`);
+    }
+    return fehler;
+  }
+
+  // Schema, Formatversion, Konsistenz und Eindeutigkeit einer (entschlüsselten) Zuordnungstabelle prüfen.
+  // Liefert { ok, fehler, state }; bei ok === false darf der bisherige Zustand nicht ersetzt werden.
+  function validateImportedTable(obj, festeZuordnung) {
+    const fehler = [];
+    const istObjekt = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    if (!istObjekt(obj)) return { ok: false, fehler: ["kein Tabellenobjekt"], state: null };
+    if (obj.version !== "1.0") fehler.push("unbekannte Formatversion");
+    for (const teil of ["vorwaerts", "rueckwaerts"]) {
+      if (!istObjekt(obj[teil])) { fehler.push(`Abschnitt '${teil}' fehlt oder ist kein Objekt`); continue; }
+      for (const [k, v] of Object.entries(obj[teil])) {
+        if (typeof v !== "string" || !String(k).trim()) { fehler.push(`ungültiger Eintrag in '${teil}'`); break; }
+      }
+    }
+    if (obj.zaehler !== undefined) {
+      if (!istObjekt(obj.zaehler)) fehler.push("Abschnitt 'zaehler' ist kein Objekt");
+      else if (Object.values(obj.zaehler).some(v => !Number.isInteger(Number(v)) || Number(v) < 0)) fehler.push("ungültiger Zähler");
+    }
+    if (obj.netzHosts !== undefined) {
+      if (!istObjekt(obj.netzHosts) || Object.values(obj.netzHosts).some(sub => !istObjekt(sub) || Object.values(sub).some(v => typeof v !== "string"))) {
+        fehler.push("ungültiger Eintrag in 'netzHosts'");
+      }
+    }
+    if (obj.aliase !== undefined && (!istObjekt(obj.aliase) || Object.values(obj.aliase).some(v => typeof v !== "string"))) {
+      fehler.push("ungültiger Eintrag in 'aliase'");
+    }
+    if (fehler.length > 0) return { ok: false, fehler, state: null };
+    const state = AnonState.fromJSON(obj);
+    const weitere = validateStateConsistency(state).concat(findPlaceholderCollisions(state, festeZuordnung || {}));
+    return { ok: weitere.length === 0, fehler: weitere, state: weitere.length === 0 ? state : null };
+  }
+
   function deanonymizeText(input, state) {
     if (!input || !state || !state.reverse || state.reverse.size === 0) return input;
     const sortedUpperKeys = Array.from(state.reverse.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
