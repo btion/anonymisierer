@@ -36,8 +36,11 @@
       if (this.forward.has(lookupKey)) {
         return this.forward.get(lookupKey);
       }
-      const num = this.nextCounter(prefix);
-      const token = prefix + "-" + num;
+      // Zentrale Vergabe: nie einen Platzhalter, der schon vergeben, fest zugeordnet oder als Alias reserviert ist
+      let token;
+      do {
+        token = prefix + "-" + this.nextCounter(prefix);
+      } while (this.reverse.has(token.toUpperCase()) || this.aliases.has(token.toUpperCase()));
       this.forward.set(lookupKey, token);
       const revKey = token.toUpperCase();
       if (!this.reverse.has(revKey)) {
@@ -122,6 +125,34 @@
       }
       return st;
     }
+  }
+
+  // Eindeutigkeit der Platzhalter: ein Platzhalter darf nur für einen Originalwert stehen
+  // (identisch zu AnonEngine.FindPlaceholderCollisions in anon.ps1; Meldungen enthalten keine Originalwerte)
+  function findPlaceholderCollisions(state, festeZuordnung) {
+    const byToken = new Map();
+    const add = (tok, raw) => {
+      if (!tok) return;
+      const k = String(tok).toUpperCase();
+      if (!byToken.has(k)) byToken.set(k, new Set());
+      byToken.get(k).add(String(raw == null ? "" : raw).trim().toLowerCase());
+    };
+    for (const [key, tok] of state.forward.entries()) {
+      const bar = key.indexOf("|");
+      add(tok, bar >= 0 ? key.slice(bar + 1) : key);
+    }
+    for (const [orig, ph] of Object.entries(festeZuordnung || {})) {
+      if (!String(orig).trim() || !String(ph || "").trim()) continue;
+      const p = String(ph).trim();
+      add(p, orig);
+      if (state.reverse.has(p.toUpperCase())) add(p, state.reverse.get(p.toUpperCase()));
+    }
+    const result = [];
+    for (const tok of Array.from(byToken.keys()).sort()) {
+      const n = byToken.get(tok).size;
+      if (n > 1) result.push(`Platzhalter ${tok} steht für ${n} verschiedene Originalwerte`);
+    }
+    return result;
   }
 
   function deanonymizeText(input, state) {

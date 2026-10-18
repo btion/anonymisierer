@@ -530,6 +530,7 @@
               </div>
 
               <div class="btn-row" style="margin-top:12px;">
+                <div id="textStaleHint" class="warn-banner" style="display:none; width:100%;">Text seit der letzten Analyse geändert: Analyse veraltet.</div>
                 <button type="button" class="primary" id="btnTextAnalyze" style="flex:1;">Text analysieren &amp; Vorschau aktualisieren</button>
                 <button type="button" class="primary" id="btnTextExecute" style="flex:1; background:var(--success);">Übernehmen &amp; Pseudonymisieren</button>
               </div>
@@ -1774,8 +1775,11 @@
       if (this.forward.has(lookupKey)) {
         return this.forward.get(lookupKey);
       }
-      const num = this.nextCounter(prefix);
-      const token = prefix + "-" + num;
+      // Zentrale Vergabe: nie einen Platzhalter, der schon vergeben, fest zugeordnet oder als Alias reserviert ist
+      let token;
+      do {
+        token = prefix + "-" + this.nextCounter(prefix);
+      } while (this.reverse.has(token.toUpperCase()) || this.aliases.has(token.toUpperCase()));
       this.forward.set(lookupKey, token);
       const revKey = token.toUpperCase();
       if (!this.reverse.has(revKey)) {
@@ -1860,6 +1864,34 @@
       }
       return st;
     }
+  }
+
+  // Eindeutigkeit der Platzhalter: ein Platzhalter darf nur für einen Originalwert stehen
+  // (identisch zu AnonEngine.FindPlaceholderCollisions in anon.ps1; Meldungen enthalten keine Originalwerte)
+  function findPlaceholderCollisions(state, festeZuordnung) {
+    const byToken = new Map();
+    const add = (tok, raw) => {
+      if (!tok) return;
+      const k = String(tok).toUpperCase();
+      if (!byToken.has(k)) byToken.set(k, new Set());
+      byToken.get(k).add(String(raw == null ? "" : raw).trim().toLowerCase());
+    };
+    for (const [key, tok] of state.forward.entries()) {
+      const bar = key.indexOf("|");
+      add(tok, bar >= 0 ? key.slice(bar + 1) : key);
+    }
+    for (const [orig, ph] of Object.entries(festeZuordnung || {})) {
+      if (!String(orig).trim() || !String(ph || "").trim()) continue;
+      const p = String(ph).trim();
+      add(p, orig);
+      if (state.reverse.has(p.toUpperCase())) add(p, state.reverse.get(p.toUpperCase()));
+    }
+    const result = [];
+    for (const tok of Array.from(byToken.keys()).sort()) {
+      const n = byToken.get(tok).size;
+      if (n > 1) result.push(`Platzhalter ${tok} steht für ${n} verschiedene Originalwerte`);
+    }
+    return result;
   }
 
   function deanonymizeText(input, state) {
@@ -2190,6 +2222,21 @@
   renderTextMechanismenUI();
 
 
+  // Prüfsumme des analysierten Textes (FNV-1a, 32 Bit): "Übernehmen" nur, wenn die Analyse zum aktuellen Text gehört
+  function textHash(text) {
+    let h = 0x811c9dc5;
+    const t = String(text == null ? "" : text);
+    for (let i = 0; i < t.length; i++) {
+      h ^= t.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return t.length + ":" + h.toString(16);
+  }
+
+  function isAnalysisCurrent(analyzedHash, text) {
+    return Boolean(analyzedHash) && analyzedHash === textHash(text);
+  }
+
   // Browser-Oberfläche (nur im Browser, in Node-Tests übersprungen)
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     let currentState = new AnonState();
@@ -2399,6 +2446,28 @@
       const enabledCats = getEnabledCategories();
       currentTextSpans = allSpans.filter(s => enabledCats.has(s.category));
       renderInteractiveSpans(rawText, currentTextSpans);
+      analyzedTextHash = textHash(rawText);
+      setAnalysisStale(false);
+    }
+
+    // Analyse und Ergebnis gelten nur für den Text, der analysiert wurde
+    let analyzedTextHash = null;
+    function setAnalysisStale(stale) {
+      const hinweis = document.getElementById("textStaleHint");
+      if (hinweis) hinweis.style.display = stale ? "block" : "none";
+      if (stale && textResultArea && textResultArea.value) {
+        textResultArea.value = "";
+        if (textAuditBanner) {
+          textAuditBanner.style.display = "block";
+          textAuditBanner.className = "warn-banner";
+          textAuditBanner.textContent = "Text geändert: Analyse und Ergebnis sind veraltet. Bitte neu analysieren.";
+        }
+      }
+    }
+    if (textRawInput) {
+      textRawInput.addEventListener("input", () => {
+        if (!isAnalysisCurrent(analyzedTextHash, textRawInput.value)) setAnalysisStale(true);
+      });
     }
 
     if (textInteractivePreview) {
@@ -2488,6 +2557,16 @@
       btnTextExecute.addEventListener("click", () => {
         const rawText = textRawInput ? textRawInput.value : "";
         if (!rawText) return;
+        // Analyse gehört nicht zum aktuellen Text: neu analysieren, nicht pseudonymisieren
+        if (!isAnalysisCurrent(analyzedTextHash, rawText)) {
+          analyzeAndRenderText();
+          if (textAuditBanner) {
+            textAuditBanner.style.display = "block";
+            textAuditBanner.className = "warn-banner";
+            textAuditBanner.textContent = "Der Text wurde seit der Analyse geändert. Die Analyse wurde erneuert; bitte Treffer prüfen und erneut übernehmen.";
+          }
+          return;
+        }
 
         const modeEl = document.querySelector('input[name="textReplaceMode"]:checked');
         const mode = modeEl ? modeEl.value : "token";
@@ -2583,7 +2662,9 @@
       registerTextMappingInState,
       encryptTableAes256V2,
       decryptTableWebCrypto,
-      TEXT_MECHANISMUS_KATEGORIEN
+      TEXT_MECHANISMUS_KATEGORIEN,
+      textHash,
+      isAnalysisCurrent
     };
   }
   </script>

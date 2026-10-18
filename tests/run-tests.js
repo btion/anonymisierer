@@ -153,8 +153,13 @@ for (const tc of cases) {
     overrides.kategorien = new Set(tc.kategorien);
   }
 
-  // 3a. LF-Lauf
-  const cfg = core.buildEngineConfig(diskRules, overrides);
+  // 3a. LF-Lauf (optional mit zusätzlicher festeZuordnung des Testfalls)
+  let caseRules = diskRules;
+  if (tc.festeZuordnung) {
+    caseRules = JSON.parse(JSON.stringify(diskRules));
+    Object.assign(caseRules.eigeneBegriffe.festeZuordnung, tc.festeZuordnung);
+  }
+  const cfg = core.buildEngineConfig(caseRules, overrides);
   const state = new core.AnonState();
   const actual = core.processText(tc.eingabe, cfg, state);
 
@@ -173,6 +178,13 @@ for (const tc of cases) {
     isClean === tc.sauber,
     `${tc.id} (LF): Prüfmodus (-Pruefen) erwartet sauber=${tc.sauber}, erhalten=${isClean}`
   );
+
+  if (Array.isArray(tc.tabelleEnthaeltNicht)) {
+    const tabJson = JSON.stringify(state.toJSON());
+    for (const geheim of tc.tabelleEnthaeltNicht) {
+      assert(!tabJson.includes(geheim) && !actual.includes(geheim), `${tc.id}: '${geheim}' steht weder in der Ausgabe noch in der Zuordnungstabelle`);
+    }
+  }
 
   // 3b. Befund 1: Gesamter Testkorpus zusätzlich als CRLF-Variante
   const crlfIn = tc.eingabe.replace(/\r?\n/g, "\r\n");
@@ -236,7 +248,7 @@ for (const sf of sampleFiles) {
   const raw = fs.readFileSync(fullIn, "utf8");
   const anon = core.processText(raw, multiCfg, multiState);
   const findings = core.auditText(anon, sf, multiCfg);
-  assert(findings.length === 0, `Beispieldatei ${sf} ist nach Anonymisierung SAUBER (0 Restfunde)`);
+  assert(findings.length === 0, `Beispieldatei ${sf} ist nach Anonymisierung ohne Restfunde (0 Restfunde)`);
 
   const expPath = path.join(ERWARTET_DIR, sf);
   if (AKTUALISIEREN) {
@@ -349,7 +361,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       `Befund 3: IPs und MACs in ${label}-Eventlog erkannt und ersetzt`
     );
     const bomFindings = core.auditText(bomAnon, "eventlog.txt", pathCfg);
-    assert(bomFindings.length === 0, `Befund 3: Anonymisiertes ${label}-Eventlog ist SAUBER`);
+    assert(bomFindings.length === 0, `Befund 3: Anonymisiertes ${label}-Eventlog ist ohne Restfunde`);
     const outUtf8 = new TextEncoder().encode(bomAnon);
     assert(outUtf8[0] !== 0xEF && outUtf8[0] !== 0xFF && outUtf8[0] !== 0xFE, `Befund 3: Ausgabe von ${label} ist UTF-8 ohne BOM`);
   }
@@ -471,7 +483,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
 
   // Befund 6: Exit-Code 2 im Hauptlauf bei Restfunden
   assert(
-    ps1Content.includes('if ($pruefStatus -eq "SAUBER")') && ps1Content.includes("exit 2"),
+    ps1Content.includes('if ($pruefStatus -eq "KEINE_RESTFUNDE")') && ps1Content.includes("exit 2"),
     "Befund 6: anon.ps1 beendet Hauptlauf bei Restfunden (pruefTrefferAnzahl > 0) mit Exit-Code 2"
   );
 
@@ -558,7 +570,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   const elapsedMs = Date.now() - t0;
   console.log(`  Großer Show-Tech (${(largeShowTech.length / (1024 * 1024)).toFixed(2)} MB, ${showTechChunks.length} Zeilen) verarbeitet + geprüft in ${elapsedMs} ms`);
   assert(elapsedMs < 8000, `Performance-Ziel erreicht: ${elapsedMs} ms (< 8000 ms)`);
-  assert(largeFindings.length === 0, `Großer Aruba Show-Tech ist nach Anonymisierung SAUBER (0 Restfunde)`);
+  assert(largeFindings.length === 0, `Großer Aruba Show-Tech ist nach Anonymisierung ohne Restfunde (0 Restfunde)`);
   assert(!largeAnon.includes("\u0002PROT_"), "Alle Schutz-Marker vollständig aufgelöst");
 
   // WebCrypto AES-GCM 600.000 Iterationen + Alt-Tabellen (100.000 Iterationen)
@@ -737,7 +749,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(mergeTestRes.mergedRules.eigeneBegriffe.firmenUndStandorte.includes("Klinikum-Suedstadt"), "Eigene Begriffe: firmenUndStandorte zusammengeführt");
   assert(mergeTestRes.mergedRules.eigeneBegriffe.interneDomains.includes("klinik-sued.local"), "Eigene Begriffe: interneDomains zusammengeführt");
 
-  // Wirkung auf Anonymisierung + Prüfung (SAUBER)
+  // Wirkung auf Anonymisierung + Prüfung (ohne Restfunde)
   const customCfg = core.buildEngineConfig(mergeTestRes.mergedRules, { netzerhaltend: true });
   const customState = new core.AnonState();
   const sampleCustomText = "hostname sw-spezial-01\nsnmp-server location Klinikum-Suedstadt\nSystem Name : sw-auto-02.klinik-sued.local\n";
@@ -752,7 +764,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     "Eigene Begriffe Wirkung: festeZuordnung (inkl. Auto-Platzhalter), firmenUndStandorte und interneDomains greifen sofort beim Lauf"
   );
   const customAudit = core.auditText(anonCustomText, "test.txt", customCfg);
-  assert(customAudit.length === 0, "Eigene Begriffe Wirkung: Anonymisierter Text mit eigenen Begriffen und Auto-Platzhalter ist im Prüfmodus SAUBER");
+  assert(customAudit.length === 0, "Eigene Begriffe Wirkung: Anonymisierter Text mit eigenen Begriffen und Auto-Platzhalter ist im Prüfmodus ohne Restfunde");
 
   // Export enthält NUR eigeneBegriffe + ausnahmen.exakteWoerter (keine sonstigen Regeln)
   const exportedLocalJson = core.exportLokaleBegriffeJson({
@@ -851,7 +863,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     "Kopierfunktion Original (> 200 KB): Liefert nach Bestätigung den VOLLSTÄNDIGEN ungekürzten Inhalt und Hinweis 'vollständiger Inhalt kopiert (X KB)'"
   );
 
-  // Anonymisiert kopieren (SAUBER, > 200 KB): kopiert sofort ohne Warn-Dialog den ungekürzten Text
+  // Anonymisiert kopieren (ohne Restfunde, > 200 KB): kopiert sofort ohne Warn-Dialog den ungekürzten Text
   let anonCleanPromptCalled = false;
   const anonCleanCopy = core.preparePreviewCopy(mockProcessedResults, 0, "anon", () => {
     anonCleanPromptCalled = true;
@@ -862,19 +874,19 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     !anonCleanPromptCalled &&
     anonCleanCopy.text === copyLargeAnon &&
     anonCleanCopy.statusMessage.includes("vollständiger Inhalt kopiert ("),
-    "Kopierfunktion Anonymisiert (SAUBER, > 200 KB): Liefert ungekürzten Inhalt ohne Warnabfrage inkl. KB-Hinweis"
+    "Kopierfunktion Anonymisiert (ohne Restfunde, > 200 KB): Liefert ungekürzten Inhalt ohne Warnabfrage inkl. KB-Hinweis"
   );
 
-  // Anonymisiert kopieren (nicht SAUBER): gesperrt, auch eine Bestätigung hebt die Sperre nicht auf
+  // Anonymisiert kopieren (mit Restfunden): gesperrt, auch eine Bestätigung hebt die Sperre nicht auf
   let dirtyPromptCalled = false;
   const anonDirtyBlocked = core.preparePreviewCopy(mockProcessedResults, 1, "anon", () => { dirtyPromptCalled = true; return true; });
   assert(anonDirtyBlocked.allowed === false && anonDirtyBlocked.reason === "RESTFUNDE" && !dirtyPromptCalled,
-    "Kopierfunktion Anonymisiert (nicht SAUBER): gesperrt, keine Bestätigung möglich");
+    "Kopierfunktion Anonymisiert (mit Restfunden): gesperrt, keine Bestätigung möglich");
   const anonLaufGesperrt = core.preparePreviewCopy(mockProcessedResults, 0, "anon", () => true, { freigegeben: false });
   assert(anonLaufGesperrt.allowed === false && anonLaufGesperrt.reason === "RESTFUNDE",
-    "Kopierfunktion Anonymisiert: gesperrt, solange der Lauf insgesamt nicht SAUBER ist (auch für saubere Einzeldatei)");
+    "Kopierfunktion Anonymisiert: gesperrt, solange der Lauf insgesamt mit Restfunden ist (auch für saubere Einzeldatei)");
 
-  // 16.3b Restfunde: Gruppen entscheiden ("immer ersetzen" / "Fehlalarm"), Freigabe erst bei SAUBER
+  // 16.3b Restfunde: Gruppen entscheiden ("immer ersetzen" / "Fehlalarm"), Freigabe erst bei ohne Restfunde
   {
     const gFiles = [{ path: "probe.txt", text: "hostname edge7\nlink edge7-alt\nstatus edge7-alt ok\nkommentar Q-Wert-77\n" }];
     const gState = new core.AnonState();
@@ -890,17 +902,17 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       `Entscheidung 'immer ersetzen': ganzes Wort an der Fundstelle als eigener Begriff mit automatischem Platzhalter (${JSON.stringify(ersetzt.festeZuordnung)})`);
     const lauf2 = core.reprocessFilesWithState(gFiles, diskRules, ersetzt, new core.AnonState(), { overrides: { netzerhaltend: true } });
     assert(lauf2.ok && lauf2.findings.length === 0 && !lauf2.results[0].anonText.includes("edge7") && core.isReleaseAllowed(lauf2.findings, false, lauf2.results),
-      "Nach 'immer ersetzen' und neuem Lauf: SAUBER und freigegeben");
+      "Nach 'immer ersetzen' und neuem Lauf: ohne Restfunde und freigegeben");
 
     const fehlalarm = core.applyFindingDecisions({}, gruppen, { [gruppen[0].schluessel]: "fehlalarm" });
     assert(fehlalarm.exakteWoerter.includes("edge7-alt") && !fehlalarm.exakteWoerter.includes("edge7"), "Entscheidung 'Fehlalarm': das Wort an der Fundstelle wird Ausnahme, nicht der Hostname selbst");
     const lauf3 = core.reprocessFilesWithState(gFiles, diskRules, fehlalarm, new core.AnonState(), { overrides: { netzerhaltend: true } });
-    assert(lauf3.ok && lauf3.findings.length === 0 && lauf3.results[0].anonText.startsWith("hostname HOST-1"), "Nach 'Fehlalarm' und neuem Lauf: SAUBER, der Hostname bleibt ersetzt");
+    assert(lauf3.ok && lauf3.findings.length === 0 && lauf3.results[0].anonText.startsWith("hostname HOST-1"), "Nach 'Fehlalarm' und neuem Lauf: ohne Restfunde, der Hostname bleibt ersetzt");
     assert(!core.isReleaseAllowed([], true, lauf3.results), "Freigabe: Trockenlauf gibt nie frei");
 
     const exportHandler = htmlContent.slice(htmlContent.indexOf("function updateReleaseUI()"), htmlContent.indexOf('getElementById("btnDownloadReport").addEventListener'));
     assert(exportHandler.includes('getElementById("btnDownloadZip").disabled = !releaseAllowed') && exportHandler.includes('getElementById("btnCopyAnon").disabled = !releaseAllowed') && exportHandler.includes("if (!releaseAllowed)"),
-      "UI: ZIP-Download und 'Anonymisiert kopieren' hängen an releaseAllowed (nur bei SAUBER)");
+      "UI: ZIP-Download und 'Anonymisiert kopieren' hängen an releaseAllowed (nur bei ohne Restfunde)");
   }
 
   // 16.4 Vorschau der Zuordnungstabelle: Originale standardmäßig nicht im DOM, erst nach Umschalten sichtbar, Suche/Filter/Sortierung, Tab-Wechsel verdeckt wieder
@@ -1191,7 +1203,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(jsMusterOut === lokalMusterExpected, "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (JS)");
     const musterFindings = core.auditText(jsMusterOut, "lokal.txt", musterCfg, musterState);
     assert(musterFindings.length === 0,
-      `Lokale Muster: Ausgabe ist im Prüfmodus SAUBER (${JSON.stringify(musterFindings.map(f => f.kategorie + ":" + f.fund))})`);
+      `Lokale Muster: Ausgabe ist im Prüfmodus ohne Restfunde (${JSON.stringify(musterFindings.map(f => f.kategorie + ":" + f.fund))})`);
     const rawMusterFindings = core.auditText(lokalMusterInput, "lokal.txt", musterCfg);
     assert(rawMusterFindings.some(f => f.kategorie === "Rest-Hostname") && rawMusterFindings.some(f => f.kategorie === "Rest-Seriennummer") && rawMusterFindings.some(f => f.kategorie === "Rest-Tabellenfeld"),
       "Lokale Muster: Prüfmodus meldet Rohdaten über lokale Muster (Hostname, Seriennummer, Tabellenfeld)");
@@ -1212,7 +1224,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       const esc = (p) => p.replace(/\\/g, "\\\\");
       const psMusterCmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(musterInPath)}" -Ausgabe "${esc(musterOutDir)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lokalMusterPath)}" -TabellenPfad "${esc(musterTabPath)}" -Unverschluesselt > $null; exit $LASTEXITCODE`;
       const psMusterRun = spawnSync("pwsh", ["-NoProfile", "-Command", psMusterCmd], { encoding: "utf8" });
-      assert(psMusterRun.status === 0, `anon.ps1 mit lokalen Mustern endet SAUBER mit Exit-Code 0 (${psMusterRun.status})`);
+      assert(psMusterRun.status === 0, `anon.ps1 mit lokalen Mustern endet ohne Restfunde mit Exit-Code 0 (${psMusterRun.status})`);
       const psMusterOut = fs.readFileSync(path.join(musterOutDir, "anonym", "eingabe.txt"), "utf8");
       assert(psMusterOut === jsMusterOut, "Parität: Lokale Muster liefern in anonymisierer.html und anon.ps1 identische Ausgabe");
       fs.rmSync(tmpMusterDir, { recursive: true, force: true });
@@ -1238,6 +1250,43 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     const xRestored = fs.existsSync(xOutPath) ? fs.readFileSync(xOutPath, "utf8") : "";
     assert(xRestored === "Pruefe hostname sw-core-x01 / ip address 192.0.2.5/24", `Tabellen-Austausch: Rückübersetzung in anon.ps1 korrekt (${xRestored})`);
     fs.rmSync(tmpXDir, { recursive: true, force: true });
+  }
+
+  // --- 20. Paket A: gezielte Regressionstests (Pfade, Kollisionen, Bezeichnung) ---
+  console.log("--- 20. Paket A: Pfade, Platzhalter-Kollisionen, Bezeichnung ---");
+  {
+    // A4: bekannte Originalwerte in Dateinamen auch an "-", "_" und "." grenzend
+    const pfadFiles = [
+      { path: "privatehost01-backup.txt", text: "hostname privatehost01\n" },
+      { path: "logs/privatehost01.old.log", text: "uptime 3 days\n" }
+    ];
+    const pfadLauf = core.reprocessFilesWithState(pfadFiles, diskRules, {}, new core.AnonState(), { overrides: { netzerhaltend: true } });
+    const pfade = pfadLauf.results.map(r => r.path);
+    assert(pfade[0] === "HOST-1-backup.txt" && pfade[1] === "logs/HOST-1.old.log", `A4: bekannter Host im Dateinamen an '-' und '.' ersetzt (${pfade.join(", ")})`);
+    const pfadState = new core.AnonState();
+    core.reprocessFilesWithState([pfadFiles[0]], diskRules, {}, pfadState, { overrides: { netzerhaltend: true } });
+    const pfadAudit = core.auditText("uptime 3 days", "privatehost01-backup.txt", core.buildEngineConfig(diskRules, {}), pfadState);
+    assert(pfadAudit.some(f => f.kategorie === "Pfad-Bekannt"), `A4: Prüfmodus meldet bekannte Originalwerte im Dateipfad (${JSON.stringify(pfadAudit.map(f => f.kategorie))})`);
+
+    // A5: Eindeutigkeit beim Laden einer Tabelle
+    if (typeof core.findPlaceholderCollisions !== "function") {
+      assert(false, "A5: findPlaceholderCollisions fehlt (Eindeutigkeitsprüfung der Platzhalter)");
+    } else {
+    const kollState = core.AnonState.fromJSON({ vorwaerts: { "host|device-x": "HOST-1" }, rueckwaerts: { "HOST-1": "device-x" }, zaehler: { HOST: 1 } });
+    const kollisionen = core.findPlaceholderCollisions(kollState, { "device-one": "HOST-1" });
+    assert(kollisionen.length === 1 && kollisionen[0].indexOf("HOST-1") >= 0, `A5: Tabelle mit HOST-1 = device-x und festeZuordnung device-one -> HOST-1 wird als Kollision erkannt (${kollisionen.join(" | ")})`);
+    const doppelt = core.AnonState.fromJSON({ vorwaerts: { "host|a-1": "HOST-1", "host|b-1": "HOST-1" }, rueckwaerts: { "HOST-1": "a-1" } });
+    assert(core.findPlaceholderCollisions(doppelt, {}).length === 1, "A5: zwei Originalwerte mit demselben Platzhalter in einer Tabelle werden erkannt");
+    assert(core.findPlaceholderCollisions(core.AnonState.fromJSON({ vorwaerts: { "host|a-1": "HOST-1" }, rueckwaerts: { "HOST-1": "a-1" } }), { "a-1": "HOST-1" }).length === 0, "A5: identische Zuordnung ist keine Kollision");
+    const ladeHandler = htmlContent.slice(htmlContent.indexOf('getElementById("inputTableFile").addEventListener'), htmlContent.indexOf('getElementById("btnResetTableState")'));
+    assert(ladeHandler.includes("findPlaceholderCollisions("), "A5: anonymisierer.html prüft beim Laden einer Tabelle die Eindeutigkeit der Platzhalter");
+    }
+
+    // A9: Bezeichnung "Keine Restfunde nach aktivem Regelwerk" statt "SAUBER"
+    assert(!/SAUBER/.test(htmlContent), "A9: anonymisierer.html verwendet die Bezeichnung 'SAUBER' nicht mehr");
+    assert(htmlContent.includes("Keine Restfunde nach aktivem Regelwerk") && htmlContent.includes('"KEINE_RESTFUNDE"'), "A9: anonymisierer.html meldet 'Keine Restfunde nach aktivem Regelwerk' (Bericht: KEINE_RESTFUNDE)");
+    const readmeA9 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+    assert(readmeA9.includes("Keine Restfunde nach aktivem Regelwerk") && readmeA9.includes("KEINE_RESTFUNDE"), "A9: README erklärt 'Keine Restfunde nach aktivem Regelwerk' / KEINE_RESTFUNDE");
   }
 
   // --- 19. Strukturvorlage (Regelentwicklung ohne Echtdaten) ---

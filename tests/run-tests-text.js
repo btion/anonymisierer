@@ -278,6 +278,17 @@ const core = sandbox.module.exports;
     assert(next.text === "Frau [NAME-2]", "Text-Tabelle: Nummerierung läuft nach dem Laden weiter");
   }
 
+  // A6: Veraltete Analyse: "Übernehmen" nur, wenn die Analyse zum aktuellen Text gehört
+  assert(typeof core.textHash === "function" && typeof core.isAnalysisCurrent === "function", "A6: textHash und isAnalysisCurrent vorhanden");
+  if (typeof core.textHash === "function" && typeof core.isAnalysisCurrent === "function") {
+    const h1 = core.textHash("Herr Hans Beispiel");
+    assert(core.isAnalysisCurrent(h1, "Herr Hans Beispiel") && !core.isAnalysisCurrent(h1, "Herr Hans Beispiel!") && !core.isAnalysisCurrent(null, "x"),
+      "A6: Analyse gilt nur für exakt denselben Text");
+  }
+  const execHandlerA6 = htmlContent.slice(htmlContent.indexOf('getElementById("btnTextExecute")'), htmlContent.indexOf("// Export für automatisierte Tests"));
+  assert(execHandlerA6.includes("isAnalysisCurrent(") && /textRawInput\.addEventListener\("input"/.test(htmlContent),
+    "A6: Übernehmen prüft die Analyse gegen den aktuellen Text, Texteingabe markiert die Analyse als veraltet");
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Text, Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

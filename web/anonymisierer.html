@@ -452,7 +452,7 @@
             <div class="small-muted" style="margin-bottom:8px;">
               Prüfen Sie vor dem Download den Prüfbericht und die Vorschau. Die Zuordnungstabelle wird niemals ins Ausgabe-ZIP gelegt!
             </div>
-            <div id="releaseLockInfo" class="small-muted" style="margin-bottom:8px;">Download und „Anonymisiert kopieren“ sind erst nach einem Lauf mit Prüfergebnis SAUBER freigegeben.</div>
+            <div id="releaseLockInfo" class="small-muted" style="margin-bottom:8px;">Download und „Anonymisiert kopieren“ sind erst nach einem Lauf mit Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“ freigegeben.</div>
             <div class="btn-row">
               <button type="button" class="success" id="btnDownloadZip" disabled>Anonymisiertes ZIP herunterladen</button>
               <button type="button" id="btnDownloadReport" disabled>Bericht (JSON) laden</button>
@@ -493,7 +493,7 @@
             </div>
             <div id="fundgruppenBox" style="display:none; margin-top:10px;">
               <strong>Fundgruppen entscheiden</strong>
-              <div class="small-muted" style="margin:4px 0 6px;">„Immer ersetzen“ legt den Wert als eigenen Begriff mit Platzhalter an, „Fehlalarm“ als Ausnahme (bleibt im Klartext). Danach wird neu anonymisiert; freigegeben wird erst bei SAUBER.</div>
+              <div class="small-muted" style="margin:4px 0 6px;">„Immer ersetzen“ legt den Wert als eigenen Begriff mit Platzhalter an, „Fehlalarm“ als Ausnahme (bleibt im Klartext). Danach wird neu anonymisiert; freigegeben wird erst bei „Keine Restfunde nach aktivem Regelwerk“.</div>
               <div id="fundgruppenListe" style="max-height:220px; overflow:auto;"></div>
               <div class="btn-row" style="margin-top:8px;">
                 <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden &amp; neu anonymisieren</button>
@@ -912,7 +912,7 @@
       {
         "name": "Dell OS10 & Enterprise SONiC (inkl. Redis JSON Passkeys/Hashes/Secrets)",
         "hersteller": "Dell/SONiC",
-        "suche": "(?i)(\"(?:password|passkey|auth_key|priv_key|secret|encrypted_password|community|psk|radius_key|tacacs_key|api_key|token|private_key)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")",
+        "suche": "(?i)(\"(?:password|passkey|auth_key|priv_key|secret|encrypted_password|community|psk|radius_key|tacacs_key|api_key|token|private_key)\"[ \\t]*:[ \\t]*\")((?:[^\"\\\\]|\\\\.)+)(\")",
         "ersetzen": "$1*****$3"
       },
       {
@@ -922,9 +922,14 @@
         "ersetzen": "$1*****"
       },
       {
+        "name": "Aruba AOS-CX snmpv3 auth-pass / priv-pass",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:auth|priv)-pass[ \\t]+(?:(?:plaintext|ciphertext)[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n]+)",
+        "ersetzen": "$1*****"
+      },
+      {
         "name": "SNMPv3 Auth/Priv Passwörter (Schlüssellänge 128/192/256 nach aes wird übersprungen)",
         "hersteller": "Alle",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:128|192|256)(?=[ \\t]+[^ \\t\\r\\n]))?(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:128|192|256)(?=[ \\t]+[^ \\t\\r\\n]))?(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(?!(?:auth|priv)-pass(?![A-Za-z0-9_-]))(?!\\u0002)(\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -934,9 +939,9 @@
         "ersetzen": "$1*****$3"
       },
       {
-        "name": "Authorization Bearer Header",
+        "name": "Authorization Bearer/Basic Header",
         "hersteller": "Alle",
-        "suche": "(?i)((?<![A-Za-z0-9_])Authorization[ \\t]*:[ \\t]*Bearer[ \\t]+)(\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])Authorization[ \\t]*:[ \\t]*(?:Bearer|Basic)[ \\t]+)(\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -995,6 +1000,11 @@
         "ersetzen": "$1*****"
       },
       {
+        "name": "Generische Zugangsdaten (Schlüsselwort + Trenner + Wert)",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?)(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))([^ \\t\\r\\n\"',;\\u0002]+)(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002))(\"?)",
+        "ersetzen": "$1*****$3"
+      },
+      {
         "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
         "hersteller": "Alle",
         "suche": "\\$(?:1|2[abxy]|5|6|8|9|y)\\$[a-zA-Z0-9./=$]{10,128}",
@@ -1031,17 +1041,17 @@
       {
         "name": "VLAN-Namen (CLI)",
         "kategorie": "TEXT",
-        "suche": "(?im)^([ \\t]*name[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
+        "suche": "(?m)^([ \\t]*name[ \\t]+)([^\\r\\n]+)(?=\\r?$)"
       },
       {
         "name": "VLAN-/Objektnamen (JSON)",
         "kategorie": "TEXT",
-        "suche": "(?i)(\"(?:name|vlan_name|alias)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")"
+        "suche": "(?i)(\"(?:name|vlan_name|alias)\"[ \\t]*:[ \\t]*\")((?:[^\"\\\\]|\\\\.)+)(\")"
       },
       {
         "name": "SONiC / JSON Description, Alias, Location, Contact",
         "kategorie": "TEXT",
-        "suche": "(?i)(\"(?:description|alias|sysLocation|sysContact|location|contact|motd|banner)\"[ \\t]*:[ \\t]*\")([^\"]+)(\")"
+        "suche": "(?i)(\"(?:description|alias|sysLocation|sysContact|location|contact|motd|banner)\"[ \\t]*:[ \\t]*\")((?:[^\"\\\\]|\\\\.)+)(\")"
       },
       {
         "name": "LLDP / CDP System Description & Port Description",
@@ -1079,7 +1089,7 @@
       "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
     ],
     "benutzerMuster": [
-      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type)|[ \\t]*(?=\\r?$))",
+      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type|\\u0002)|[ \\t]*(?=\\r?$))",
       "(?im)^([ \\t]*local-user[ \\t]+)([A-Za-z0-9._-]{2,64})()(?=[ \\t]|\\r?$)",
       "(?im)(/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))[^\\r\\n]*?(?<![A-Za-z0-9-])name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)((?<![A-Za-z0-9_])(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
@@ -1186,6 +1196,38 @@
           {
             "name": "Device ID",
             "kategorie": "HOST"
+          }
+        ]
+      },
+      {
+        "name": "Aruba AOS-CX show interface transceiver (Serial Number)",
+        "kopf": [
+          "Port",
+          "Type",
+          "Product",
+          "Serial",
+          "Part"
+        ],
+        "spalten": [
+          {
+            "name": "Serial",
+            "kategorie": "SERIAL"
+          }
+        ]
+      },
+      {
+        "name": "Aruba AOS-CX show module (Serial Number)",
+        "kopf": [
+          "Name",
+          "Number",
+          "Description",
+          "Status"
+        ],
+        "spalten": [
+          {
+            "name": "Number",
+            "vorkommen": 2,
+            "kategorie": "SERIAL"
           }
         ]
       }
@@ -1864,8 +1906,11 @@
       if (this.forward.has(lookupKey)) {
         return this.forward.get(lookupKey);
       }
-      const num = this.nextCounter(prefix);
-      const token = prefix + "-" + num;
+      // Zentrale Vergabe: nie einen Platzhalter, der schon vergeben, fest zugeordnet oder als Alias reserviert ist
+      let token;
+      do {
+        token = prefix + "-" + this.nextCounter(prefix);
+      } while (this.reverse.has(token.toUpperCase()) || this.aliases.has(token.toUpperCase()));
       this.forward.set(lookupKey, token);
       const revKey = token.toUpperCase();
       if (!this.reverse.has(revKey)) {
@@ -1950,6 +1995,34 @@
       }
       return st;
     }
+  }
+
+  // Eindeutigkeit der Platzhalter: ein Platzhalter darf nur für einen Originalwert stehen
+  // (identisch zu AnonEngine.FindPlaceholderCollisions in anon.ps1; Meldungen enthalten keine Originalwerte)
+  function findPlaceholderCollisions(state, festeZuordnung) {
+    const byToken = new Map();
+    const add = (tok, raw) => {
+      if (!tok) return;
+      const k = String(tok).toUpperCase();
+      if (!byToken.has(k)) byToken.set(k, new Set());
+      byToken.get(k).add(String(raw == null ? "" : raw).trim().toLowerCase());
+    };
+    for (const [key, tok] of state.forward.entries()) {
+      const bar = key.indexOf("|");
+      add(tok, bar >= 0 ? key.slice(bar + 1) : key);
+    }
+    for (const [orig, ph] of Object.entries(festeZuordnung || {})) {
+      if (!String(orig).trim() || !String(ph || "").trim()) continue;
+      const p = String(ph).trim();
+      add(p, orig);
+      if (state.reverse.has(p.toUpperCase())) add(p, state.reverse.get(p.toUpperCase()));
+    }
+    const result = [];
+    for (const tok of Array.from(byToken.keys()).sort()) {
+      const n = byToken.get(tok).size;
+      if (n > 1) result.push(`Platzhalter ${tok} steht für ${n} verschiedene Originalwerte`);
+    }
+    return result;
   }
 
   function deanonymizeText(input, state) {
@@ -2037,9 +2110,12 @@
         kopf: ((t && t.kopf) || []).filter(k => k != null).map(k => String(k)),
         spalten: ((t && t.spalten) || []).filter(sp => sp != null).map(sp => ({
           name: sp.name != null ? String(sp.name) : "",
-          kategorie: sp.kategorie != null ? String(sp.kategorie) : ""
+          kategorie: sp.kategorie != null ? String(sp.kategorie) : "",
+          vorkommen: sp.vorkommen != null ? parseInt(sp.vorkommen, 10) : 1
         }))
-      }))
+      })),
+      // CLI-Schlüsselwörter und Tabellenköpfe (regeln/strukturvorlage.json): werden nie als Host/Benutzer/Seriennummer gelernt
+      lernStoppwoerter: keywordSetFromVorlage(STRUKTUR_VORLAGE)
     };
     return cfg;
   }
@@ -2221,6 +2297,19 @@
     return -1;
   }
 
+  function findHeaderWordNth(line, word, n) {
+    let pos = -1;
+    let start = 0;
+    for (let k = 0; k < Math.max(1, n || 1); k++) {
+      const i = findHeaderWord(line.slice(start), word);
+      if (i < 0) return -1;
+      pos = start + i;
+      start = pos + word.length;
+      if (start > line.length) return -1;
+    }
+    return pos;
+  }
+
   function isTableSeparatorLine(line) {
     let any = false;
     for (let i = 0; i < line.length; i++) {
@@ -2251,7 +2340,7 @@
         if (!rule.kopf.every(w => findHeaderWord(line, w) >= 0)) continue;
         const newCols = [];
         for (const sp of rule.spalten) {
-          const s = findHeaderWord(line, sp.name);
+          const s = findHeaderWordNth(line, sp.name, sp.vorkommen);
           if (s < 0) continue;
           let e = -1;
           for (let p = s + sp.name.length; p < line.length; p++) {
@@ -2360,6 +2449,83 @@
     return { keys, map };
   }
 
+  // --------------------------------------------------------------------------
+  // Paket A: JSON-Escapes, Lernregeln, Geheimnisse in Tabellenwerten, bekannte Werte (identisch zu anon.ps1)
+  // --------------------------------------------------------------------------
+  const RxJsonString = /"(?:[^"\\\r\n]|\\.)*"/g;
+  const RxJsonEscape = /\\(u[0-9A-Fa-f]{4}|.)/g;
+
+  // \uXXXX (druckbar, kein " oder \) und \/ in JSON-Strings dekodieren: gleiche Bedeutung, gültiges JSON, Werte erkennbar
+  function decodeJsonStringEscapes(text) {
+    if (!text || text.indexOf("\\") < 0) return text;
+    return text.replace(RxJsonString, (lit) => {
+      if (lit.indexOf("\\") < 0) return lit;
+      return lit.replace(RxJsonEscape, (e, t) => {
+        if (t === "/") return "/";
+        if (t.length === 5 && t[0] === "u") {
+          const code = parseInt(t.slice(1), 16);
+          if (code >= 0x20 && code !== 0x22 && code !== 0x5C && code !== 0x7F && (code < 0xD800 || code > 0xDFFF)) {
+            return String.fromCharCode(code);
+          }
+        }
+        return e;
+      });
+    });
+  }
+
+  // Gelernte Werte: keine CLI-Schlüsselwörter/Tabellenköpfe; Hosts und Seriennummern brauchen Ziffer oder Bindestrich
+  function isLearnable(category, value, cfg) {
+    const v = String(value == null ? "" : value).trim();
+    if (!v) return false;
+    const stop = cfg.lernStoppwoerter || new Set();
+    if (stop.has(v.toLowerCase())) return false;
+    // Nur aus Schlüsselwörtern mit "-" oder Leerzeichen zusammengesetzt (z. B. PORT-DESC, Local Intf): Tabellenkopf
+    const parts = v.match(/[A-Za-z0-9]+/g) || [];
+    const onlyDashOrSpace = /^[A-Za-z0-9 \t-]*$/.test(v);
+    if (parts.length > 0 && onlyDashOrSpace && parts.every(p => stop.has(p.toLowerCase()))) return false;
+    if ((category === "HOST" || category === "SERIAL") && !/[0-9-]/.test(v)) return false;
+    return true;
+  }
+
+  // Geheimnisse in einem Wert entfernen, bevor er als Original in die Zuordnungstabelle gelangt
+  function removeSecretsPlain(value, cfg) {
+    if (!cfg.catGeheimnisse || !value) return value;
+    let v = value;
+    for (const rule of cfg.geheimnisMuster) {
+      v = v.replace(rule.compiled, (...args) => applySecretReplacement(rule.replacement, args));
+    }
+    return v;
+  }
+
+  // Bekannte Originalwerte bestimmter Kategorien (Schlüssel "prefix|wert") -> Platzhalter
+  function collectKnownValues(state, prefixes, cfg) {
+    const map = new Map();
+    for (const [key, tok] of state.forward.entries()) {
+      for (const pf of prefixes) {
+        if (!key.startsWith(pf)) continue;
+        const v = key.slice(pf.length).trim().toLowerCase();
+        if (v.length >= 3 && !cfg.exakteAusnahmen.has(v) && !map.has(v)) map.set(v, tok);
+        break;
+      }
+    }
+    return { keys: Array.from(map.keys()).sort(compareLengthDescOrdinal), map };
+  }
+
+  const PATH_KNOWN_CATEGORIES = ["host|", "serial|", "user|", "mail|", "url|", "firma|", "domain|", "fixed|"];
+
+  // Dateinamen: bekannte Originalwerte auch an "-", "_" und "." grenzend ersetzen
+  function replaceKnownInPathPart(part, state, cfg) {
+    const known = collectKnownValues(state, PATH_KNOWN_CATEGORIES, cfg);
+    if (known.keys.length === 0 || !part) return part;
+    const rx = new RegExp(`(?<=^|[-_.])(?:${known.keys.map(k => escapeRegExp(k)).join("|")})(?=$|[-_.])`, "gi");
+    return part.replace(rx, (m) => known.map.get(m.toLowerCase()) || m);
+  }
+
+  const RxCredentialSuspect = /(?<![A-Za-z0-9_-])(password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token|authorization)(?:[ \t]*[:=][ \t]*|[ \t]+)"?([^ \t\r\n"',;]+)/gi;
+  const CREDENTIAL_STOP_WORDS = new Set(["for", "from", "is", "was", "has", "of", "to", "required", "expired", "changed", "incorrect", "invalid", "accepted", "failed",
+    "authentication", "policy", "prompt", "plaintext", "ciphertext", "cipher", "simple", "hash", "encrypted", "level", "basic", "bearer",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
   // Ersetzungstext eines Geheimnismusters: nur $1..$9, nicht teilnehmende Gruppen werden leer (wie .NET Match.Result)
   function applySecretReplacement(replacement, groups) {
     return String(replacement).replace(/\$([1-9])/g, (_, d) => {
@@ -2370,7 +2536,15 @@
 
   function processText(input, cfg, state) {
     if (!input) return input;
-    let text = input;
+    // JSON-Escapes für die Erkennung dekodieren (Ergebnis bleibt gültiges JSON)
+    let text = decodeJsonStringEscapes(input);
+
+    // Feste Zuordnungen vorab reservieren, damit automatische Platzhalter nie kollidieren
+    if (cfg.catEigeneBegriffe) {
+      for (const [k, v] of Object.entries(cfg.festeZuordnung)) {
+        if (k && v && !cfg.exakteAusnahmen.has(k.trim().toLowerCase())) state.registerFixed(k, v);
+      }
+    }
 
     const protectedValues = [];
     const protect = (val) => {
@@ -2410,15 +2584,21 @@
         let lastPos = 0;
         for (const f of fields) {
           if (isTableValueExempt(f.wert, cfg)) continue;
+          // Geheimnisse zuerst entfernen: das Original in der Tabelle darf kein Geheimnis enthalten
+          const wert = removeSecretsPlain(f.wert, cfg);
           let rep = null;
           if (f.kategorie === "HOST") {
-            if (!cfg.catHostnamen) continue;
+            if (!cfg.catHostnamen || !isLearnable("HOST", wert, cfg)) continue;
             state.addStat("hostnamen", 1);
-            rep = state.getOrCreateToken("HOST", f.wert, "HOST");
+            rep = state.getOrCreateToken("HOST", wert, "HOST");
+          } else if (f.kategorie === "SERIAL") {
+            if (!cfg.catSeriennummern || !isLearnable("SERIAL", wert, cfg)) continue;
+            state.addStat("seriennummern", 1);
+            rep = state.getOrCreateToken("SERIAL", wert, "SERIAL");
           } else {
             if (!cfg.catFreitext) continue;
             state.addStat("freitext", 1);
-            rep = state.getOrCreateToken("FREITEXT_" + f.kategorie, f.wert, f.kategorie);
+            rep = state.getOrCreateToken("FREITEXT_" + f.kategorie, wert, f.kategorie);
           }
           const fEnd = f.start + f.length;
           // Spaltenausrichtung erhalten, außer am Zeilenende
@@ -2523,7 +2703,7 @@
           const g1 = args[1] || "";
           const g2 = (args[2] || "").trim();
           const g3 = typeof args[3] === "string" ? args[3] : "";
-          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****") return m;
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("SERIAL", g2, cfg)) return m;
           state.addStat("seriennummern", 1);
           const tok = state.getOrCreateToken("SERIAL", g2, "SERIAL");
           return protect(g1 + tok + g3);
@@ -2539,7 +2719,7 @@
           const g1 = args[1] || "";
           const g2 = (args[2] || "").trim();
           const g3 = typeof args[3] === "string" ? args[3] : "";
-          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****") return m;
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("USER", g2, cfg)) return m;
           state.addStat("benutzer", 1);
           const tok = state.getOrCreateToken("USER", g2, "USER");
           return protect(g1 + tok + g3);
@@ -2634,14 +2814,14 @@
             const g1 = groups[0] || "";
             const hVal = (groups[1] || "").trim();
             const g3 = typeof groups[2] === "string" ? groups[2] : "";
-            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg)) return m;
             state.addStat("hostnamen", 1);
             const tok = state.getOrCreateToken("HOST", hVal, "HOST");
             if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
             return protect(g1 + tok + g3);
           } else {
             const hVal = (groups.length >= 1 && groups[0] !== undefined ? groups[0] : m).trim();
-            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+            if (!hVal || cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg)) return m;
             state.addStat("hostnamen", 1);
             const tok = state.getOrCreateToken("HOST", hVal, "HOST");
             if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
@@ -2652,7 +2832,7 @@
 
       text = text.replace(RxCliPrompt, (m, g1, g2, g3) => {
         const hVal = (g1 || "").trim();
-        if (cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_")) return m;
+        if (cfg.exakteAusnahmen.has(hVal.toLowerCase()) || hVal.startsWith("\u0002PROT_") || !isLearnable("HOST", hVal, cfg)) return m;
         state.addStat("hostnamen", 1);
         const tok = state.getOrCreateToken("HOST", hVal, "HOST");
         if (!discoveredHosts.includes(hVal)) discoveredHosts.push(hVal);
@@ -2691,6 +2871,25 @@
           state.addStat("hostnamen", 1);
           const dTok = state.getOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
           return protect(dTok);
+        });
+      }
+    }
+
+    // STUFE 11: Einmal gelernte Seriennummern und Benutzer im ganzen Lauf ersetzen
+    const otherPrefixes = [];
+    if (cfg.catSeriennummern) otherPrefixes.push("serial|");
+    if (cfg.catBenutzer) otherPrefixes.push("user|");
+    if (otherPrefixes.length > 0) {
+      const knownOther = collectKnownValues(state, otherPrefixes, cfg);
+      if (knownOther.keys.length > 0) {
+        const otherRx = new RegExp(`(?<![A-Za-z0-9-])(?:${knownOther.keys.map(k => escapeRegExp(k)).join("|")})(?![A-Za-z0-9-])`, "gi");
+        text = text.replace(otherRx, (m) => {
+          const tok = knownOther.map.get(m.toLowerCase());
+          if (tok) {
+            state.addStat(tok.toUpperCase().startsWith("SERIAL") ? "seriennummern" : "benutzer", 1);
+            return protect(tok);
+          }
+          return m;
         });
       }
     }
@@ -2763,7 +2962,7 @@
   function buildStructureTemplate(input, cfg, keywords, freitextPlatzhalter) {
     if (!input) return input;
     const ph = freitextPlatzhalter || "<FREITEXT>";
-    let text = input;
+    let text = decodeJsonStringEscapes(input);
     const protectedValues = [];
     const protect = (val) => {
       const idx = protectedValues.length;
@@ -2777,7 +2976,7 @@
       const parts = [];
       let lastPos = 0;
       for (const f of fields) {
-        if (f.kategorie === "HOST" || isTableValueExempt(f.wert, cfg)) continue;
+        if (f.kategorie === "HOST" || f.kategorie === "SERIAL" || isTableValueExempt(f.wert, cfg)) continue;
         let rep = ph;
         const fEnd = f.start + f.length;
         if (rep.length < f.length && !isLineRestBlank(text, fEnd)) rep = rep + " ".repeat(f.length - rep.length);
@@ -2858,7 +3057,7 @@
         corePart = mPref[2];
       }
       const subParts = corePart.split("_").map(sp => (sp ? processText(sp, cfg, state) : sp));
-      const anonCore = subParts.join("_");
+      const anonCore = replaceKnownInPathPart(subParts.join("_"), state, cfg);
       const combined = (prefixPart + anonCore + extPart).replace(/[*?"<>|:]/g, "_");
       outParts.push(combined);
     }
@@ -3041,7 +3240,21 @@
       }
     }
 
+    // 0b. Im Lauf erkannte Originalwerte im Dateipfad (Grenzen: alles außer Buchstabe/Ziffer)
+    if (state && fileName) {
+      const knownPath = collectKnownValues(state, PATH_KNOWN_CATEGORIES, cfg);
+      const escPath = knownPath.keys.filter(k => !isAllowedInAudit(k, cfg)).map(k => escapeRegExp(k));
+      if (escPath.length > 0) {
+        const rxKnownPath = new RegExp(`(?<![A-Za-z0-9])(?:${escPath.join("|")})(?![A-Za-z0-9])`, "gi");
+        const pathMasked = fileName.replace(/\\/g, "/").replace(RxPlaceholder, (pm) => " ".repeat(pm.length));
+        for (const m of pathMasked.matchAll(rxKnownPath)) {
+          findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-Bekannt", fund: m[0], kontext: "Dateipfad: " + fileName });
+        }
+      }
+    }
+
     if (!text) return findings;
+    text = decodeJsonStringEscapes(text);
 
     const rawLines = text.split(/\r?\n/);
     const lineStarts = [0];
@@ -3158,7 +3371,18 @@
       }
     }
 
+    // 6c. Verdacht-Zugangsdaten: Zugangsdaten-Schlüsselwort mit nicht maskiertem Wert
+    for (const m of cleanText.matchAll(RxCredentialSuspect)) {
+      const val = m[2];
+      if (val.startsWith("*****") || CREDENTIAL_STOP_WORDS.has(val.toLowerCase()) || isAllowedAuditPart(val, cfg)) continue;
+      // Modifikator vor einem bereits maskierten Wert (z. B. "password ENC *****")
+      if (/^[ \t]+\*{5}/.test(cleanText.slice(m.index + m[0].length))) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      findings.push({ datei: fileName, zeile: ln, kategorie: "Verdacht-Zugangsdaten", fund: m[0], kontext: getLineCtx(ln) });
+    }
+
     // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
+    const lernKategorie = { "Rest-Hostname": "HOST", "Rest-Seriennummer": "SERIAL", "Rest-Benutzer": "USER" };
     const patternGroups = [
       ["Rest-Hostname", cfg.hostnamenMuster],
       ["Rest-Seriennummer", cfg.seriennummerMuster],
@@ -3169,6 +3393,8 @@
         for (const m of cleanText.matchAll(rx)) {
           const val = pickGroupValue(m);
           if (!val || val.indexOf("\u0002") >= 0 || isAllowedInAudit(val, cfg) || areAllPartsAllowed(val, cfg)) continue;
+          // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
+          if (!isLearnable(lernKategorie[kat], val, cfg)) continue;
           const ln = getLineNumberFromIndex(lineStarts, m.index);
           findings.push({ datei: fileName, zeile: ln, kategorie: kat, fund: val, kontext: getLineCtx(ln) });
         }
@@ -3193,6 +3419,7 @@
     for (const f of findTableFields(cleanText, cfg)) {
       const val = f.wert.trim();
       if (isTableValueExempt(val, cfg) || isAllowedInAudit(val, cfg)) continue;
+      if ((f.kategorie === "HOST" || f.kategorie === "SERIAL") && !isLearnable(f.kategorie, val, cfg)) continue;
       // Nach Ersetzungen verschobene Spalten: Zahlen/Portnotation neben Platzhaltern sind unkritisch
       const allOk = val.split(/[ \t]+/).filter(Boolean).every(part => /^[0-9\/:.-]+$/.test(part) || isAllowedAuditPart(part, cfg));
       if (allOk) continue;
@@ -4104,7 +4331,7 @@
     };
   }
 
-  // options.freigegeben === false: Lauf insgesamt nicht SAUBER, anonymisiertes Kopieren gesperrt
+  // options.freigegeben === false: Lauf hat Restfunde, anonymisiertes Kopieren gesperrt
   function preparePreviewCopy(processedResults, selectedIndex, mode, confirmFn, options) {
     if (!Array.isArray(processedResults) || selectedIndex < 0 || selectedIndex >= processedResults.length) {
       return { allowed: false, reason: "NO_FILE", statusMessage: "Keine Datei ausgewählt." };
@@ -4122,7 +4349,7 @@
         return { allowed: false, confirmed: false, confirmMessage, statusMessage: "Kopieren abgebrochen." };
       }
     } else {
-      // Anonymisiert kopieren erst bei SAUBER: keine Bestätigung, die eine Sperre aufhebt
+      // Anonymisiert kopieren erst bei KEINE_RESTFUNDE: keine Bestätigung, die eine Sperre aufhebt
       const findingsCount = Array.isArray(entry.findings) ? entry.findings.length : 0;
       const laufGesperrt = Boolean(options && options.freigegeben === false);
       if (findingsCount > 0 || laufGesperrt) {
@@ -4196,7 +4423,7 @@
     return (groups || []).every(g => decisions && (decisions[g.schluessel] === "ersetzen" || decisions[g.schluessel] === "fehlalarm"));
   }
 
-  // Freigabe (ZIP, Anonymisiert kopieren) nur nach einem echten Lauf mit SAUBER
+  // Freigabe (ZIP, Anonymisiert kopieren) nur nach einem echten Lauf mit KEINE_RESTFUNDE
   function isReleaseAllowed(findings, isProbe, results) {
     return !isProbe && Array.isArray(results) && results.length > 0 && Array.isArray(findings) && findings.length === 0;
   }
@@ -4576,7 +4803,7 @@
     let processedResults = []; // [{ path, originalText, anonText, findings }]
     let skippedBinaryFiles = [];
     let lastReportObj = null;
-    let releaseAllowed = false;      // ZIP und "Anonymisiert kopieren" nur bei SAUBER
+    let releaseAllowed = false;      // ZIP und "Anonymisiert kopieren" nur bei KEINE_RESTFUNDE
     let findingGroups = [];          // Fundgruppen des letzten Laufs
     let findingDecisions = {};       // schluessel -> "ersetzen" | "fehlalarm"
 
@@ -5224,6 +5451,11 @@
         return false;
       }
       const effectiveRules = mergeRes.mergedRules;
+      const laufKollisionen = findPlaceholderCollisions(currentState, effectiveRules.eigeneBegriffe.festeZuordnung);
+      if (laufKollisionen.length > 0) {
+        alert("Lauf abgebrochen: " + laufKollisionen.join("; ") + ". Bitte festeZuordnung oder Zuordnungstabelle anpassen.");
+        return false;
+      }
 
       const btnAnon = document.getElementById("btnRunAnon");
       const btnProbe = document.getElementById("btnRunProbe");
@@ -5309,7 +5541,7 @@
 
         if (allFindings.length === 0) {
           banner.className = "audit-banner clean";
-          banner.textContent = `Prüfergebnis (-Pruefen): SAUBER (0 Treffer in ${processedResults.length} Datei(en))${isProbe ? " [TROCKENLAUF]" : ""}`;
+          banner.textContent = `Prüfergebnis (-Pruefen): Keine Restfunde nach aktivem Regelwerk (0 Treffer in ${processedResults.length} Datei(en))${isProbe ? " [TROCKENLAUF]" : ""}`;
           const tr = document.createElement("tr");
           tr.innerHTML = `<td colspan="4" class="small-muted">0 Restfunde – Ausgabe ist laut Regelwerk sauber.</td>`;
           tbody.appendChild(tr);
@@ -5363,7 +5595,7 @@
           verarbeiteteDateien: processedResults.length,
           uebersprungeneBinaer: skippedBinaryFiles,
           kategorienGesamt,
-          pruefergebnis: allFindings.length === 0 ? "SAUBER" : "RESTFUNDE_VORHANDEN",
+          pruefergebnis: allFindings.length === 0 ? "KEINE_RESTFUNDE" : "RESTFUNDE_VORHANDEN",
           pruefTrefferAnzahl: allFindings.length
         };
 
@@ -5428,8 +5660,8 @@
       const info = document.getElementById("releaseLockInfo");
       if (info) {
         info.textContent = releaseAllowed
-          ? "Prüfergebnis SAUBER: Download und „Anonymisiert kopieren“ sind freigegeben. Bitte trotzdem sichten."
-          : "Gesperrt: Download und „Anonymisiert kopieren“ erst nach einem Lauf mit Prüfergebnis SAUBER.";
+          ? "Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“: Download und „Anonymisiert kopieren“ sind freigegeben. Bitte trotzdem sichten."
+          : "Gesperrt: Download und „Anonymisiert kopieren“ erst nach einem Lauf mit Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“.";
       }
     }
 
@@ -5598,7 +5830,17 @@
           return;
         }
         const obj = await decryptTableWebCrypto(raw, pass);
-        currentState = AnonState.fromJSON(obj);
+        const kandidat = AnonState.fromJSON(obj);
+        // Eindeutigkeit: Tabelle und festeZuordnung dürfen keinen Platzhalter doppelt vergeben
+        let ladeRegeln = currentRules;
+        try { ladeRegeln = JSON.parse(rulesTextarea.value); } catch (_) {}
+        const ladeMerge = validateAndMergeEigeneBegriffe(ladeRegeln, readCustomTermsFromUI());
+        const ladeKollisionen = findPlaceholderCollisions(kandidat, ladeMerge.mergedRules.eigeneBegriffe.festeZuordnung);
+        if (ladeKollisionen.length > 0) {
+          alert("Zuordnungstabelle abgelehnt: " + ladeKollisionen.join("; ") + ". Die Tabelle wird nicht verwendet.");
+          return;
+        }
+        currentState = kandidat;
         maskTablePreviewOriginals();
         updateTableStatusUI();
         alert(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge).`);
@@ -5659,6 +5901,9 @@
       reprocessFilesWithState,
       groupAuditFindings,
       applyFindingDecisions,
+      findPlaceholderCollisions,
+      decodeJsonStringEscapes,
+      isLearnable,
       buildStructureTemplate,
       keywordSetFromVorlage,
       buildKeywordSet,

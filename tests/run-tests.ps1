@@ -130,18 +130,26 @@ function New-TestConfig {
                 $col = New-Object AnonTool.TableColumnSpec
                 $col.Name = [string]$sp.name
                 $col.Kategorie = [string]$sp.kategorie
+                if ($null -ne $sp.PSObject.Properties["vorkommen"]) { $col.Vorkommen = [int]$sp.vorkommen }
                 $rule.Spalten.Add($col)
             }
             $cfg.TabellenSpalten.Add($rule)
         }
     }
+    $woerter = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($prop in $script:strukturVorlageObj.schluesselwoerter.PSObject.Properties) { foreach ($w in $prop.Value) { $woerter.Add([string]$w) } }
+    $cfg.LernStoppwoerter = [AnonTool.AnonEngine]::BuildKeywordSet($woerter)
     return $cfg
 }
+$script:strukturVorlageObj = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path (Join-Path $rootDir "regeln") "strukturvorlage.json"), [System.Text.Encoding]::UTF8))
 
 foreach ($tc in $cases) {
     $netMode = if ($null -ne $tc.netzerhaltend) { [bool]$tc.netzerhaltend } else { $true }
     $katFilter = if ($null -ne $tc.PSObject.Properties["kategorien"]) { @($tc.kategorien) } else { $null }
     $cfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $netMode -KatFilter $katFilter
+    if ($null -ne $tc.PSObject.Properties["festeZuordnung"]) {
+        foreach ($fz in $tc.festeZuordnung.PSObject.Properties) { $cfg.FesteZuordnung[$fz.Name] = [string]$fz.Value }
+    }
 
     # 2a. LF-Variante
     $st = New-Object AnonTool.AnonState
@@ -156,6 +164,13 @@ foreach ($tc in $cases) {
     $findings = [AnonTool.AnonEngine]::AuditText($actual, "$($tc.id).txt", $cfg, $st)
     $isClean = ($findings.Count -eq 0)
     Assert-True ($isClean -eq [bool]$tc.sauber) "$($tc.id) (LF): Prüfmodus sauber=$isClean (erwartet $($tc.sauber))"
+
+    if ($null -ne $tc.PSObject.Properties["tabelleEnthaeltNicht"]) {
+        $tabText = (($st.Forward.Keys + $st.Forward.Values + $st.Reverse.Keys + $st.Reverse.Values) -join "`n")
+        foreach ($geheim in $tc.tabelleEnthaeltNicht) {
+            Assert-True ((-not $tabText.Contains([string]$geheim)) -and (-not $actual.Contains([string]$geheim))) "$($tc.id): '$geheim' steht weder in der Ausgabe noch in der Zuordnungstabelle"
+        }
+    }
 
     # 2b. Befund 1: CRLF-Variante für den gesamten Testkorpus
     $crlfIn = ([string]$tc.eingabe) -replace "\r?\n", "`r`n"
@@ -268,7 +283,7 @@ $anonRelPath = [AnonTool.AnonEngine]::ProcessPath($origRelPath, $pathCfg, $pathS
 Assert-True ($anonRelPath -ceq "FIRMA-1/CORE-A/show-tech-HOST-1_NET-1.H1.txt") "Befund 2: ProcessPath anonymisiert jeden Pfadbestandteil ($anonRelPath)"
 
 $cleanPathAudit = [AnonTool.AnonEngine]::AuditText("interface 1/1/1", $anonRelPath, $pathCfg)
-Assert-True ($cleanPathAudit.Count -eq 0) "Befund 2: Anonymisierter Dateipfad ist in AuditText SAUBER"
+Assert-True ($cleanPathAudit.Count -eq 0) "Befund 2: Anonymisierter Dateipfad ist in AuditText ohne Restfunde"
 
 $dirtyPathAudit = [AnonTool.AnonEngine]::AuditText("interface 1/1/1", $origRelPath, $pathCfg)
 Assert-True ($dirtyPathAudit.Count -ge 3) "Befund 2: Nicht anonymisierter Dateipfad wird in AuditText als Restfund gemeldet ($($dirtyPathAudit.Count) Treffer)"
@@ -300,7 +315,7 @@ $evText = "EventID=4624 IpAddress=203.0.113.60 ClientMAC=00:1a:2b:3c:4d:5e`r`n"
 [System.IO.File]::WriteAllText((Join-Path $bomInDir "ev-utf8bom.log"), $evText, (New-Object System.Text.UTF8Encoding($true)))
 
 & $anonScript -Eingabe $bomInDir -Ausgabe $bomOutDir -Regeln $rulesPath -TabellenPfad $bomTabFile -Unverschluesselt > $null
-Assert-True ($LASTEXITCODE -eq 0) "Befund 3: BOM-Dateien (UTF-16 LE/BE, UTF-8-BOM) verarbeitet und SAUBER (Exit-Code 0)"
+Assert-True ($LASTEXITCODE -eq 0) "Befund 3: BOM-Dateien (UTF-16 LE/BE, UTF-8-BOM) verarbeitet und ohne Restfunde (Exit-Code 0)"
 foreach ($bFile in @("ev-utf16le.log", "ev-utf16be.log", "ev-utf8bom.log")) {
     $outPath = Join-Path (Join-Path $bomOutDir "anonym") $bFile
     $outBytes = [System.IO.File]::ReadAllBytes($outPath)
@@ -497,7 +512,7 @@ $zipOutDir = Join-Path $tempRunRoot "zip_out"
 $zipBericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $zipOutDir "bericht.json"), [System.Text.Encoding]::UTF8))
 Assert-True ($zipBericht.verarbeiteteDateien -eq 1) "ZIP-Archiv entpackt und 1 Textdatei verarbeitet"
 Assert-True ($zipBericht.uebersprungeneBinaer.Count -eq 1) "Binärdatei im ZIP erkannt und im Bericht als übersprungen gemeldet"
-Assert-True ($zipBericht.pruefergebnis -eq "SAUBER") "ZIP-Ausgabe ist SAUBER"
+Assert-True ($zipBericht.pruefergebnis -eq "KEINE_RESTFUNDE") "ZIP-Ausgabe ist ohne Restfunde"
 
 Write-Host "=== 5. Performance- & Stresstest: Großer Aruba AOS-CX Show-Tech (40.000+ Zeilen) ===" -ForegroundColor Cyan
 $sb = New-Object System.Text.StringBuilder (4 * 1024 * 1024)
@@ -524,17 +539,26 @@ for ($i = 1; $i -le 5000; $i++) {
     [void]$sb.AppendLine("2026-10-16T14:22:15.123Z dc1-sw-core01 hpe-routing[$i]: Event on sn link state up for ${net}.${o4}")
 }
 $largeShowTech = $sb.ToString()
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
 $perfCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
-$perfState = New-Object AnonTool.AnonState
-$largeAnon = [AnonTool.AnonEngine]::ProcessText($largeShowTech, $perfCfg, $perfState)
-$largeFindings = [AnonTool.AnonEngine]::AuditText($largeAnon, "aruba-show-tech-large.txt", $perfCfg)
-$sw.Stop()
-Write-Host ("  Großer Show-Tech ({0:N2} MB) verarbeitet + geprüft in {1} ms" -f ($largeShowTech.Length / 1MB), $sw.ElapsedMilliseconds) -ForegroundColor Gray
+# Aufwärmlauf (JIT, Regex-Kompilierung), danach Median aus 3 Messungen
+[void][AnonTool.AnonEngine]::ProcessText($largeShowTech, $perfCfg, (New-Object AnonTool.AnonState))
+$perfMessungen = New-Object 'System.Collections.Generic.List[long]'
+for ($perfLauf = 0; $perfLauf -lt 3; $perfLauf++) {
+    $perfState = New-Object AnonTool.AnonState
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $largeAnon = [AnonTool.AnonEngine]::ProcessText($largeShowTech, $perfCfg, $perfState)
+    $largeFindings = [AnonTool.AnonEngine]::AuditText($largeAnon, "aruba-show-tech-large.txt", $perfCfg)
+    $sw.Stop()
+    $perfMessungen.Add($sw.ElapsedMilliseconds)
+}
+$perfSortiert = @($perfMessungen | Sort-Object)
+$perfMedian = $perfSortiert[1]
+Write-Host ("  Großer Show-Tech ({0:N2} MB) verarbeitet + geprüft: Median {1} ms aus {2} Messungen ({3})" -f ($largeShowTech.Length / 1MB), $perfMedian, $perfMessungen.Count, ($perfMessungen -join ", ")) -ForegroundColor Gray
+Assert-True ($perfMessungen.Count -eq 3) "Performance: Aufwärmlauf und 3 Messungen"
 # Grenze: lokal 8000 ms; Windows PowerShell 5.1 (Desktop) und CI-Runner sind deutlich langsamer, dort 30000 ms
 $perfGrenze = if ($PSVersionTable.PSEdition -eq "Desktop" -or -not [string]::IsNullOrEmpty($env:CI)) { 30000 } else { 8000 }
-Assert-True ($sw.ElapsedMilliseconds -lt $perfGrenze) "Performance-Ziel erreicht: $($sw.ElapsedMilliseconds) ms (< $perfGrenze ms)"
-Assert-True ($largeFindings.Count -eq 0) "Großer Aruba Show-Tech ist nach Anonymisierung SAUBER (0 Restfunde)"
+Assert-True ($perfMedian -lt $perfGrenze) "Performance-Ziel erreicht: Median $perfMedian ms (< $perfGrenze ms)"
+Assert-True ($largeFindings.Count -eq 0) "Großer Aruba Show-Tech ist nach Anonymisierung ohne Restfunde (0 Restfunde)"
 Assert-True (-not $largeAnon.Contains([string][char]2 + "PROT_")) "Alle Schutz-Marker vollständig aufgelöst"
 
 Write-Host "`n=== 7. Prüfe Code-Review Commit 65cd5d4 (Befund 1; Befunde 2-3 betrafen den Sammler, eigenes Projekt) ===" -ForegroundColor Cyan
@@ -651,7 +675,7 @@ Assert-True ($lokalOutText.Contains("198.51.100.77")) "IP-Ausnahme aus ausnahmen
 
 # Prüfmodus auf der Ausgabedatei über CLI (-Pruefen)
 & $anonScript -Eingabe $lokalOutFile -Regeln $rulesPath -LokaleRegeln $lokalRegelnDatei -Pruefen > $null
-Assert-Equal $LASTEXITCODE 0 "Prüfmodus: Ausgabedatei mit ausnahmen.exakteWoerter ist SAUBER (Exit-Code 0)"
+Assert-Equal $LASTEXITCODE 0 "Prüfmodus: Ausgabedatei mit ausnahmen.exakteWoerter ist ohne Restfunde (Exit-Code 0)"
 
 # 8.1b Lokale Muster (eigeneHostnamenMuster, seriennummerMuster, tabellenSpalten) aus anon-regeln.lokal.json
 $musterTestDir = Join-Path $tempRunRoot "lokal_muster"
@@ -673,7 +697,7 @@ $musterExpected = "Peer HOST-2 is reachable`nuplink HOST-3 up, backup HOST-3_alt
 [System.IO.File]::WriteAllText($musterEingabe, $musterInput, (New-Object System.Text.UTF8Encoding($false)))
 
 & $anonScript -Eingabe $musterEingabe -Ausgabe $musterAusgabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -TabellenPfad $musterTabelle -Unverschluesselt > $null
-Assert-Equal $LASTEXITCODE 0 "Lokale Muster: Ausgabe ist SAUBER (Exit-Code 0)"
+Assert-Equal $LASTEXITCODE 0 "Lokale Muster: Ausgabe ist ohne Restfunde (Exit-Code 0)"
 $musterOut = [System.IO.File]::ReadAllText((Join-Path (Join-Path $musterAusgabe "anonym") "eingabe.txt"), [System.Text.Encoding]::UTF8)
 Assert-True ($musterOut -ceq $musterExpected) "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (PS1)"
 & $anonScript -Eingabe $musterEingabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -Pruefen > $null
@@ -743,7 +767,7 @@ Assert-True ($konsole.Contains("[Rest-Bekannt] probe.txt:2")) "Konsole nennt Kat
 Assert-True (-not $konsole.Contains("edge7")) "Konsole enthält den gefundenen Wert nicht"
 Assert-True ($konsole.Contains("NICHT weitergeben")) "Bei RESTFUNDE_VORHANDEN: Hinweis 'NICHT weitergeben' auf der Konsole"
 $konsolePruef = (& $anonScript -Pruefen -Eingabe $p2In -Regeln $rulesPath *>&1 | Out-String)
-Assert-True ($konsolePruef.Contains("NICHT weitergeben")) "-Pruefen NICHT SAUBER: Hinweis 'NICHT weitergeben' auf der Konsole"
+Assert-True ($konsolePruef.Contains("NICHT weitergeben")) "-Pruefen mit Restfunden: Hinweis 'NICHT weitergeben' auf der Konsole"
 Assert-True ($konsolePruef.Contains("[Rest-IPv4] probe.txt:3") -and -not $konsolePruef.Contains("192.0.2.10") -and -not $konsolePruef.Contains("edge7")) "-Pruefen: Konsole ohne gefundene Werte"
 $berichtText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $p2Dir "aus-konsole") "bericht.json"))
 Assert-True (-not $berichtText.Contains("edge7")) "bericht.json enthält den gefundenen Wert nicht"
@@ -752,7 +776,7 @@ Assert-True (-not $berichtText.Contains("edge7")) "bericht.json enthält den gef
 $fehlalarmRegeln = Join-Path $p2Dir "fehlalarm.lokal.json"
 [System.IO.File]::WriteAllText($fehlalarmRegeln, '{ "ausnahmen": { "exakteWoerter": ["edge7-alt"] } }', (New-Object System.Text.UTF8Encoding($false)))
 & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-fehlalarm") -Regeln $rulesPath -LokaleRegeln $fehlalarmRegeln -TabellenPfad (Join-Path $p2Dir "tab-fehlalarm.json") -Unverschluesselt *> $null
-Assert-Equal $LASTEXITCODE 0 "Fehlalarm 'edge7-alt' als Ausnahme: Lauf ist SAUBER (Exit-Code 0)"
+Assert-Equal $LASTEXITCODE 0 "Fehlalarm 'edge7-alt' als Ausnahme: Lauf ist ohne Restfunde (Exit-Code 0)"
 $fehlalarmText = [System.IO.File]::ReadAllText((Join-Path (Join-Path (Join-Path $p2Dir "aus-fehlalarm") "anonym") "probe.txt"))
 Assert-True ($fehlalarmText.StartsWith("hostname HOST-1") -and $fehlalarmText.Contains("link edge7-alt")) "Fehlalarm: Hostname bleibt ersetzt, nur das Wort 'edge7-alt' bleibt stehen"
 
@@ -807,7 +831,7 @@ Assert-True (-not $rueckKonsole.Contains("edge7")) "-Zurueck: Klartext erscheint
 
 # 9.6c Standard-Regeldatei: neben anon.ps1 (Admin-VM) oder ..\regeln\ (Repository)
 $ohneRegeln = (& $anonScript -Pruefen -Eingabe $erwartetDir *>&1 | Out-String)
-Assert-True ($LASTEXITCODE -eq 0 -and $ohneRegeln.Contains("SAUBER")) "Ohne -Regeln wird regeln\anon-regeln.json gefunden (Repository-Struktur)"
+Assert-True ($LASTEXITCODE -eq 0 -and $ohneRegeln.Contains("KEINE_RESTFUNDE")) "Ohne -Regeln wird regeln\anon-regeln.json gefunden (Repository-Struktur)"
 
 # 9.7 Prüfung der Quelldateien: UTF-8 mit BOM, keine Gedankenstriche (PS 5.1 liest .ps1 ohne BOM als ANSI)
 foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {
@@ -818,6 +842,34 @@ foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {
     $dash = $txt.IndexOf([char]0x2013) -ge 0 -or $txt.IndexOf([char]0x2014) -ge 0 -or $txt.IndexOf([char]0x201E) -ge 0 -or $txt.IndexOf([char]0x201C) -ge 0
     Assert-True (-not $dash) "$([System.IO.Path]::GetFileName($ps1)) enthält keine Gedankenstriche oder typografischen Anführungszeichen"
 }
+
+# 9.9 Paket A4: bekannte Originalwerte in Dateinamen an "-" und "." ersetzen
+$pfadIn = Join-Path $p2Dir "pfad_eingabe"
+[void](New-Item -ItemType Directory -Path $pfadIn -Force)
+[System.IO.File]::WriteAllText((Join-Path $pfadIn "privatehost01-backup.txt"), "hostname privatehost01`n", (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText((Join-Path $pfadIn "privatehost01.old.log"), "uptime 3 days`n", (New-Object System.Text.UTF8Encoding($false)))
+& $anonScript -Eingabe $pfadIn -Ausgabe (Join-Path $p2Dir "aus-pfad") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-pfad.json") -Unverschluesselt *> $null
+$pfadNamen = @(Get-ChildItem -LiteralPath (Join-Path (Join-Path $p2Dir "aus-pfad") "anonym") -File | ForEach-Object { $_.Name } | Sort-Object)
+Assert-True (($pfadNamen -join ",") -eq "HOST-1-backup.txt,HOST-1.old.log") "A4: bekannter Host im Dateinamen an '-' und '.' ersetzt ($($pfadNamen -join ', '))"
+
+# 9.10 Paket A5: Kollision zwischen geladener Tabelle und festeZuordnung -> Abbruch, Tabelle unverändert
+$kollTab = Join-Path $p2Dir "tab-kollision.json"
+[System.IO.File]::WriteAllText($kollTab, '{ "version": "1.0", "vorwaerts": { "HOST|device-x": "HOST-1" }, "rueckwaerts": { "HOST-1": "device-x" }, "zaehler": { "HOST": 1 } }', (New-Object System.Text.UTF8Encoding($false)))
+$kollLokal = Join-Path $p2Dir "kollision.lokal.json"
+[System.IO.File]::WriteAllText($kollLokal, '{ "eigeneBegriffe": { "festeZuordnung": { "device-one": "HOST-1" } } }', (New-Object System.Text.UTF8Encoding($false)))
+$kollVorher = [System.IO.File]::ReadAllText($kollTab)
+$kollMeldung = ""
+try {
+    & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-koll") -Regeln $rulesPath -LokaleRegeln $kollLokal -TabellenPfad $kollTab -Unverschluesselt *> $null
+} catch { $kollMeldung = $_.Exception.Message }
+Assert-True ($kollMeldung -like "*HOST-1*" -and [System.IO.File]::ReadAllText($kollTab) -ceq $kollVorher) "A5: Platzhalter-Kollision beim Laden führt zum Abbruch, Tabelle unverändert ($kollMeldung)"
+
+# 9.11 Paket A9: Bezeichnung KEINE_RESTFUNDE statt SAUBER
+$a9Konsole = (& $anonScript -Pruefen -Eingabe $erwartetDir *>&1 | Out-String)
+Assert-True ($a9Konsole.Contains("KEINE_RESTFUNDE") -and $a9Konsole.Contains("Keine Restfunde nach aktivem Regelwerk") -and -not $a9Konsole.Contains("SAUBER")) "A9: Konsole meldet KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)"
+$a9Bericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $outDir "bericht.json")))
+Assert-True ($a9Bericht.pruefergebnis -eq "KEINE_RESTFUNDE") "A9: bericht.json pruefergebnis = KEINE_RESTFUNDE"
+Assert-True (-not ([System.IO.File]::ReadAllText($anonScript)).Contains("SAUBER")) "A9: anon.ps1 verwendet die Bezeichnung 'SAUBER' nicht mehr"
 
 # 9.8 Strukturvorlage (-Strukturvorlage)
 $svAus = Join-Path $p2Dir "struktur"

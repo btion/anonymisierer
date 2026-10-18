@@ -8,7 +8,7 @@ Please do **not** report vulnerabilities via public issues. Contact the maintain
 
 ## Was als Sicherheitslücke gilt / What counts as a vulnerability
 
-- Ein echter Wert (IP, MAC, Hostname, Seriennummer, Benutzer, Geheimnis) bleibt nach der Anonymisierung stehen **und** der Prüfmodus meldet ihn nicht (`SAUBER` trotz Rest).
+- Ein echter Wert (IP, MAC, Hostname, Seriennummer, Benutzer, Geheimnis) bleibt nach der Anonymisierung stehen **und** der Prüfmodus meldet ihn nicht (`KEINE_RESTFUNDE` trotz Rest).
 - Echte Werte gelangen in die Konsole, in Fehlermeldungen, in `bericht.json` oder in den Ausgabeordner `anonym\`.
 - Die Zuordnungstabelle lässt sich ohne Passwort bzw. ohne DPAPI-Schlüssel des Benutzers lesen, wird unbemerkt überschrieben oder ohne Schutz gespeichert.
 - Die Browser-Seiten bauen eine Netzverbindung auf oder speichern Daten im Browser (localStorage, IndexedDB).

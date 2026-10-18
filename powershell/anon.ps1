@@ -50,7 +50,7 @@
     Der Klartext wird nie auf der Konsole ausgegeben und nie unterhalb von anonym\ oder in einem Ausgabeordner eines Laufs gespeichert.
 
 .PARAMETER Pruefen
-    Führt nur den Prüfmodus auf den angegebenen Dateien/Ordnern aus und gibt "SAUBER" bei 0 Treffern zurück.
+    Führt nur den Prüfmodus auf den angegebenen Dateien/Ordnern aus und gibt "KEINE_RESTFUNDE" (Keine Restfunde nach aktivem Regelwerk) bei 0 Treffern zurück.
 
 .PARAMETER Probe
     Trockenlauf: Zeigt nur, was ersetzt würde (Anzahl je Kategorie), schreibt keine anonymisierten Dateien.
@@ -279,8 +279,13 @@ namespace AnonTool
             if (Forward.TryGetValue(lookupKey, out existing))
                 return existing;
 
-            int num = NextCounter(prefix);
-            string token = prefix + "-" + num.ToString();
+            // Zentrale Vergabe: nie einen Platzhalter, der schon vergeben, fest zugeordnet oder als Alias reserviert ist
+            string token;
+            do
+            {
+                int num = NextCounter(prefix);
+                token = prefix + "-" + num.ToString();
+            } while (Reverse.ContainsKey(token) || Aliases.ContainsKey(token));
             Forward[lookupKey] = token;
             if (!Reverse.ContainsKey(token))
                 Reverse[token] = string.IsNullOrEmpty(reverseDisplayVal) ? rawValue.Trim() : reverseDisplayVal.Trim();
@@ -316,6 +321,7 @@ namespace AnonTool
     {
         public string Name;
         public string Kategorie;
+        public int Vorkommen = 1; // n-tes Vorkommen des Spaltennamens in der Kopfzeile
     }
 
     public class TableRule
@@ -374,6 +380,8 @@ namespace AnonTool
         public List<Regex> BenutzerMuster = new List<Regex>();
         public List<Regex> HostnamenMuster = new List<Regex>();
         public List<TableRule> TabellenSpalten = new List<TableRule>();
+        // CLI-Schlüsselwörter und Tabellenköpfe (regeln/strukturvorlage.json): werden nie als Host/Benutzer/Seriennummer gelernt
+        public HashSet<string> LernStoppwoerter = new HashSet<string>(StringComparer.Ordinal);
     }
 
     public static class TarGzHelper
@@ -773,6 +781,22 @@ namespace AnonTool
             return -1;
         }
 
+        private static int FindHeaderWordNth(string line, string word, int n)
+        {
+            int pos = -1;
+            int start = 0;
+            for (int k = 0; k < Math.Max(1, n); k++)
+            {
+                string rest = line.Substring(start);
+                int i = FindHeaderWord(rest, word);
+                if (i < 0) return -1;
+                pos = start + i;
+                start = pos + word.Length;
+                if (start > line.Length) return -1;
+            }
+            return pos;
+        }
+
         private static bool IsTableSeparatorLine(string line)
         {
             bool any = false;
@@ -818,7 +842,7 @@ namespace AnonTool
                     List<string> newKats = new List<string>();
                     foreach (TableColumnSpec sp in rule.Spalten)
                     {
-                        int s = FindHeaderWord(line, sp.Name);
+                        int s = FindHeaderWordNth(line, sp.Name, sp.Vorkommen);
                         if (s < 0) continue;
                         int e = -1;
                         for (int p = s + sp.Name.Length; p < line.Length; p++)
@@ -973,11 +997,165 @@ namespace AnonTool
             }
         }
 
+        // ----------------------------------------------------------------
+        // Paket A: JSON-Escapes, Lernregeln, Geheimnisse in Tabellenwerten, bekannte Werte, Kollisionen
+        // ----------------------------------------------------------------
+        private static readonly Regex RxJsonString = new Regex("\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxJsonEscape = new Regex("\\\\(u[0-9A-Fa-f]{4}|.)", RegexOptions.Compiled, RxTimeout);
+
+        // \uXXXX (druckbar, kein " oder \) und \/ in JSON-Strings dekodieren: gleiche Bedeutung, gültiges JSON, Werte erkennbar
+        public static string DecodeJsonStringEscapes(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('\\') < 0) return text;
+            return RxJsonString.Replace(text, (Match lit) =>
+            {
+                if (lit.Value.IndexOf('\\') < 0) return lit.Value;
+                return RxJsonEscape.Replace(lit.Value, (Match e) =>
+                {
+                    string t = e.Groups[1].Value;
+                    if (t == "/") return "/";
+                    if (t.Length == 5 && (t[0] == 'u'))
+                    {
+                        int code = Convert.ToInt32(t.Substring(1), 16);
+                        if (code >= 0x20 && code != 0x22 && code != 0x5C && code != 0x7F && (code < 0xD800 || code > 0xDFFF))
+                            return ((char)code).ToString();
+                    }
+                    return e.Value;
+                });
+            });
+        }
+
+        // Gelernte Werte: keine CLI-Schlüsselwörter/Tabellenköpfe; Hosts und Seriennummern brauchen Ziffer oder Bindestrich
+        public static bool IsLearnable(string category, string value, EngineConfig cfg)
+        {
+            string v = (value ?? "").Trim();
+            if (v.Length == 0) return false;
+            if (cfg.LernStoppwoerter.Contains(v.ToLowerInvariant())) return false;
+            // Nur aus Schlüsselwörtern mit "-" oder Leerzeichen zusammengesetzt (z.B. PORT-DESC, Local Intf): Tabellenkopf
+            bool allStop = true;
+            bool anyPart = false;
+            bool onlyDashOrSpace = true;
+            StringBuilder part = new StringBuilder();
+            foreach (char c in v + " ")
+            {
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { part.Append(c); continue; }
+                if (c != '-' && c != ' ' && c != '\t') onlyDashOrSpace = false;
+                if (part.Length > 0)
+                {
+                    anyPart = true;
+                    if (!cfg.LernStoppwoerter.Contains(part.ToString().ToLowerInvariant())) allStop = false;
+                    part.Length = 0;
+                }
+            }
+            if (anyPart && allStop && onlyDashOrSpace) return false;
+            if (category == "HOST" || category == "SERIAL")
+            {
+                bool digitOrDash = false;
+                foreach (char c in v) { if ((c >= '0' && c <= '9') || c == '-') { digitOrDash = true; break; } }
+                if (!digitOrDash) return false;
+            }
+            return true;
+        }
+
+        // Geheimnisse in einem Wert entfernen, bevor er als Original in die Zuordnungstabelle gelangt
+        private static string RemoveSecretsPlain(string value, EngineConfig cfg)
+        {
+            if (!cfg.CatGeheimnisse || string.IsNullOrEmpty(value)) return value;
+            string v = value;
+            foreach (SecretRule rule in cfg.GeheimnisMuster)
+            {
+                v = rule.Compiled.Replace(v, (Match m) => m.Result(rule.Replacement));
+            }
+            return v;
+        }
+
+        // Bekannte Originalwerte bestimmter Kategorien (Schlüssel "PREFIX|wert") -> Platzhalter
+        public static SortedDictionary<string, string> CollectKnownValues(AnonState state, string[] prefixes, EngineConfig cfg)
+        {
+            SortedDictionary<string, string> sorted = new SortedDictionary<string, string>(new LengthDescOrdinal());
+            foreach (KeyValuePair<string, string> kv in state.Forward)
+            {
+                foreach (string pf in prefixes)
+                {
+                    if (!kv.Key.StartsWith(pf, StringComparison.OrdinalIgnoreCase)) continue;
+                    string v = kv.Key.Substring(pf.Length).Trim().ToLowerInvariant();
+                    if (v.Length >= 3 && !cfg.ExakteAusnahmen.Contains(v) && !sorted.ContainsKey(v)) sorted[v] = kv.Value;
+                    break;
+                }
+            }
+            return sorted;
+        }
+
+        private static readonly string[] PathKnownCategories = new string[] { "HOST|", "SERIAL|", "USER|", "MAIL|", "URL|", "FIRMA|", "DOMAIN|", "FIXED|" };
+
+        // Dateinamen: bekannte Originalwerte auch an "-", "_" und "." grenzend ersetzen
+        private static string ReplaceKnownInPathPart(string part, AnonState state, EngineConfig cfg)
+        {
+            SortedDictionary<string, string> known = CollectKnownValues(state, PathKnownCategories, cfg);
+            if (known.Count == 0 || string.IsNullOrEmpty(part)) return part;
+            List<string> esc = new List<string>(known.Count);
+            foreach (string k in known.Keys) esc.Add(Regex.Escape(k));
+            string pat = "(?<=^|[-_.])(?:" + string.Join("|", esc.ToArray()) + ")(?=$|[-_.])";
+            return Regex.Replace(part, pat, (Match m) =>
+            {
+                string tok;
+                return known.TryGetValue(m.Value.ToLowerInvariant(), out tok) ? tok : m.Value;
+            }, RegexOptions.IgnoreCase, RxTimeout);
+        }
+
+        // Eindeutigkeit der Platzhalter: ein Platzhalter darf nur für einen Originalwert stehen
+        public static List<string> FindPlaceholderCollisions(AnonState state, Dictionary<string, string> festeZuordnung)
+        {
+            Dictionary<string, HashSet<string>> byToken = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            Action<string, string> add = (string tok, string raw) =>
+            {
+                if (string.IsNullOrEmpty(tok)) return;
+                HashSet<string> set;
+                if (!byToken.TryGetValue(tok, out set)) { set = new HashSet<string>(StringComparer.Ordinal); byToken[tok] = set; }
+                set.Add((raw ?? "").Trim().ToLowerInvariant());
+            };
+            foreach (KeyValuePair<string, string> kv in state.Forward)
+            {
+                int bar = kv.Key.IndexOf('|');
+                add(kv.Value, bar >= 0 ? kv.Key.Substring(bar + 1) : kv.Key);
+            }
+            if (festeZuordnung != null)
+            {
+                foreach (KeyValuePair<string, string> kv in festeZuordnung)
+                {
+                    if (string.IsNullOrWhiteSpace(kv.Key) || string.IsNullOrWhiteSpace(kv.Value)) continue;
+                    add(kv.Value.Trim(), kv.Key);
+                    string vorhanden;
+                    if (state.Reverse.TryGetValue(kv.Value.Trim(), out vorhanden)) add(kv.Value.Trim(), vorhanden);
+                }
+            }
+            List<string> result = new List<string>();
+            List<string> tokens = new List<string>(byToken.Keys);
+            tokens.Sort(StringComparer.Ordinal);
+            foreach (string tok in tokens)
+            {
+                if (byToken[tok].Count > 1)
+                    result.Add("Platzhalter " + tok.ToUpperInvariant() + " steht für " + byToken[tok].Count.ToString() + " verschiedene Originalwerte");
+            }
+            return result;
+        }
+
         public static string ProcessText(string input, EngineConfig cfg, AnonState state)
         {
             if (string.IsNullOrEmpty(input)) return input;
 
-            string text = input;
+            // JSON-Escapes für die Erkennung dekodieren (Ergebnis bleibt gültiges JSON)
+            string text = DecodeJsonStringEscapes(input);
+
+            // Feste Zuordnungen vorab reservieren, damit automatische Platzhalter nie kollidieren
+            if (cfg.CatEigeneBegriffe)
+            {
+                foreach (KeyValuePair<string, string> kvFix in cfg.FesteZuordnung)
+                {
+                    if (!string.IsNullOrEmpty(kvFix.Key) && !string.IsNullOrEmpty(kvFix.Value) && !cfg.ExakteAusnahmen.Contains(kvFix.Key.Trim()))
+                        state.RegisterFixed(kvFix.Key, kvFix.Value);
+                }
+            }
 
             // Schutz-Speicher für temporäre Maskierungen (__ANON_PROT_0__ usw.)
             List<string> protectedValues = new List<string>();
@@ -1029,18 +1207,26 @@ namespace AnonTool
                     foreach (TableField f in fields)
                     {
                         if (IsTableValueExempt(f.Wert, cfg)) continue;
+                        // Geheimnisse zuerst entfernen: das Original in der Tabelle darf kein Geheimnis enthalten
+                        string wert = RemoveSecretsPlain(f.Wert, cfg);
                         string rep = null;
                         if (f.Kategorie == "HOST")
                         {
-                            if (!cfg.CatHostnamen) continue;
+                            if (!cfg.CatHostnamen || !IsLearnable("HOST", wert, cfg)) continue;
                             state.AddStat("hostnamen", 1);
-                            rep = state.GetOrCreateToken("HOST", f.Wert, "HOST");
+                            rep = state.GetOrCreateToken("HOST", wert, "HOST");
+                        }
+                        else if (f.Kategorie == "SERIAL")
+                        {
+                            if (!cfg.CatSeriennummern || !IsLearnable("SERIAL", wert, cfg)) continue;
+                            state.AddStat("seriennummern", 1);
+                            rep = state.GetOrCreateToken("SERIAL", wert, "SERIAL");
                         }
                         else
                         {
                             if (!cfg.CatFreitext) continue;
                             state.AddStat("freitext", 1);
-                            rep = state.GetOrCreateToken("FREITEXT_" + f.Kategorie, f.Wert, f.Kategorie);
+                            rep = state.GetOrCreateToken("FREITEXT_" + f.Kategorie, wert, f.Kategorie);
                         }
                         int fEnd = f.Start + f.Length;
                         // Spaltenausrichtung erhalten, außer am Zeilenende
@@ -1174,7 +1360,7 @@ namespace AnonTool
                     text = sRx.Replace(text, (Match m) =>
                     {
                         string val = m.Groups[2].Value.Trim();
-                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****")
+                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("SERIAL", val, cfg))
                             return m.Value;
                         state.AddStat("seriennummern", 1);
                         string tok = state.GetOrCreateToken("SERIAL", val, "SERIAL");
@@ -1194,7 +1380,7 @@ namespace AnonTool
                     text = uRx.Replace(text, (Match m) =>
                     {
                         string val = m.Groups[2].Value.Trim();
-                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****")
+                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("USER", val, cfg))
                             return m.Value;
                         state.AddStat("benutzer", 1);
                         string tok = state.GetOrCreateToken("USER", val, "USER");
@@ -1316,7 +1502,7 @@ namespace AnonTool
                         if (m.Groups.Count >= 3 && m.Groups[2].Success)
                         {
                             string hVal = m.Groups[2].Value.Trim();
-                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_"))
+                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg))
                                 return m.Value;
                             state.AddStat("hostnamen", 1);
                             string tok = state.GetOrCreateToken("HOST", hVal, "HOST");
@@ -1327,7 +1513,7 @@ namespace AnonTool
                         else
                         {
                             string hVal = (m.Groups.Count >= 2 && m.Groups[1].Success) ? m.Groups[1].Value.Trim() : m.Value.Trim();
-                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_"))
+                            if (string.IsNullOrEmpty(hVal) || cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg))
                                 return m.Value;
                             state.AddStat("hostnamen", 1);
                             string tok = state.GetOrCreateToken("HOST", hVal, "HOST");
@@ -1341,7 +1527,7 @@ namespace AnonTool
                 text = RxCliPrompt.Replace(text, (Match m) =>
                 {
                     string hVal = m.Groups[1].Value.Trim();
-                    if (cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_"))
+                    if (cfg.ExakteAusnahmen.Contains(hVal) || hVal.StartsWith("\u0002PROT_") || !IsLearnable("HOST", hVal, cfg))
                         return m.Value;
                     state.AddStat("hostnamen", 1);
                     string tok = state.GetOrCreateToken("HOST", hVal, "HOST");
@@ -1393,6 +1579,33 @@ namespace AnonTool
                         state.AddStat("hostnamen", 1);
                         string dTok = state.GetOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
                         return protect(dTok);
+                    }, RegexOptions.IgnoreCase, RxTimeout);
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // STUFE 11: Einmal gelernte Seriennummern und Benutzer im ganzen Lauf ersetzen
+            // ----------------------------------------------------------------
+            List<string> otherPrefixes = new List<string>();
+            if (cfg.CatSeriennummern) otherPrefixes.Add("SERIAL|");
+            if (cfg.CatBenutzer) otherPrefixes.Add("USER|");
+            if (otherPrefixes.Count > 0)
+            {
+                SortedDictionary<string, string> knownOther = CollectKnownValues(state, otherPrefixes.ToArray(), cfg);
+                if (knownOther.Count > 0)
+                {
+                    List<string> escOther = new List<string>(knownOther.Count);
+                    foreach (string ko in knownOther.Keys) escOther.Add(Regex.Escape(ko));
+                    string otherPat = "(?<![A-Za-z0-9-])(?:" + string.Join("|", escOther.ToArray()) + ")(?![A-Za-z0-9-])";
+                    text = Regex.Replace(text, otherPat, (Match m) =>
+                    {
+                        string tok;
+                        if (knownOther.TryGetValue(m.Value.ToLowerInvariant(), out tok))
+                        {
+                            state.AddStat(tok.StartsWith("SERIAL", StringComparison.OrdinalIgnoreCase) ? "seriennummern" : "benutzer", 1);
+                            return protect(tok);
+                        }
+                        return m.Value;
                     }, RegexOptions.IgnoreCase, RxTimeout);
                 }
             }
@@ -1476,7 +1689,7 @@ namespace AnonTool
         public static string BuildStructureTemplate(string input, EngineConfig cfg, HashSet<string> keywords, string freitextPlatzhalter)
         {
             if (string.IsNullOrEmpty(input)) return input;
-            string text = input;
+            string text = DecodeJsonStringEscapes(input);
             List<string> protectedValues = new List<string>();
             Func<string, string> protect = (string val) =>
             {
@@ -1493,7 +1706,7 @@ namespace AnonTool
                 int lastPos = 0;
                 foreach (TableField f in fields)
                 {
-                    if (f.Kategorie == "HOST" || IsTableValueExempt(f.Wert, cfg)) continue;
+                    if (f.Kategorie == "HOST" || f.Kategorie == "SERIAL" || IsTableValueExempt(f.Wert, cfg)) continue;
                     string rep = freitextPlatzhalter;
                     int fEnd = f.Start + f.Length;
                     if (rep.Length < f.Length && !IsLineRestBlank(text, fEnd)) rep = rep + new string(' ', f.Length - rep.Length);
@@ -1606,7 +1819,7 @@ namespace AnonTool
                         subParts[sp] = ProcessText(subParts[sp], cfg, state);
                     }
                 }
-                string anonCore = string.Join("_", subParts);
+                string anonCore = ReplaceKnownInPathPart(string.Join("_", subParts), state, cfg);
                 string combined = prefixPart + anonCore + extPart;
 
                 // Ungültige Dateinamen-Zeichen (z.B. aus *****) bereinigen
@@ -1725,6 +1938,11 @@ namespace AnonTool
 
         // Platzhalter in der Ausgabe (für die Suche nach bekannten Originalwerten ausblenden)
         private static readonly Regex RxPlaceholder = new Regex(@"(?<![A-Za-z0-9_-])(?:NET-[0-9]+(?:\.H[0-9]+)?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON)-[0-9]+)(?![A-Za-z0-9_])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxCredentialSuspect = new Regex("(?i)(?<![A-Za-z0-9_-])(password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token|authorization)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?([^ \\t\\r\\n\"',;]+)", RegexOptions.Compiled, RxTimeout);
+        private static readonly HashSet<string> CredentialStopWords = new HashSet<string>(new string[] {
+            "for", "from", "is", "was", "has", "of", "to", "required", "expired", "changed", "incorrect", "invalid", "accepted", "failed",
+            "authentication", "policy", "prompt", "plaintext", "ciphertext", "cipher", "simple", "hash", "encrypted", "level", "basic", "bearer",
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }, StringComparer.Ordinal);
         private static readonly string[] KnownValueCategories = new string[] { "HOST|", "SERIAL|", "USER|", "MAIL|", "URL|", "FIRMA|", "DOMAIN|", "FIXED|" };
 
         private static int GetLineNumber(List<int> lineStarts, int charIndex)
@@ -1849,7 +2067,25 @@ namespace AnonTool
                 }
             }
 
+            // 0b. Im Lauf erkannte Originalwerte im Dateipfad (Grenzen: alles außer Buchstabe/Ziffer)
+            if (state != null && !string.IsNullOrEmpty(fileName))
+            {
+                SortedDictionary<string, string> knownPath = CollectKnownValues(state, PathKnownCategories, cfg);
+                List<string> escPath = new List<string>();
+                foreach (string k in knownPath.Keys) { if (!IsAllowedInAudit(k, cfg)) escPath.Add(Regex.Escape(k)); }
+                if (escPath.Count > 0)
+                {
+                    Regex rxKnownPath = new Regex("(?<![A-Za-z0-9])(?:" + string.Join("|", escPath.ToArray()) + ")(?![A-Za-z0-9])", RegexOptions.IgnoreCase, RxTimeout);
+                    string pathMasked = RxPlaceholder.Replace(fileName.Replace('\\', '/'), (Match pm) => new string(' ', pm.Length));
+                    foreach (Match m in rxKnownPath.Matches(pathMasked))
+                    {
+                        findings.Add(new AuditFinding { Datei = fileName, Zeile = 0, Kategorie = "Pfad-Bekannt", Fund = m.Value, Kontext = "Dateipfad: " + fileName });
+                    }
+                }
+            }
+
             if (string.IsNullOrEmpty(text)) return findings;
+            text = DecodeJsonStringEscapes(text);
 
             string[] rawLines = text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
             List<int> lineStarts = new List<int>(rawLines.Length + 1);
@@ -2015,8 +2251,23 @@ namespace AnonTool
                 }
             }
 
+            // 6c. Verdacht-Zugangsdaten: Zugangsdaten-Schlüsselwort mit nicht maskiertem Wert
+            foreach (Match m in RxCredentialSuspect.Matches(cleanText))
+            {
+                string val = m.Groups[2].Value;
+                if (val.StartsWith("*****") || CredentialStopWords.Contains(val.ToLowerInvariant()) || IsAllowedAuditPart(val, cfg)) continue;
+                // Modifikator vor einem bereits maskierten Wert (z.B. "password ENC *****")
+                if (Regex.IsMatch(cleanText.Substring(m.Index + m.Length), "^[ \t]+\\*{5}", RegexOptions.None, RxTimeout)) continue;
+                int ln = GetLineNumber(lineStarts, m.Index);
+                findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Zugangsdaten", Fund = m.Value, Kontext = getLineCtx(ln) });
+            }
+
             // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
             List<KeyValuePair<string, List<Regex>>> patternGroups = new List<KeyValuePair<string, List<Regex>>>();
+            Dictionary<string, string> lernKategorie = new Dictionary<string, string>();
+            lernKategorie["Rest-Hostname"] = "HOST";
+            lernKategorie["Rest-Seriennummer"] = "SERIAL";
+            lernKategorie["Rest-Benutzer"] = "USER";
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Hostname", cfg.HostnamenMuster));
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Seriennummer", cfg.SeriennummerMuster));
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Benutzer", cfg.BenutzerMuster));
@@ -2028,6 +2279,8 @@ namespace AnonTool
                     {
                         string val = PickGroupValue(m);
                         if (string.IsNullOrEmpty(val) || val.IndexOf('\u0002') >= 0 || IsAllowedInAudit(val, cfg) || AreAllPartsAllowed(val, cfg)) continue;
+                        // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
+                        if (!IsLearnable(lernKategorie[pg.Key], val, cfg)) continue;
                         int ln = GetLineNumber(lineStarts, m.Index);
                         findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = pg.Key, Fund = val, Kontext = getLineCtx(ln) });
                     }
@@ -2053,6 +2306,7 @@ namespace AnonTool
             {
                 string val = f.Wert.Trim();
                 if (IsTableValueExempt(val, cfg) || IsAllowedInAudit(val, cfg)) continue;
+                if ((f.Kategorie == "HOST" || f.Kategorie == "SERIAL") && !IsLearnable(f.Kategorie, val, cfg)) continue;
                 // Nach Ersetzungen verschobene Spalten: Zahlen/Portnotation neben Platzhaltern sind unkritisch
                 bool allOk = true;
                 foreach (string part in val.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
@@ -2375,12 +2629,40 @@ function Load-EngineConfig {
             $col = New-Object AnonTool.TableColumnSpec
             $col.Name = [string](Get-JsonProp $sp "name")
             $col.Kategorie = [string](Get-JsonProp $sp "kategorie")
+            $vk = Get-JsonProp $sp "vorkommen"
+            if ($null -ne $vk) { $col.Vorkommen = [int]$vk }
             $rule.Spalten.Add($col)
         }
         $cfg.TabellenSpalten.Add($rule)
     }
 
+    # Lern-Stoppliste: CLI-Schlüsselwörter und Tabellenköpfe aus strukturvorlage.json (neben der Regeldatei oder neben anon.ps1)
+    $woerterDatei = Get-StrukturWoerterPfad -RegelDatei $RegelDatei
+    if ([string]::IsNullOrEmpty($woerterDatei)) {
+        throw "strukturvorlage.json nicht gefunden (wird als Lern-Stoppliste benötigt; neben anon-regeln.json oder anon.ps1 ablegen)."
+    }
+    $vorlageObj = ConvertFrom-Json -InputObject ([AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $woerterDatei).Path)))
+    $swObj = Get-JsonProp $vorlageObj "schluesselwoerter"
+    $alleWoerter = New-Object 'System.Collections.Generic.List[string]'
+    if ($null -ne $swObj) {
+        foreach ($prop in $swObj.PSObject.Properties) {
+            foreach ($w in @($prop.Value)) { if ($null -ne $w) { $alleWoerter.Add([string]$w) } }
+        }
+    }
+    $cfg.LernStoppwoerter = [AnonTool.AnonEngine]::BuildKeywordSet($alleWoerter)
+
     return $cfg
+}
+
+# strukturvorlage.json: neben der Regeldatei, neben anon.ps1 oder unter ..\regeln\
+function Get-StrukturWoerterPfad {
+    param([string]$RegelDatei)
+    $kandidaten = @()
+    if (-not [string]::IsNullOrEmpty($RegelDatei)) { $kandidaten += (Join-Path (Split-Path -Parent ([System.IO.Path]::GetFullPath($RegelDatei))) "strukturvorlage.json") }
+    $kandidaten += (Join-Path $PSScriptRoot "strukturvorlage.json")
+    $kandidaten += (Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) "regeln") "strukturvorlage.json")
+    foreach ($k in $kandidaten) { if (Test-Path -LiteralPath $k) { return $k } }
+    return $null
 }
 
 function Set-RestrictedUserAcl {
@@ -3056,10 +3338,10 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
     }
 
     if ($alleFunde.Count -eq 0) {
-        Write-Host "Prüfergebnis: SAUBER (0 Treffer)" -ForegroundColor Green
+        Write-Host "Prüfergebnis: KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)" -ForegroundColor Green
         exit 0
     } else {
-        Write-Host "Prüfergebnis: NICHT SAUBER ($($alleFunde.Count) Treffer gefunden)" -ForegroundColor Red
+        Write-Host "Prüfergebnis: RESTFUNDE_VORHANDEN ($($alleFunde.Count) Treffer gefunden)" -ForegroundColor Red
         Write-PruefFunde $alleFunde
         Write-Host "ACHTUNG: Diese Dateien NICHT weitergeben. Restfunde prüfen, Regeln oder Ausnahmen in anon-regeln.lokal.json ergänzen und neu anonymisieren." -ForegroundColor Red
         exit 2
@@ -3156,6 +3438,12 @@ if ($MitPasswort -and $null -eq $activeSecPass) {
 }
 
 $state = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPass
+
+# Eindeutigkeit der Platzhalter: geladene Tabelle und festeZuordnung dürfen keinen Platzhalter doppelt vergeben
+$kollisionen = [AnonTool.AnonEngine]::FindPlaceholderCollisions($state, $cfg.FesteZuordnung)
+if ($kollisionen.Count -gt 0) {
+    throw ("Zuordnungstabelle abgelehnt: " + ($kollisionen -join "; ") + ". Die Tabelle wird nicht verwendet und nicht überschrieben.")
+}
 
 $arbeit = $null
 $arbeitOrdner = $null
@@ -3350,7 +3638,7 @@ if (-not $Probe) {
     Export-AnonState -State $state -TablePath $TabellenPfad -UseDpapi:$Dpapi -PasswordSecure $activeSecPass -Unverschluesselt:$Unverschluesselt
 }
 
-$pruefStatus = if ($allePruefFunde.Count -eq 0) { "SAUBER" } else { "RESTFUNDE_VORHANDEN" }
+$pruefStatus = if ($allePruefFunde.Count -eq 0) { "KEINE_RESTFUNDE" } else { "RESTFUNDE_VORHANDEN" }
 
 $gesamtKategorien = [ordered]@{}
 foreach ($k in ($state.Stats.Keys | Sort-Object)) {
@@ -3405,8 +3693,8 @@ Write-Host "Ersetzungen je Kategorie :"
 foreach ($k in $gesamtKategorien.Keys) {
     Write-Host ("  - {0,-22}: {1}" -f $k, $gesamtKategorien[$k])
 }
-if ($pruefStatus -eq "SAUBER") {
-    Write-Host "Prüfergebnis (-Pruefen)  : SAUBER (0 Treffer)" -ForegroundColor Green
+if ($pruefStatus -eq "KEINE_RESTFUNDE") {
+    Write-Host "Prüfergebnis (-Pruefen)  : KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)" -ForegroundColor Green
     exit 0
 } else {
     Write-Host ("Prüfergebnis (-Pruefen)  : {0} ({1} Treffer)" -f $pruefStatus, $allePruefFunde.Count) -ForegroundColor Red

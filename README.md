@@ -31,7 +31,7 @@ Zusätzlich gibt es den **Text-Anonymisierer** ([`web/text/text-anonymisierer.ht
 
 Kopieren Sie den Projektordner auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisierer\`). Benötigt werden:
 - `powershell\anon.ps1`
-- `regeln\anon-regeln.json` (Basisregelwerk ohne echte Infrastrukturdaten) und `regeln\strukturvorlage.json` (für `-Strukturvorlage`)
+- `regeln\anon-regeln.json` (Basisregelwerk ohne echte Infrastrukturdaten) und `regeln\strukturvorlage.json` (Schlüsselwortliste für `-Strukturvorlage` und **Lern-Stoppliste**; `anon.ps1` bricht ohne diese Datei ab)
 - `web\anonymisierer.html` und `web\text\text-anonymisierer.html` (eigenständige Offline-Seiten)
 - `tests\` (für den Prüfbefehl in Abschnitt 8)
 
@@ -64,7 +64,8 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
    - Konsole und Fehlermeldungen enthalten **keine echten Werte**: Prüftreffer nur mit Kategorie, Datei und Zeile; Fehler nur mit laufender Nummer der Datei, Schritt und Fehlerart.
 3. **Prüfen (`-Pruefen`):**
    Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, nicht entfernten Geheimnissen (alle `geheimnisMuster`), Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `-` grenzen (z. B. `XY1-SW01-alt`).
-   - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **`SAUBER`** (Exit-Code `0`).
+   - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **„Keine Restfunde nach aktivem Regelwerk“** (Konsole und `bericht.json`: `KEINE_RESTFUNDE`, Exit-Code `0`).
+   - **Bedeutung:** „Keine Restfunde nach aktivem Regelwerk“ heißt nur, dass keine der aktiven Regeln und Prüfungen noch etwas findet. Es ist **keine Garantie**, dass die Daten frei von Echtwerten sind: Formate, für die es keine Regel gibt (ungewöhnlicher Freitext, neue Gerätetypen), erkennt der Prüfmodus nicht. Deshalb bleibt die Sichtprüfung Pflicht. Früher hieß das Ergebnis `SAUBER`; die Bezeichnung wurde geändert, weil sie mehr versprach, als die Prüfung leisten kann.
    - Werden Restfunde entdeckt (`RESTFUNDE_VORHANDEN`), beendet sich `anon.ps1` auch im Hauptlauf mit **Exit-Code `2`** und dem Hinweis **„NICHT weitergeben“**. Ergänzen Sie in diesem Fall das fehlende Muster in Ihrer `anon-regeln.lokal.json` und starten Sie den Lauf erneut.
 4. **Sichtprüfung (Pflichtschritt vor jeder Weitergabe!):**
    Prüfen Sie die anonymisierten Dateien in `<Ausgabe>\anonym\` (bzw. in der Side-by-Side-Vorschau von `anonymisierer.html`) stichprobenartig mit eigenen Augen – insbesondere ungewöhnliche Freitext-Kommentare, Debug-Ausgaben oder mehrzeilige Notizen.
@@ -142,7 +143,7 @@ Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldat
 # Trockenlauf: Zeigt nur Anzahl Ersetzungen je Kategorie, schreibt keine Dateien
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang" -LokaleRegeln ".\anon-regeln.lokal.json" -Probe
 
-# Reiner Prüfmodus auf einem bereits anonymisierten Ordner (Exit-Code 0 = SAUBER, Exit-Code 2 = Restfunde)
+# Reiner Prüfmodus auf einem bereits anonymisierten Ordner (Exit-Code 0 = KEINE_RESTFUNDE, Exit-Code 2 = RESTFUNDE_VORHANDEN)
 .\anon.ps1 -Eingabe "C:\Faelle\Ausgang\anonym" -LokaleRegeln ".\anon-regeln.lokal.json" -Pruefen
 ```
 
@@ -164,9 +165,9 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
 3. **Reiter „1. Anonymisieren & Prüfen“:**
    - Ziehen Sie Dateien, Ordner oder `.zip`/`.tar.gz`-Archive in das Drag-&-Drop-Feld.
    - Klicken Sie auf **„Anonymisieren & Prüfen“**.
-   - Prüfen Sie oben rechts das Banner (**`SAUBER (0 Treffer)`** in Grün oder Restfunde in Rot) sowie darunter die Gegenüberstellung **Original vs. Anonymisiert**.
+   - Prüfen Sie oben rechts das Banner (**„Keine Restfunde nach aktivem Regelwerk“** in Grün oder Restfunde in Rot) sowie darunter die Gegenüberstellung **Original vs. Anonymisiert**.
    - Laden Sie mit **„Anonymisiertes ZIP herunterladen“** das Freigabe-ZIP herunter (enthält ausschließlich `anonym/...` mit anonymisierten Dateinamen, **ohne** `bericht.json`).
-   - **Freigabe nur bei SAUBER:** Bei `RESTFUNDE VORHANDEN` sind ZIP-Download und „Anonymisiert kopieren“ gesperrt. Unter dem Prüfbericht erscheinen die Fundgruppen (gleiche Kategorie, gleicher Wert). Entscheiden Sie jede Gruppe: **„Immer ersetzen“** legt das Wort an der Fundstelle als eigenen Begriff mit Platzhalter an, **„Fehlalarm“** als Ausnahme (`ausnahmen.exakteWoerter`). Danach „Entscheidungen anwenden & neu anonymisieren“; freigegeben wird erst, wenn der neue Lauf SAUBER ist. Speichern Sie die Entscheidungen anschließend als `anon-regeln.lokal.json`, damit `anon.ps1` sie ebenfalls nutzt.
+   - **Freigabe nur bei „Keine Restfunde nach aktivem Regelwerk“:** Bei `RESTFUNDE VORHANDEN` sind ZIP-Download und „Anonymisiert kopieren“ gesperrt. Unter dem Prüfbericht erscheinen die Fundgruppen (gleiche Kategorie, gleicher Wert). Entscheiden Sie jede Gruppe: **„Immer ersetzen“** legt das Wort an der Fundstelle als eigenen Begriff mit Platzhalter an, **„Fehlalarm“** als Ausnahme (`ausnahmen.exakteWoerter`). Danach „Entscheidungen anwenden & neu anonymisieren“; freigegeben wird erst, wenn der neue Lauf „Keine Restfunde nach aktivem Regelwerk“ meldet. Speichern Sie die Entscheidungen anschließend als `anon-regeln.lokal.json`, damit `anon.ps1` sie ebenfalls nutzt.
 4. **Reiter „3. Zuordnungstabelle (verschlüsselt)“:**
    - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt als `zuordnungstabelle.anontab` (Format `ANON-AES256-2`, PBKDF2-SHA256, auch in `anon.ps1` ladbar) herunterzuladen. Die Passwortfelder werden danach geleert.
    - Ältere Browser-Tabellen im Format `ANON-WEBCRYPTO-AESGCM-1` bleiben hier ladbar; speichern Sie sie einmal neu, um sie in `anon.ps1` nutzen zu können.
@@ -188,7 +189,7 @@ Eigene Offline-Seite `web\text\text-anonymisierer.html` (gleiche CSP, kein Netz,
   - `Platzhalter`: `[NAME-1]`, `[IBAN-1]`, rückführbar über die Zuordnungstabelle; die Nummerierung läuft über mehrere Texte weiter.
   - `Entfernen`: Schwärzung `████████`, nicht rückführbar.
   - `Generalisieren`: vergröberter Wert, nicht rückführbar. Regeln: Datum/Geburtsdatum → Jahr, PLZ + Ort → `12xxx`, Straße + Nr. → Straße, Telefon → Vorwahl `030 …`, E-Mail → `…@domain`, IPv4 → `192.0.2.x`. Kategorien ohne Regel erhalten einen Platzhalter.
-- **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein unkritisches `SAUBER`).
+- **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein Freigabe-Urteil wie im Netzwerk-Anonymisierer).
 - **Zuordnungstabelle & Rückübersetzen** befinden sich unten auf derselben Seite (Passwortfelder werden nach dem Export und Laden geleert).
 
 ---
@@ -263,8 +264,17 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 ]
 ```
 
+### Lernregeln, JSON, Dateinamen und Platzhalter (Paket A)
+- **Geheimnisse zuerst:** Geheimnisse werden auf dem Original entfernt, bevor ein Wert als Freitext oder Tabellenspalte in die Zuordnungstabelle gelangt; dort steht nie ein Geheimnis.
+- **Generische Zugangsdaten:** `password`, `passwd`, `passwort`, `kennwort`, `pwd`, `secret`, `api_key`, `token` mit `:`, `=` oder Leerzeichen sowie `Authorization: Basic/Bearer` werden entfernt. Der Prüfmodus meldet solche Schlüsselwörter mit nicht maskiertem Wert als `Verdacht-Zugangsdaten`.
+- **JSON:** Zeichenketten werden escape-bewusst gelesen (`\"` im Wert), `\uXXXX` und `\/` werden für die Erkennung dekodiert. Die Ausgabe bleibt gültiges JSON.
+- **Gelernte Werte:** Hostnamen, Benutzer und Seriennummern werden nur gelernt, wenn sie kein CLI-Schlüsselwort oder Tabellenkopf sind (Stoppliste `regeln/strukturvorlage.json`); Hostnamen und Seriennummern brauchen zusätzlich eine Ziffer oder einen Bindestrich. Einmal gelernte Hosts, Seriennummern und Benutzer werden im ganzen Lauf ersetzt.
+- **Dateinamen:** Bekannte Originalwerte werden in Pfaden auch an `-`, `_` und `.` grenzend ersetzt (`privatehost01-backup.txt` → `HOST-1-backup.txt`); der Prüfmodus meldet Reste als `Pfad-Bekannt`.
+- **Eindeutige Platzhalter:** Automatisch vergebene Platzhalter überspringen alle bereits vergebenen, fest zugeordneten und als Alias reservierten. Stehen in einer geladenen Tabelle und in `festeZuordnung` verschiedene Originalwerte für denselben Platzhalter, wird die Tabelle abgelehnt (A und B).
+- **Tabellenspalten** können mit `"vorkommen": 2` das zweite gleichnamige Kopfwort meinen (z. B. `Number` in `show module`).
+
 ### E. Reihenfolge der Engine (identisch in `anon.ps1` und `anonymisierer.html`)
-0. Tabellenspalten (`tabellenSpalten`) über Spaltenpositionen der Kopfzeile
+0. JSON-Escapes dekodieren, feste Zuordnungen reservieren; Tabellenspalten (`tabellenSpalten`) über Spaltenpositionen der Kopfzeile (Geheimnisse im Spaltenwert werden vorher entfernt)
 1. Geheimnisse entfernen (`*****`)
 2. Ausnahmen schützen (Versionen wie `10.13.1020`, Portnamen, Masken, Uhrzeiten, `ausnahmen.musterRegex`)
 3. Freitext-Felder (`description`, `location`, Banner, ...) → `TEXT-n`, `ORT-n`, `KONTAKT-n`, `BANNER-n`
@@ -275,7 +285,8 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 8. MAC-Adressen (alle Schreibweisen) → `MAC-n`
 9. IPv6, danach IPv4 → `IP6-…`, `NET-n.Hm`
 10. Hostnamen (Muster, CLI-Prompt, im Lauf bekannte Hosts), FQDNs und interne Domains → `HOST-n`, `DOMAIN-n`
-11. Schutz-Marker linear auflösen
+11. Einmal gelernte Seriennummern und Benutzer im ganzen Text ersetzen
+12. Schutz-Marker linear auflösen
 
 Nicht ersetzt werden u. a. Versionen (`10.13.1020`), Portnamen, VLAN-IDs, Produktnamen (`ausnahmen.exakteWoerter`), Subnetz-/Wildcard-Masken, Uhrzeiten und das Wort `hash`.
 
@@ -303,7 +314,7 @@ cd C:\Tools\anonymisierer
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$PSVersionTable.PSVersion.ToString(); (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full').Release"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\powershell\anon.ps1 -Pruefen -Eingabe .\tests\erwartet
 ```
-Erwartet: Version `5.1.x`, eine Release-Nummer und `Prüfergebnis: SAUBER (0 Treffer)` mit Exit-Code `0`. Ein Kompilierfehler der Engine erscheint als `Add-Type`-Fehler.
+Erwartet: Version `5.1.x`, eine Release-Nummer und `Prüfergebnis: KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)` mit Exit-Code `0`. Ein Kompilierfehler der Engine erscheint als `Add-Type`-Fehler.
 
 Danach die vollständige Testsuite (Exit-Code `0` = alles grün):
 ```powershell
@@ -315,7 +326,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 - In `anon-regeln.json` sind `\w`, `\d` und `\b` verboten (in .NET Unicode, in JavaScript nur ASCII). Stattdessen `[0-9]`, `[A-Za-z0-9_]`, `(?<![A-Za-z0-9_])` / `(?![A-Za-z0-9_])`. Ersetzungstexte dürfen nur `$1` bis `$9` verwenden.
 - Alle `.ps1`-Dateien sind UTF-8 **mit BOM** gespeichert (sonst liest PS 5.1 sie als ANSI) und enthalten keine Gedankenstriche.
 
-Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
+Der Ordner `tests\` enthält **82 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
 
 - **PowerShell-Testsuite starten:**
   ```powershell

@@ -311,7 +311,7 @@
   },
   {
     "id": "TC39",
-    "name": "Broadcast- und Null-MACs (ff:ff:ff:ff:ff:ff, 00:00:00:00:00:00) bleiben unverändert und SAUBER",
+    "name": "Broadcast- und Null-MACs (ff:ff:ff:ff:ff:ff, 00:00:00:00:00:00) bleiben unverändert und ohne Restfunde",
     "eingabe": "arp 192.0.2.1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
     "erwartet": "arp NET-1.H1 00:00:00:00:00:00 bcast ff:ff:ff:ff:ff:ff",
     "netzerhaltend": true,
@@ -319,7 +319,7 @@
   },
   {
     "id": "TC40",
-    "name": "Loopback 127.0.0.1 und ::1 bleiben unverändert und SAUBER",
+    "name": "Loopback 127.0.0.1 und ::1 bleiben unverändert und ohne Restfunde",
     "eingabe": "listen 127.0.0.1 port 8080 ipv6 ::1",
     "erwartet": "listen 127.0.0.1 port 8080 ipv6 ::1",
     "netzerhaltend": true,
@@ -628,6 +628,89 @@
     "name": "Geheimnis 12: IS-IS hello-authentication-key",
     "eingabe": "protocols isis interface ge-0/0/1 level 2 hello-authentication-key GeheimHello12;",
     "erwartet": "protocols isis interface ge-0/0/1 level 2 hello-authentication-key *****;",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC75",
+    "name": "Paket A1: JSON-Wert mit maskiertem Anführungszeichen wird vollständig entfernt, JSON bleibt gültig",
+    "eingabe": "{\"password\":\"part1\\\"SecretTail77\"}",
+    "erwartet": "{\"password\":\"*****\"}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "jsonValid": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC76",
+    "name": "Paket A1: JSON-Unicode- und Schrägstrich-Escapes werden für die Erkennung dekodiert, JSON bleibt gültig",
+    "eingabe": "{\"hostname\": \"\\u0073w-private01\", \"url\": \"https:\\/\\/portal.example.invalid\\/status\", \"description\": \"Uplink \\\"Halle 3\\\" zu \\u0073w-private01\"}",
+    "erwartet": "{\"hostname\": \"HOST-1\", \"url\": \"URL-1\", \"description\": \"TEXT-1\"}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "jsonValid": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Hostname"
+  },
+  {
+    "id": "TC77",
+    "name": "Paket A2: Zugangsdaten ohne bekanntes Format (password, password:, Authorization: Basic, secret=, api_key=), sshd-Zeile bleibt lesbar",
+    "eingabe": "password TestSecret77\nline password: TestSecret88\nAuthorization: Basic dXNlcjpUZXN0U2VjcmV0OTk=\nconfig secret=TestSecret66 api_key=TestSecret55\nFailed password for invalid user bob from 192.0.2.7 port 22",
+    "erwartet": "password *****\nline password: *****\nAuthorization: Basic *****\nconfig secret=***** api_key=*****\nFailed password for invalid user USER-1 from NET-1.H1 port 22",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Verdacht-Zugangsdaten"
+  },
+  {
+    "id": "TC78",
+    "name": "Paket A3: Geheimnisse in Beschreibungsspalte und description werden vor der Platzhaltervergabe entfernt (nicht in der Zuordnungstabelle)",
+    "eingabe": "Port      Native  Mode   Type    Enabled Status  Reason   Speed   Description\n------------------------------------------------------------------------------\n1/1/1     1       access 1GbT    yes     up               1000    Drucker api_key=Secret77\n\ninterface 1/1/2\n description Kamera api_key=Secret78",
+    "erwartet": "Port      Native  Mode   Type    Enabled Status  Reason   Speed   Description\n------------------------------------------------------------------------------\n1/1/1     1       access 1GbT    yes     up               1000    TEXT-1\n\ninterface 1/1/2\n description TEXT-2",
+    "netzerhaltend": true,
+    "sauber": true,
+    "tabelleEnthaeltNicht": [
+      "Secret77",
+      "Secret78"
+    ]
+  },
+  {
+    "id": "TC79",
+    "name": "Paket A5: Automatisch vergebene Platzhalter kollidieren nicht mit festeZuordnung (device-one -> HOST-1)",
+    "eingabe": "hostname device-two\nuplink device-one\nSystem Name: device-three",
+    "erwartet": "hostname HOST-2\nuplink HOST-1\nSystem Name: HOST-3",
+    "netzerhaltend": true,
+    "sauber": true,
+    "festeZuordnung": {
+      "device-one": "HOST-1"
+    }
+  },
+  {
+    "id": "TC80",
+    "name": "Paket A7a: CLI-Wörter (group, name, speed) werden nicht als Benutzer/Host gelernt",
+    "eingabe": "user admin group administrators password ciphertext AQBapXyZ12\nshow user group\nUser Name  Group\ninterface 1/1/49\n    speed 10000-full\nlag 1 speed auto",
+    "erwartet": "user admin group administrators password ciphertext *****\nshow user group\nUser Name  Group\ninterface 1/1/49\n    speed 10000-full\nlag 1 speed auto",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC81",
+    "name": "Paket A7b: Seriennummern in AOS-CX-Tabellen (show interface transceiver, show module) und danach im ganzen Text",
+    "eingabe": "Port    Type                  Product  Serial            Part\n                              Number   Number            Number\n------------------------------------------------------------------\n1/1/49  SFP+DA3               J9283D   CN12AB3456        J9283-61301\n\n    Product  Serial\nName Number   Description                          Number     Status\n---- -------  ------------------------------------ ---------- ----------------\n1/1  JL375A   8400X Mgmt Module                    SG9ZKN3123 Active\n\nlog: transceiver CN12AB3456 inserted in 1/1/49, module SG9ZKN3123 ready",
+    "erwartet": "Port    Type                  Product  Serial            Part\n                              Number   Number            Number\n------------------------------------------------------------------\n1/1/49  SFP+DA3               J9283D   SERIAL-1          J9283-61301\n\n    Product  Serial\nName Number   Description                          Number     Status\n---- -------  ------------------------------------ ---------- ----------------\n1/1  JL375A   8400X Mgmt Module                    SERIAL-2   Active\n\nlog: transceiver SERIAL-1 inserted in 1/1/49, module SERIAL-2 ready",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Tabellenfeld"
+  },
+  {
+    "id": "TC82",
+    "name": "Paket A7c: Benutzer (user ... group, username ... secret, snmpv3 user) überall ersetzt, snmpv3 auth-pass/priv-pass entfernt",
+    "eingabe": "user alice group administrators password ciphertext AQBapXyZ12\nusername Alice secret Xxxx77\nsnmpv3 user nmsuser auth sha auth-pass plaintext Geheim1Auth priv aes priv-pass plaintext Geheim2Priv\nshow snmpv3 users: nmsuser active, alice logged in",
+    "erwartet": "user USER-1 group administrators password ciphertext *****\nusername USER-1 secret *****\nsnmpv3 user USER-2 auth sha auth-pass plaintext ***** priv aes priv-pass plaintext *****\nshow snmpv3 users: USER-2 active, USER-1 logged in",
     "netzerhaltend": true,
     "sauber": true,
     "pruefeRoh": true,
