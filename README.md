@@ -208,6 +208,7 @@ Eigene Offline-Seite `web\text\text-anonymisierer.html` (gleiche CSP, kein Netz,
 | `hostnamenMuster`, `seriennummerMuster`, `benutzerMuster`, `geheimnisMuster`, `freitextMuster` | zusätzliche Erkennungsmuster |
 | `tabellenSpalten` | zusätzliche Tabellen, deren Spalten ersetzt werden |
 | `pruefung.erlaubtListe`, `.erlaubtMuster` | zusätzliche Ausnahmen im Prüfmodus |
+| `ausnahmen.freigegeben` | bewusst unverändert gelassene Werte, nur für ihre Kategorie: `[{ "kategorie": "Benutzer", "wert": "…" }]`. Kategorien: Benutzer, Hostname, Seriennummer, Domaene, IPv4, IPv6, MAC, EMail, URL, Freitext, Tabellenfeld. Geheimnisse, Sperrbegriffe, interne Domains und SIDs sind nicht freigebbar. Der Prüfmodus zählt solche Funde als „bewusst freigegeben (N)“ (Konsole, `bericht.json` → `bewusstFreigegeben`, ohne Werte) |
 
 ### A. Eigene Begriffe, Rollen & Domains (`eigeneBegriffe`)
 Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Namensgrenzen `(?<![A-Za-z0-9-])...(?![A-Za-z0-9-])` gesucht, sodass z. B. `"dc1-tor-01"` niemals versehentlich den Anfang von `"dc1-tor-010"` zu `"TOR-A0"` verfälscht:

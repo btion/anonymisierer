@@ -351,6 +351,13 @@ namespace AnonTool
         public string Kontext;
     }
 
+    // Prüfergebnis mit Freigaben: Funde und Anzahl bewusst freigegebener Funde (ohne Werte)
+    public class AuditResult
+    {
+        public List<AuditFinding> Funde = new List<AuditFinding>();
+        public int Freigegeben;
+    }
+
     public class EngineConfig
     {
         public bool Netzerhaltend = true;
@@ -374,6 +381,8 @@ namespace AnonTool
         public List<Regex> VersionKontextRegex = new List<Regex>();
         public List<Regex> AusnahmenRegex = new List<Regex>();
         public HashSet<string> PruefungErlaubtListe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Kategoriegebundene Freigaben: "Kategorie\0Wert" (exakt, Groß-/Kleinschreibung zählt)
+        public HashSet<string> Freigegeben = new HashSet<string>(StringComparer.Ordinal);
         public List<Regex> PruefungErlaubtMuster = new List<Regex>();
 
         public List<SecretRule> GeheimnisMuster = new List<SecretRule>();
@@ -2043,8 +2052,77 @@ namespace AnonTool
             return AuditText(text, fileName, cfg, null);
         }
 
-        // state != null: zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+        // ----------------------------------------------------------------
+        // Kategoriegebundene Freigaben (ausnahmen.freigegeben: [{ kategorie, wert }]): ein bewusst
+        // unverändert gelassener Wert gilt nur für seine Kategorie, nicht als allgemeine Ausnahme.
+        // Geheimnisse, Sperrbegriffe, interne Domains und SIDs sind nicht freigebbar. Identisch zu anonymisierer.html.
+        // ----------------------------------------------------------------
+        public static readonly string[] FreigabeKategorien = new string[] { "Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld" };
+        private static readonly string[][] FreigabeBekanntPraefixe = new string[][] {
+            new string[] { "HOST|", "Hostname" }, new string[] { "USER|", "Benutzer" }, new string[] { "SERIAL|", "Seriennummer" },
+            new string[] { "MAIL|", "EMail" }, new string[] { "URL|", "URL" }, new string[] { "DOMAIN|", "Domaene" } };
+
+        // null = gültig, sonst Fehlertext ohne den Wert
+        public static string PruefeFreigabeEintrag(string kategorie, string wert)
+        {
+            if (Array.IndexOf(FreigabeKategorien, kategorie) < 0) return "Kategorie nicht freigebbar";
+            if (string.IsNullOrWhiteSpace(wert)) return "Wert fehlt";
+            return null;
+        }
+
+        // Freigabekategorie eines Fundes (null = nicht freigebbar)
+        public static string FreigabeKategorie(string fundKategorie, string fund, AnonState state)
+        {
+            switch (fundKategorie)
+            {
+                case "Rest-Benutzer": case "Nachpruefung-Benutzer": return "Benutzer";
+                case "Rest-Hostname": case "Nachpruefung-Hostname": case "Pfad-Hostname": return "Hostname";
+                case "Rest-Seriennummer": case "Nachpruefung-Seriennummer": return "Seriennummer";
+                case "Nachpruefung-Domaene": return "Domaene";
+                case "Rest-IPv4": case "Pfad-IPv4": return "IPv4";
+                case "Rest-IPv6": return "IPv6";
+                case "Rest-MAC": return "MAC";
+                case "Rest-EMail": return "EMail";
+                case "Rest-Freitext": return "Freitext";
+                case "Rest-Tabellenfeld": return "Tabellenfeld";
+                case "Rest-Bekannt":
+                case "Pfad-Bekannt":
+                    if (state == null) return null;
+                    string low = (fund ?? "").Trim().ToLowerInvariant();
+                    foreach (string[] pk in FreigabeBekanntPraefixe)
+                    {
+                        foreach (string key in state.Forward.Keys)
+                        {
+                            if (key.StartsWith(pk[0], StringComparison.OrdinalIgnoreCase) && key.Substring(pk[0].Length).Trim().ToLowerInvariant() == low) return pk[1];
+                        }
+                    }
+                    return null;
+                default: return null;
+            }
+        }
+
+        // Prüfmodus mit Freigaben: Funde und Anzahl bewusst freigegebener Funde
+        public static AuditResult AuditTextDetail(string text, string fileName, EngineConfig cfg, AnonState state)
+        {
+            List<AuditFinding> alle = AuditTextRoh(text, fileName, cfg, state);
+            AuditResult res = new AuditResult();
+            if (cfg.Freigegeben.Count == 0) { res.Funde = alle; return res; }
+            foreach (AuditFinding f in alle)
+            {
+                string kat = FreigabeKategorie(f.Kategorie, f.Fund, state);
+                if (kat != null && cfg.Freigegeben.Contains(kat + "\0" + (f.Fund ?? "").Trim())) res.Freigegeben++;
+                else res.Funde.Add(f);
+            }
+            return res;
+        }
+
         public static List<AuditFinding> AuditText(string text, string fileName, EngineConfig cfg, AnonState state)
+        {
+            return AuditTextDetail(text, fileName, cfg, state).Funde;
+        }
+
+        // state != null: zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+        private static List<AuditFinding> AuditTextRoh(string text, string fileName, EngineConfig cfg, AnonState state)
         {
             List<AuditFinding> findings = new List<AuditFinding>();
 
@@ -2865,6 +2943,16 @@ function Load-EngineConfig {
     foreach ($w in (Get-MergedRuleList $jsonObj $lokalObj "pruefung" "erlaubtListe")) {
         [void]$cfg.PruefungErlaubtListe.Add([string]$w)
     }
+    # Kategoriegebundene Freigaben (ausnahmen.freigegeben); Fehlermeldung nur mit laufender Nummer, ohne Wert
+    $freiNr = 0
+    foreach ($fe in (Get-MergedRuleList $jsonObj $lokalObj "ausnahmen" "freigegeben")) {
+        $freiNr++
+        $feKat = [string](Get-JsonProp $fe "kategorie")
+        $feWert = Get-JsonProp $fe "wert"
+        $feFehler = if ($feWert -is [string]) { [AnonTool.AnonEngine]::PruefeFreigabeEintrag($feKat, $feWert) } else { "Wert fehlt" }
+        if ($null -ne $feFehler) { throw "Ungültige Freigabe Nr. $freiNr in ausnahmen.freigegeben: $feFehler" }
+        [void]$cfg.Freigegeben.Add($feKat + [char]0 + $feWert.Trim())
+    }
     foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "pruefung" "erlaubtMuster")) {
         $cfg.PruefungErlaubtMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
@@ -3648,6 +3736,7 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
         throw "Bitte -Eingabe für den Prüfmodus (-Pruefen) angeben."
     }
     $alleFunde = New-Object 'System.Collections.Generic.List[AnonTool.AuditFinding]'
+    $pruefFreigegeben = 0
     $einNr = 0
     $dateiNr = 0
     foreach ($ein in $Eingabe) {
@@ -3673,7 +3762,9 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
                 } else {
                     $f.Name
                 }
-                $funde = [AnonTool.AnonEngine]::AuditText($txt, $relAuditPath, $cfg)
+                $detail = [AnonTool.AnonEngine]::AuditTextDetail($txt, $relAuditPath, $cfg, $null)
+                $funde = $detail.Funde
+                $pruefFreigegeben += $detail.Freigegeben
             } catch {
                 Stop-MitNummer -Nummer $dateiNr -Schritt "Prüfen" -Fehler $_
             }
@@ -3681,6 +3772,7 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
         }
     }
 
+    if ($pruefFreigegeben -gt 0) { Write-Host ("Bewusst freigegeben ({0})" -f $pruefFreigegeben) -ForegroundColor Yellow }
     if ($alleFunde.Count -eq 0) {
         Write-Host "Prüfergebnis: KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)" -ForegroundColor Green
         exit 0
@@ -3903,6 +3995,7 @@ try {
 
     $dateiBerichte = New-Object 'System.Collections.Generic.List[psobject]'
     $allePruefFunde = New-Object 'System.Collections.Generic.List[AnonTool.AuditFinding]'
+    $bewusstFreigegeben = 0
 
     # Durchlauf 1: Alle Dateien einmal verarbeiten, damit Hostnamen aus späteren Dateien
     # (z.B. "hostname X" in Datei 3) auch in früheren Dateien ersetzt werden. Ausgabe wird verworfen.
@@ -3993,7 +4086,9 @@ try {
 
     # Automatische Nachprüfung jeder anonymisierten Datei inkl. Dateipfad, mit allen im Lauf erkannten Werten
     foreach ($erg in $anonErgebnisse) {
-        $funde = [AnonTool.AnonEngine]::AuditText($erg.Text, $erg.Pfad, $cfg, $state)
+        $detail = [AnonTool.AnonEngine]::AuditTextDetail($erg.Text, $erg.Pfad, $cfg, $state)
+        $funde = $detail.Funde
+        $bewusstFreigegeben += $detail.Freigegeben
         foreach ($fd in $funde) { $allePruefFunde.Add($fd) }
         $dateiBerichte.Add([pscustomobject][ordered]@{
             datei        = ($erg.Pfad -replace '\\', '/')
@@ -4040,6 +4135,7 @@ $berichtObj = [ordered]@{
     dateien              = $dateiBerichte
     pruefergebnis        = $pruefStatus
     pruefTrefferAnzahl   = $allePruefFunde.Count
+    bewusstFreigegeben   = $bewusstFreigegeben
     pruefDetails         = $pruefListe
 }
 
@@ -4067,6 +4163,9 @@ if ($uebersprungeneDateien.Count -gt 0) {
 Write-Host "Ersetzungen je Kategorie :"
 foreach ($k in $gesamtKategorien.Keys) {
     Write-Host ("  - {0,-22}: {1}" -f $k, $gesamtKategorien[$k])
+}
+if ($bewusstFreigegeben -gt 0) {
+    Write-Host ("Bewusst freigegeben      : {0}" -f $bewusstFreigegeben) -ForegroundColor Yellow
 }
 if ($pruefStatus -eq "KEINE_RESTFUNDE") {
     Write-Host "Prüfergebnis (-Pruefen)  : KEINE_RESTFUNDE (Keine Restfunde nach aktivem Regelwerk)" -ForegroundColor Green

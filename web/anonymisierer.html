@@ -2154,6 +2154,9 @@
       firmenUndStandorte: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.firmenUndStandorte) || [],
       interneDomains: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.interneDomains) || [],
       exakteAusnahmen: new Set(((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.exakteWoerter) || []).map(w => w.toLowerCase())),
+      // Kategoriegebundene Freigaben: "Kategorie\u0000Wert" (exakt, Groß-/Kleinschreibung zählt)
+      freigegeben: new Set(((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.freigegeben) || [])
+        .filter(e => pruefeFreigabeEintrag(e) === null).map(e => e.kategorie + "\u0000" + e.wert.trim())),
       versionKontextRegex: ((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.versionKontext) || []).map(p => compileDotNetPatternToJS(p, true)),
       ausnahmenRegex: ((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.musterRegex) || []).map(p => compileDotNetPatternToJS(p, true)),
       pruefungErlaubtListe: new Set(((rulesObj && rulesObj.pruefung && rulesObj.pruefung.erlaubtListe) || []).map(w => w.toLowerCase())),
@@ -3411,8 +3414,69 @@
     return funde;
   }
 
-  // state (optional): zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+  // --------------------------------------------------------------------------
+  // Kategoriegebundene Freigaben (ausnahmen.freigegeben: [{ kategorie, wert }]): ein bewusst
+  // unverändert gelassener Wert gilt nur für seine Kategorie, nicht als allgemeine Ausnahme.
+  // Geheimnisse, Sperrbegriffe, interne Domains und SIDs sind nicht freigebbar. Identisch zu anon.ps1.
+  // --------------------------------------------------------------------------
+  const FREIGABE_KATEGORIEN = ["Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld"];
+  const FREIGABE_BEKANNT_PRAEFIXE = [["host|", "Hostname"], ["user|", "Benutzer"], ["serial|", "Seriennummer"], ["mail|", "EMail"], ["url|", "URL"], ["domain|", "Domaene"]];
+
+  // null = gültig, sonst Fehlertext ohne den Wert
+  function pruefeFreigabeEintrag(e) {
+    if (!e || typeof e !== "object") return "Eintrag ist kein Objekt";
+    if (FREIGABE_KATEGORIEN.indexOf(e.kategorie) < 0) return "Kategorie nicht freigebbar";
+    if (typeof e.wert !== "string" || !e.wert.trim()) return "Wert fehlt";
+    return null;
+  }
+
+  // Freigabekategorie eines Fundes (null = nicht freigebbar)
+  function freigabeKategorie(fundKategorie, fund, state) {
+    switch (fundKategorie) {
+      case "Rest-Benutzer": case "Nachpruefung-Benutzer": return "Benutzer";
+      case "Rest-Hostname": case "Nachpruefung-Hostname": case "Pfad-Hostname": return "Hostname";
+      case "Rest-Seriennummer": case "Nachpruefung-Seriennummer": return "Seriennummer";
+      case "Nachpruefung-Domaene": return "Domaene";
+      case "Rest-IPv4": case "Pfad-IPv4": return "IPv4";
+      case "Rest-IPv6": return "IPv6";
+      case "Rest-MAC": return "MAC";
+      case "Rest-EMail": return "EMail";
+      case "Rest-Freitext": return "Freitext";
+      case "Rest-Tabellenfeld": return "Tabellenfeld";
+      case "Rest-Bekannt": case "Pfad-Bekannt": {
+        if (!state) return null;
+        const low = String(fund == null ? "" : fund).trim().toLowerCase();
+        for (const [pf, kat] of FREIGABE_BEKANNT_PRAEFIXE) {
+          for (const key of state.forward.keys()) {
+            if (key.startsWith(pf) && key.slice(pf.length).trim().toLowerCase() === low) return kat;
+          }
+        }
+        return null;
+      }
+      default: return null;
+    }
+  }
+
+  // Prüfmodus mit Freigaben: { funde, freigegeben } (freigegeben = Anzahl bewusst freigegebener Funde)
+  function auditTextDetail(text, fileName, cfg, state) {
+    const alle = auditTextRoh(text, fileName, cfg, state);
+    if (!cfg.freigegeben || cfg.freigegeben.size === 0) return { funde: alle, freigegeben: 0 };
+    const funde = [];
+    let freigegeben = 0;
+    for (const f of alle) {
+      const kat = freigabeKategorie(f.kategorie, f.fund, state);
+      if (kat && cfg.freigegeben.has(kat + "\u0000" + String(f.fund == null ? "" : f.fund).trim())) freigegeben++;
+      else funde.push(f);
+    }
+    return { funde, freigegeben };
+  }
+
   function auditText(text, fileName, cfg, state) {
+    return auditTextDetail(text, fileName, cfg, state).funde;
+  }
+
+  // state (optional): zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
+  function auditTextRoh(text, fileName, cfg, state) {
     const findings = [];
 
     // Vorab Sperrbegriffe und interne Domains kompilieren (für Pfad- und Inhaltsprüfung)
@@ -4300,7 +4364,8 @@
     ["ausnahmen", "versionKontext"],
     ["ausnahmen", "musterRegex"],
     ["pruefung", "erlaubtListe"],
-    ["pruefung", "erlaubtMuster"]
+    ["pruefung", "erlaubtMuster"],
+    ["ausnahmen", "freigegeben"]
   ];
 
   function extractLokaleMuster(parsed) {
@@ -4331,6 +4396,10 @@
             try { compileDotNetPatternToJS(t, true); } catch (e) { errors.push(`Ungültiges Muster in ${key}: ${e.message}`); continue; }
           }
           cleanList.push(t);
+        } else if (name === "freigegeben") {
+          const fehler = pruefeFreigabeEintrag(item);
+          if (fehler) { errors.push(`Ungültige Freigabe Nr. ${list.indexOf(item) + 1} in ${key}: ${fehler}`); continue; }
+          cleanList.push({ kategorie: item.kategorie, wert: item.wert.trim() });
         } else {
           cleanList.push(item);
         }
@@ -5099,11 +5168,15 @@
       return { ok: false, errors: pfadKollisionen, results: [], findings: [], skipped, cfg, mergedRules: mergeRes.mergedRules };
     }
     // Prüfung mit allen im Lauf erkannten Werten
+    let freigegeben = 0;
     for (const r of results) {
-      r.findings = auditText(r.anonText, r.path, cfg, state);
+      const detail = auditTextDetail(r.anonText, r.path, cfg, state);
+      r.findings = detail.funde;
+      r.freigegeben = detail.freigegeben;
+      freigegeben += detail.freigegeben;
       for (const f of r.findings) findingsAll.push(f);
     }
-    return { ok: true, errors: [], results, findings: findingsAll, skipped, cfg, mergedRules: mergeRes.mergedRules };
+    return { ok: true, errors: [], results, findings: findingsAll, freigegeben, skipped, cfg, mergedRules: mergeRes.mergedRules };
   }
 
   function buildReleaseZipEntries(processedResults) {
@@ -5853,8 +5926,12 @@
           processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
         }
         // Prüfung mit allen im Lauf erkannten Werten
+        let bewusstFreigegeben = 0;
         for (const res of processedResults) {
-          res.findings = auditText(res.anonText, res.path, cfg, runState);
+          const detail = auditTextDetail(res.anonText, res.path, cfg, runState);
+          res.findings = detail.funde;
+          res.freigegeben = detail.freigegeben;
+          bewusstFreigegeben += detail.freigegeben;
           for (const f of res.findings) allFindings.push(f);
         }
 
@@ -5938,7 +6015,8 @@
           uebersprungeneBinaer: skippedBinaryFiles,
           kategorienGesamt,
           pruefergebnis: allFindings.length === 0 ? "KEINE_RESTFUNDE" : "RESTFUNDE_VORHANDEN",
-          pruefTrefferAnzahl: allFindings.length
+          pruefTrefferAnzahl: allFindings.length,
+          bewusstFreigegeben
         };
 
         const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
@@ -6228,6 +6306,9 @@
       processPath,
       deanonymizeText,
       auditText,
+      auditTextDetail,
+      freigabeKategorie,
+      FREIGABE_KATEGORIEN,
       isBinaryBytes,
       decodeBytesWithBom,
       buildReleaseZipEntries,
