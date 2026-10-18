@@ -375,34 +375,114 @@
       border-radius: 999px;
       font-weight: 600;
     }
+    :focus-visible { outline: 2px solid #fde047; outline-offset: 2px; }
+    .skip-link { position: absolute; left: -9999px; top: 0; background: #fde047; color: #020617; padding: 6px 10px; z-index: 10; }
+    .skip-link:focus { left: 8px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    [hidden] { display: none !important; }
+    .ablauf-status { padding: 10px 14px; border-radius: 6px; font-weight: 700; margin-bottom: 12px; border: 1px solid var(--border); background: #0f172a; color: var(--text); }
+    .ablauf-status.info { border-color: var(--primary); color: #bae6fd; }
+    .ablauf-status.warn { border-color: var(--warning); background: rgba(245, 158, 11, 0.12); color: #fde68a; }
+    .ablauf-status.ok { border-color: var(--success); background: rgba(34, 197, 94, 0.12); color: #86efac; }
+    .ablauf-status.fehler { border-color: var(--danger); background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    nav.schritte { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+    nav.schritte button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; }
+    nav.schritte button[aria-current="step"] { border-color: var(--primary); background: rgba(56, 189, 248, 0.12); }
+    .schritt-nr { display: inline-block; width: 22px; height: 22px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); text-align: center; line-height: 20px; font-size: 12px; }
+    .schritt-name { font-size: 14px; }
+    .schritt-info { font-size: 12px; color: var(--muted); font-weight: 400; min-height: 18px; }
+    @media (max-width: 760px) { nav.schritte { grid-template-columns: 1fr 1fr; } }
+    .schritt-panel { display: none; }
+    .schritt-panel.active { display: block; }
+    .karten-kopf { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .meldung:empty { display: none; }
+    .meldung { margin-top: 8px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--danger); background: rgba(239, 68, 68, 0.12); color: #fecaca; }
+    .meldung.ok { border-color: var(--success); background: rgba(34, 197, 94, 0.12); color: #bbf7d0; }
+    .warn-text { color: #fde68a; font-size: 13px; }
+    .warn-text:empty { display: none; }
+    input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+    fieldset.wahl { border: none; padding: 0; margin: 0 0 8px 0; display: flex; gap: 16px; flex-wrap: wrap; }
+    .zusammenfassung, .einstellungen-kurz { background: #0f172a; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+    .einstellungen-kurz ul { margin: 6px 0 0 18px; padding: 0; }
+    .einstellungen-kurz .abweichung { color: #fde68a; }
+    .link-btn { background: transparent; border: none; color: var(--primary); padding: 0; text-decoration: underline; }
+    details.erweitert, details.card { margin-top: 10px; }
+    details > summary { cursor: pointer; font-weight: 600; color: var(--primary); }
+    .unterkarte { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+    .unterkarte h3 { margin: 0 0 8px 0; font-size: 14px; }
+    .terms-kopf { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; }
+    .status-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+    .status-badge.verarbeitet { border-color: var(--success); color: #86efac; }
+    .status-badge.bereit { border-color: var(--primary); color: #bae6fd; }
+    .status-badge.fehler, .status-badge.nicht-unterstuetzt, .status-badge.uebersprungen { border-color: var(--warning); color: #fde68a; }
+    .pruef-grid { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 16px; }
+    @media (max-width: 1100px) { .pruef-grid { grid-template-columns: 1fr; } }
+    .fundkarten { max-height: 560px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+    .fundkarte { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #0f172a; }
+    .fundkarte.entschieden { border-color: #64748b; opacity: 0.85; }
+    .fundkarte.aktiv { border-color: #fde047; }
+    .fundkarte .fk-titel { font-weight: 700; }
+    .fundkarte .fk-anzahl { color: var(--muted); font-size: 12px; }
+    .fundkarte .fk-kontext { font-family: var(--mono); font-size: 12px; background: #020617; border-radius: 4px; padding: 4px 6px; margin: 6px 0; white-space: pre-wrap; word-break: break-all; }
+    .fundkarte .fk-orte { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+    .fundkarte .fk-umfang { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; margin: 6px 0; }
+    .fundkarte .fk-warnung { color: #fde68a; font-size: 12px; margin-top: 4px; }
+    mark.markiert-fund { background: #fde047; color: #020617; border-radius: 2px; }
+    mark.treffer { background: #a78bfa; color: #020617; }
+    span.ersetzt { background: rgba(34, 197, 94, 0.22); border-radius: 2px; }
+    .vorschau-box { white-space: normal; padding: 0; height: 460px; }
+    .vz { display: flex; white-space: pre-wrap; word-break: break-all; }
+    .vz.geaendert { background: rgba(56, 189, 248, 0.06); }
+    .vz.ziel { background: rgba(253, 224, 71, 0.15); }
+    .vz-nr { flex: 0 0 auto; min-width: 54px; padding: 0 8px; text-align: right; color: #64748b; user-select: none; border-right: 1px solid #1e293b; }
+    .vz-text { padding: 0 8px; flex: 1; }
+    .vorschau-werkzeuge { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; font-size: 13px; }
+    .suche-feld { display: inline-flex; gap: 4px; }
+    .suche-feld input { max-width: 220px; }
+    .audit-banner.neutral { background: #0f172a; border: 1px solid var(--border); color: var(--text); }
+    .sperr-info { padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); background: #0f172a; margin-bottom: 12px; }
+    .sperr-info.frei { border-color: var(--success); color: #86efac; }
+    .sperr-info.gesperrt { border-color: var(--warning); color: #fde68a; }
+    .export-item { border-top: 1px solid var(--border); padding: 12px 0; }
+    .export-titel { font-weight: 700; margin-bottom: 4px; }
+    .entscheidung-zeile { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b; padding: 4px 0; font-size: 13px; }
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#hauptinhalt">Zum Inhalt springen</a>
   <header>
     <h1>
       <span>Netzwerk-Anonymisierer</span>
-      <span class="badge-offline">100 % Offline &bull; CSP-geschützt &bull; Nur RAM</span>
+      <span class="badge-offline">100 % Offline &bull; CSP-geschützt &bull; Nur Arbeitsspeicher</span>
     </h1>
     <div class="small-muted">Aruba &bull; SONiC &bull; Dell OS10 &bull; Comware &bull; MikroTik &bull; Cisco &bull; FortiGate &bull; Sophos</div>
   </header>
 
-  <nav class="tabs">
-    <button class="active" data-tab="tab-anon">1. Anonymisieren &amp; Prüfen</button>
-    <button data-tab="tab-regeln">2. Regeldatei &amp; Eigene Begriffe</button>
-    <button data-tab="tab-tabelle">3. Zuordnungstabelle (verschlüsselt)</button>
-    <button data-tab="tab-zurueck">4. Rückübersetzen</button>
+  <nav class="tabs" aria-label="Hauptnavigation">
+    <button type="button" class="active" data-tab="tab-anon" aria-current="page">Anonymisieren</button>
+    <button type="button" data-tab="tab-zurueck">Rückübersetzen</button>
+    <button type="button" data-tab="tab-einstellungen">Einstellungen</button>
   </nav>
 
-  <main>
-    <!-- TAB 1: ANONYMISIEREN -->
-    <section id="tab-anon" class="tab-panel active">
-      <div class="grid-2">
-        <div>
+  <main id="hauptinhalt">
+    <!-- ANONYMISIEREN: Ablauf in vier frei anspringbaren Schritten -->
+    <section id="tab-anon" class="tab-panel active" aria-label="Anonymisieren">
+      <div id="ablaufStatus" class="ablauf-status neutral" role="status" aria-live="polite" data-code="KEINE_DATEIEN">Noch keine Dateien ausgewählt</div>
+      <nav class="schritte" aria-label="Ablauf">
+        <button type="button" data-schritt="1" aria-current="step"><span class="schritt-nr">1</span><span class="schritt-name">Dateien auswählen</span><span class="schritt-info" id="schrittInfo1"></span></button>
+        <button type="button" data-schritt="2"><span class="schritt-nr">2</span><span class="schritt-name">Verarbeiten</span><span class="schritt-info" id="schrittInfo2"></span></button>
+        <button type="button" data-schritt="3"><span class="schritt-nr">3</span><span class="schritt-name">Ergebnis prüfen</span><span class="schritt-info" id="schrittInfo3"></span></button>
+        <button type="button" data-schritt="4"><span class="schritt-nr">4</span><span class="schritt-name">Herunterladen</span><span class="schritt-info" id="schrittInfo4"></span></button>
+      </nav>
+
+      <!-- Schritt 1 -->
+      <div id="schritt-1" class="schritt-panel active">
+        <div class="grid-2">
           <div class="card">
-            <h2>1. Eingabedateien / Archive wählen</h2>
+            <h2>Dateien auswählen</h2>
             <div id="dropzone" class="dropzone">
               <strong>Dateien, Ordner oder .zip / .tar.gz hierher ziehen</strong>
-              <div class="small-muted" style="margin-top:6px;">Binärdateien werden automatisch erkannt und übersprungen.</div>
+              <div class="small-muted" style="margin-top:6px;">Binärdateien werden erkannt und nicht verarbeitet; sie bleiben in der Dateiliste sichtbar.</div>
               <div class="btn-row" style="justify-content:center; margin-top:12px;">
                 <button type="button" id="btnPickFiles">Dateien / Archive wählen</button>
                 <button type="button" id="btnPickFolder">Ordner wählen</button>
@@ -411,310 +491,395 @@
               <input type="file" id="inputFiles" multiple style="display:none">
               <input type="file" id="inputFolder" webkitdirectory directory multiple style="display:none">
             </div>
-            <div id="fileCountInfo" class="small-muted" style="margin-top:8px;">Noch keine Dateien geladen.</div>
+            <div id="fileCountInfo" class="small-muted" style="margin-top:8px;" role="status" aria-live="polite">Noch keine Dateien geladen.</div>
+            <div id="dateiMeldung" class="meldung" role="alert"></div>
           </div>
 
           <div class="card">
-            <h2>2. Kategorien &amp; Optionen</h2>
-            <div style="margin-bottom:10px;">
-              <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
-                <input type="checkbox" id="optNetzerhaltend" checked>
-                Netzerhaltende IP-Platzhalter (z. B. NET-1.H17/24)
-              </label>
-              <label style="display:flex; align-items:center; gap:8px; margin-top:4px; cursor:pointer;">
-                <input type="checkbox" id="optIpPrivPub" checked>
-                Privat/Öffentlich trennen (IP-PRIV-n / IP-PUB-n)
-              </label>
+            <h2>Zuordnung</h2>
+            <div class="small-muted" style="margin-bottom:8px;">Die Zuordnung verbindet Platzhalter (z. B. <code>HOST-1</code>) mit den Originalwerten. Mit einer vorhandenen Zuordnung bekommen gleiche Werte wieder dieselben Platzhalter.</div>
+            <fieldset class="wahl">
+              <legend class="sr-only">Zuordnung wählen</legend>
+              <label><input type="radio" name="zuordnungWahl" id="zuordnungNeu" value="neu" checked> Neue Zuordnung</label>
+              <label><input type="radio" name="zuordnungWahl" id="zuordnungLaden" value="laden"> Vorhandene Zuordnung laden</label>
+            </fieldset>
+            <div id="zuordnungNeuBox">
+              <div class="small-muted" id="zuordnungInfo">Aktive Zuordnungen: 0</div>
+              <div class="btn-row">
+                <button type="button" class="danger" id="btnResetTableState">Neue leere Zuordnung beginnen</button>
+              </div>
             </div>
-            <div class="checkbox-list">
-              <label><input type="checkbox" class="cat-toggle" value="geheimnisseEntfernen" checked> Geheimnisse (*****)</label>
-              <label><input type="checkbox" class="cat-toggle" value="ip" checked> IPv4 / IPv6 &amp; Netze</label>
-              <label><input type="checkbox" class="cat-toggle" value="mac" checked> MAC-Adressen</label>
-              <label><input type="checkbox" class="cat-toggle" value="hostnamen" checked> Hostnamen / Domains</label>
-              <label><input type="checkbox" class="cat-toggle" value="benutzer" checked> Benutzernamen</label>
-              <label><input type="checkbox" class="cat-toggle" value="seriennummern" checked> Seriennummern</label>
-              <label><input type="checkbox" class="cat-toggle" value="freitext" checked> Freitext / Banner</label>
-              <label><input type="checkbox" class="cat-toggle" value="eigeneBegriffe" checked> Eigene Begriffe</label>
+            <div id="zuordnungLadenBox" hidden>
+              <label class="small-muted" for="tableLoadPass">Passwort der Zuordnungstabelle (leer lassen bei unverschlüsselter JSON):</label>
+              <input type="password" id="tableLoadPass" autocomplete="off" style="margin:6px 0 4px 0;">
+              <div id="tableLoadPassMeldung" class="meldung" role="alert"></div>
+              <div class="btn-row">
+                <button type="button" id="btnLoadTableFile">Zuordnungstabelle auswählen und laden</button>
+                <input type="file" id="inputTableFile" accept=".json,.anontab,.anon-tab" style="display:none">
+              </div>
             </div>
-            <div class="btn-row" style="margin-top:14px;">
-              <button type="button" class="primary" id="btnRunAnon">Anonymisieren &amp; Prüfen</button>
-              <button type="button" id="btnRunProbe">Trockenlauf (Probe)</button>
-              <button type="button" id="btnClearAll" class="danger">RAM leeren</button>
-            </div>
-            <div class="progress-wrap">
-              <div id="progressBar" class="progress-bar"></div>
-            </div>
-            <div id="progressStatus" class="small-muted">Bereit.</div>
-          </div>
-
-          <div class="card">
-            <h2>3. Export (Freigabe)</h2>
-            <div class="small-muted" style="margin-bottom:8px;">
-              Prüfen Sie vor dem Download den Prüfbericht und die Vorschau. Die Zuordnungstabelle wird niemals ins Ausgabe-ZIP gelegt!
-            </div>
-            <div id="releaseLockInfo" class="small-muted" style="margin-bottom:8px;">Download und „Anonymisiert kopieren“ sind erst nach einem Lauf mit Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“ freigegeben.</div>
-            <div class="btn-row">
-              <button type="button" class="success" id="btnDownloadZip" disabled>Anonymisiertes ZIP herunterladen</button>
-              <button type="button" id="btnDownloadReport" disabled>Bericht (JSON) laden</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>4. Strukturvorlage (Regelentwicklung)</h2>
-            <div class="warn-banner" style="display:block; margin-bottom:8px;"><strong>Vor Weitergabe sichten!</strong> Die Strukturvorlage ersetzt alle Werte durch ihre Form (Großbuchstabe → <code>A</code>, Kleinbuchstabe → <code>a</code>, Ziffer → <code>9</code>, Sonderzeichen bleiben). Bekannte CLI-Schlüsselwörter und Tabellenköpfe (feste Liste) bleiben, Freitextfelder werden <code>&lt;FREITEXT&gt;</code>, Geheimnisse <code>*****</code>. Zweck: Regeln für reale Formate entwickeln, ohne Echtdaten weiterzugeben.</div>
-            <div class="btn-row">
-              <button type="button" id="btnStrukturvorlage">Strukturvorlage erzeugen</button>
-              <span id="strukturStatus" class="small-muted"></span>
-            </div>
-            <textarea id="strukturVorschau" rows="8" readonly style="margin-top:8px; display:none;"></textarea>
+            <div id="tableLoadStatus" class="small-muted" role="status" aria-live="polite" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
           </div>
         </div>
 
-        <div>
-          <div class="card">
-            <h2>Prüfbericht (-Pruefen) &amp; Zusammenfassung</h2>
-            <div id="auditBanner" class="audit-banner clean">Noch kein Lauf durchgeführt.</div>
-            <div id="statPills" class="stat-pills"></div>
-            <div id="skippedInfo" class="small-muted" style="margin-bottom:8px;"></div>
-            <div style="max-height:180px; overflow:auto;">
-              <table class="report-table" id="auditTable">
-                <thead>
-                  <tr>
-                    <th>Datei</th>
-                    <th>Zeile</th>
-                    <th>Kategorie</th>
-                    <th>Gefundener Restwert / Hinweis</th>
-                  </tr>
-                </thead>
-                <tbody id="auditTableBody">
-                  <tr><td colspan="4" class="small-muted">Keine Restfunde vorhanden.</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div id="fundgruppenBox" style="display:none; margin-top:10px;">
-              <strong>Fundgruppen entscheiden</strong>
-              <div class="small-muted" style="margin:4px 0 6px;">„Immer ersetzen“ legt den Wert als eigenen Begriff mit Platzhalter an, „Fehlalarm“ als Ausnahme (bleibt im Klartext). Danach wird neu anonymisiert; freigegeben wird erst bei „Keine Restfunde nach aktivem Regelwerk“.</div>
-              <div id="fundgruppenListe" style="max-height:220px; overflow:auto;"></div>
-              <div class="btn-row" style="margin-top:8px;">
-                <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden &amp; neu anonymisieren</button>
-                <span id="fundgruppenStatus" class="small-muted"></span>
+        <div class="card">
+          <div class="karten-kopf">
+            <h2 style="margin:0; border:none; padding:0;">Dateiliste</h2>
+            <input type="search" id="dateiSuche" placeholder="Dateien durchsuchen" aria-label="Dateien durchsuchen" style="max-width:320px;">
+          </div>
+          <div id="dateiZusammenfassung" class="small-muted" style="margin:8px 0;">0 geladen</div>
+          <div style="max-height:320px; overflow:auto;">
+            <table class="report-table" id="dateiTabelle">
+              <thead><tr><th scope="col">Name</th><th scope="col">Typ</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th></tr></thead>
+              <tbody id="dateiListeBody"><tr><td colspan="4" class="small-muted">Noch keine Dateien geladen.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="primary" data-gehe-schritt="2">Weiter zu Schritt 2</button>
+            <button type="button" id="btnClearAll" class="danger">Dateien und Ergebnisse zurücksetzen</button>
+          </div>
+          <div class="small-muted">„Zurücksetzen“ leert Dateien, Ergebnisse, Entscheidungen „nur für diesen Auftrag“ und die Zuordnung im Arbeitsspeicher.</div>
+        </div>
+      </div>
+
+      <!-- Schritt 2 -->
+      <div id="schritt-2" class="schritt-panel">
+        <div class="card">
+          <h2>Verarbeiten</h2>
+          <div id="laufZusammenfassung" class="zusammenfassung"></div>
+          <div id="einstellungsZusammenfassung" class="einstellungen-kurz"></div>
+          <div class="btn-row">
+            <button type="button" class="link-btn" data-gehe-tab="tab-einstellungen">Einstellungen ändern</button>
+          </div>
+          <div class="btn-row" style="margin-top:14px;">
+            <button type="button" class="primary" id="btnRunAnon">Anonymisieren und prüfen</button>
+          </div>
+          <div class="progress-wrap" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <div id="progressStatus" class="small-muted" role="status" aria-live="polite">Bereit.</div>
+          <div id="laufMeldung" class="meldung" role="alert"></div>
+          <details class="erweitert">
+            <summary>Erweitert</summary>
+            <div class="small-muted" style="margin:6px 0;">Der Trockenlauf verarbeitet und prüft mit einer Kopie der Zuordnung. Er speichert keine neuen Zuordnungen und gibt nichts zur Weitergabe frei.</div>
+            <button type="button" id="btnRunProbe">Trockenlauf (ohne Freigabe)</button>
+          </details>
+        </div>
+      </div>
+
+      <!-- Schritt 3 -->
+      <div id="schritt-3" class="schritt-panel">
+        <div class="card">
+          <h2>Prüfergebnis</h2>
+          <div id="auditBanner" class="audit-banner neutral">Noch nicht geprüft.</div>
+          <div id="statPills" class="stat-pills"></div>
+          <div id="skippedInfo" class="small-muted" style="margin-bottom:8px;"></div>
+        </div>
+        <div class="pruef-grid">
+          <div>
+            <div class="card" id="fundgruppenBox">
+              <div class="karten-kopf">
+                <h2 style="margin:0; border:none; padding:0;">Funde</h2>
+                <button type="button" id="btnNaechsterFund" disabled>Nächster offener Fund</button>
               </div>
+              <div class="small-muted" style="margin:6px 0 8px;">Für jede Fundgruppe entscheiden: <strong>Alle Vorkommen ersetzen</strong> (Wert wird durch einen Platzhalter bzw. Geheimnisse durch <code>*****</code> ersetzt) oder <strong>Unverändert lassen</strong> (Wert bleibt sichtbar, nur für seine Kategorie). Ein Klick auf einen Fundort zeigt die Stelle in der Vorschau.</div>
+              <div id="fundgruppenListe" class="fundkarten"><div class="small-muted">Noch keine Funde.</div></div>
+              <div class="btn-row" style="margin-top:8px;">
+                <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden und neu verarbeiten</button>
+                <span id="fundgruppenStatus" class="small-muted" role="status" aria-live="polite"></span>
+              </div>
+              <div id="dauerhaftHinweis" class="warn-banner" hidden>Dauerhafte Regeln sind noch nicht gespeichert: Regeldatei speichern, sonst geht die Regel beim Schließen verloren. <button type="button" class="btn-sm" data-gehe-tab="tab-einstellungen">Zu den Einstellungen</button></div>
             </div>
+            <div class="card">
+              <h2>Getroffene Entscheidungen</h2>
+              <div id="entscheidungsListe"><div class="small-muted">Noch keine Entscheidungen.</div></div>
+            </div>
+            <details class="card">
+              <summary>Alle Einzelfunde</summary>
+              <div style="max-height:240px; overflow:auto; margin-top:8px;">
+                <table class="report-table" id="auditTable">
+                  <thead><tr><th scope="col">Datei</th><th scope="col">Zeile</th><th scope="col">Kategorie</th><th scope="col">Gefundener Wert</th></tr></thead>
+                  <tbody id="auditTableBody"><tr><td colspan="4" class="small-muted">Keine Restfunde vorhanden.</td></tr></tbody>
+                </table>
+              </div>
+            </details>
           </div>
 
-          <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px;">
-              <h2 style="margin:0; border:none; padding:0;">Vorschau: Original vs. Anonymisiert</h2>
-              <select id="previewFileSelect" style="max-width:360px;">
+          <div class="card" id="vorschauKarte">
+            <div class="karten-kopf">
+              <h2 style="margin:0; border:none; padding:0;">Vorschau</h2>
+              <select id="previewFileSelect" aria-label="Datei für die Vorschau" style="max-width:360px;">
                 <option value="">-- Datei auswählen --</option>
               </select>
             </div>
-            <div class="diff-grid">
-              <div>
+            <div class="vorschau-werkzeuge">
+              <label><input type="checkbox" id="optOriginalAnzeigen"> Original anzeigen <span class="small-muted" style="color:#fde68a;">(Nicht bei Bildschirmfreigabe verwenden)</span></label>
+              <label><input type="checkbox" id="optNurGeaendert"> Nur geänderte Zeilen</label>
+              <label><input type="checkbox" id="optSyncScroll" checked> Synchron scrollen</label>
+              <button type="button" class="btn-sm" id="btnNaechsteAenderung">Nächste Änderung</button>
+              <span class="suche-feld"><input type="search" id="vorschauSuche" placeholder="In der Datei suchen" aria-label="In der Datei suchen"><button type="button" class="btn-sm" id="btnVorschauSuche">Suchen</button></span>
+            </div>
+            <div id="vorschauInfo" class="small-muted" role="status" aria-live="polite"></div>
+            <div class="diff-grid" id="vorschauGrid">
+              <div id="originalSpalte" hidden>
                 <div class="preview-col-header">
-                  <span class="small-muted">Originaldatei (nur lokal im RAM)</span>
+                  <span class="small-muted">Original (nur im Arbeitsspeicher)</span>
                   <div style="display:flex; align-items:center; gap:8px;">
-                    <span id="copyOriginalStatus" class="copy-feedback"></span>
+                    <span id="copyOriginalStatus" class="copy-feedback" role="status"></span>
                     <button type="button" class="btn-sm" id="btnCopyOriginal">Original kopieren</button>
                   </div>
                 </div>
-                <div id="previewOriginal" class="code-box"></div>
+                <div id="previewOriginal" class="code-box vorschau-box" tabindex="0" aria-label="Original"></div>
               </div>
               <div>
                 <div class="preview-col-header">
-                  <span class="small-muted">Anonymisierte Ausgabe (für Weitergabe)</span>
+                  <span class="small-muted">Anonymisiert (zur Weitergabe); ersetzte Stellen markiert</span>
                   <div style="display:flex; align-items:center; gap:8px;">
-                    <span id="copyAnonStatus" class="copy-feedback"></span>
+                    <span id="copyAnonStatus" class="copy-feedback" role="status"></span>
                     <button type="button" class="btn-sm" id="btnCopyAnon">Anonymisiert kopieren</button>
                   </div>
                 </div>
-                <div id="previewAnon" class="code-box"></div>
+                <div id="previewAnon" class="code-box vorschau-box" tabindex="0" aria-label="Anonymisierte Ausgabe"></div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Schritt 4 -->
+      <div id="schritt-4" class="schritt-panel">
+        <div class="card">
+          <h2>Herunterladen</h2>
+          <div id="releaseLockInfo" class="sperr-info" role="status" aria-live="polite">Noch nicht geprüft.</div>
+          <div class="export-item">
+            <div class="export-titel">Ergebnis-ZIP – zur Weitergabe</div>
+            <div class="small-muted">Enthält nur die anonymisierten Dateien. Die Zuordnungstabelle und der Bericht sind nie im ZIP.</div>
+            <div id="exportUnvollstaendig" class="warn-text"></div>
+            <div class="btn-row"><button type="button" class="success" id="btnDownloadZip" disabled>Ergebnis-ZIP herunterladen</button></div>
+          </div>
+          <div class="export-item">
+            <div class="export-titel">Verschlüsselte Zuordnungstabelle – vertraulich aufbewahren</div>
+            <div class="small-muted">Für die Rückübersetzung und damit gleiche Werte beim nächsten Auftrag dieselben Platzhalter bekommen. Genauso vertraulich wie die Originaldaten; niemals weitergeben.</div>
+            <div id="tabelleGeaendertHinweis" class="warn-text" hidden>Die Zuordnung hat sich seit dem letzten Speichern geändert.</div>
+            <label class="small-muted" for="tableSavePass">Passwort (mindestens 12 Zeichen):</label>
+            <input type="password" id="tableSavePass" autocomplete="new-password" style="margin:6px 0 8px 0;">
+            <label class="small-muted" for="tableSavePassConfirm">Passwort wiederholen:</label>
+            <input type="password" id="tableSavePassConfirm" autocomplete="new-password" style="margin:6px 0 4px 0;">
+            <div id="tableSavePassMeldung" class="meldung" role="alert"></div>
+            <div class="btn-row"><button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Zuordnungstabelle (.anontab) herunterladen</button></div>
+            <div id="tableSaveStatus" class="small-muted" role="status" aria-live="polite" style="margin-top:8px;"></div>
+          </div>
+          <div class="export-item">
+            <div class="export-titel">Technischer Bericht (ohne Werte)</div>
+            <div class="small-muted">Anzahl der Ersetzungen je Kategorie, Prüfergebnis, Restfunde und bewusst freigegebene Werte, nur als Zahlen; Pfade anonymisiert.</div>
+            <div class="btn-row"><button type="button" id="btnDownloadReport" disabled>Technischer Bericht (bericht.json)</button></div>
+          </div>
+          <div id="exportMeldung" class="meldung" role="alert"></div>
+        </div>
+      </div>
     </section>
 
-    <!-- TAB 2: REGELDATEI & EIGENE BEGRIFFE -->
-    <section id="tab-regeln" class="tab-panel">
+    <!-- RÜCKÜBERSETZEN -->
+    <section id="tab-zurueck" class="tab-panel" aria-label="Rückübersetzen">
+      <div class="card">
+        <h2>Rückübersetzen</h2>
+        <div class="small-muted" style="margin-bottom:10px;">
+          Die Antwort einer KI oder eines externen Experten enthält Platzhalter. Mit der Zuordnung werden sie lokal wieder durch die Originalwerte ersetzt, zum Beispiel <code>HOST-1</code> wieder durch den ursprünglichen Gerätenamen und <code>NET-1.H2</code> durch die ursprüngliche IP-Adresse. Der Text verlässt dabei den Rechner nicht.
+        </div>
+        <div class="small-muted" id="reverseTableInfo" style="margin-bottom:6px;">Aktive Zuordnungen: 0</div>
+        <div class="btn-row" style="margin-bottom:10px; align-items:center;">
+          <label class="small-muted" for="reverseTablePass">Passwort der Zuordnungstabelle:</label>
+          <input type="password" id="reverseTablePass" autocomplete="off" style="max-width:260px;">
+          <button type="button" id="btnQuickLoadTableRev">Zuordnungstabelle laden</button>
+          <button type="button" class="primary" id="btnRunDeanonymize">Jetzt rückübersetzen</button>
+        </div>
+        <div id="reverseMeldung" class="meldung" role="alert"></div>
+        <div class="diff-grid">
+          <div>
+            <label class="small-muted" for="reverseInput" style="display:block; margin-bottom:4px;">Text mit Platzhaltern (z. B. KI-Antwort)</label>
+            <textarea id="reverseInput" rows="18" placeholder="z. B.: Prüfen Sie auf HOST-1 die Route zu NET-1.H1/24 über Interface Ethernet1/1/10 (MAC-1)..."></textarea>
+          </div>
+          <div>
+            <label class="small-muted" for="reverseOutput" style="display:block; margin-bottom:4px;">Rückübersetztes Ergebnis (nur im Arbeitsspeicher)</label>
+            <textarea id="reverseOutput" rows="18" readonly placeholder="Hier erscheint der Text mit den Originalwerten..."></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EINSTELLUNGEN -->
+    <section id="tab-einstellungen" class="tab-panel" aria-label="Einstellungen">
+      <div class="card">
+        <h2>Was wird ersetzt</h2>
+        <div id="einstellungsZusammenfassung2" class="einstellungen-kurz"></div>
+        <details id="kategorienDetails" class="erweitert">
+          <summary>Kategorien und Optionen ändern</summary>
+          <div style="margin:10px 0;">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+              <input type="checkbox" id="optNetzerhaltend" checked>
+              Netzerhaltende IP-Platzhalter (z. B. NET-1.H17/24)
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:4px; cursor:pointer;">
+              <input type="checkbox" id="optIpPrivPub" checked>
+              Privat/Öffentlich trennen (IP-PRIV-n / IP-PUB-n)
+            </label>
+          </div>
+          <div class="checkbox-list">
+            <label><input type="checkbox" class="cat-toggle" value="geheimnisseEntfernen" checked> Geheimnisse (*****)</label>
+            <label><input type="checkbox" class="cat-toggle" value="ip" checked> IPv4 / IPv6 &amp; Netze</label>
+            <label><input type="checkbox" class="cat-toggle" value="mac" checked> MAC-Adressen</label>
+            <label><input type="checkbox" class="cat-toggle" value="hostnamen" checked> Gerätenamen / Domains</label>
+            <label><input type="checkbox" class="cat-toggle" value="benutzer" checked> Benutzernamen</label>
+            <label><input type="checkbox" class="cat-toggle" value="seriennummern" checked> Seriennummern</label>
+            <label><input type="checkbox" class="cat-toggle" value="freitext" checked> Freitext / Banner</label>
+            <label><input type="checkbox" class="cat-toggle" value="eigeneBegriffe" checked> Eigene Ersetzungen</label>
+          </div>
+        </details>
+      </div>
+
       <div class="card" id="customTermsCard">
-        <h2>Eigene Begriffe eingeben (festeZuordnung, firmenUndStandorte, interneDomains)</h2>
+        <h2>Eigene Ersetzungen und Ausnahmen</h2>
         <div class="warn-banner">
           Warnung: Diese Datei enthält echte Namen – nicht weitergeben, nicht ins Repo.
         </div>
         <div class="small-muted" style="margin-bottom:10px;">
-          Eingaben werden sofort für den nächsten Lauf mit der geladenen Regeldatei zusammengeführt. Keine Speicherung im Browser – Export ausschließlich als lokale Datei <code>anon-regeln.lokal.json</code> (enthält nur den Abschnitt <code>eigeneBegriffe</code>).
+          Gilt ab dem nächsten Verarbeiten. Keine Speicherung im Browser: dauerhaft bleiben die Einträge nur, wenn Sie die Regeldatei <code>anon-regeln.lokal.json</code> speichern und beim nächsten Mal wieder laden.
         </div>
         <div class="btn-row" style="margin-bottom:12px;">
           <button type="button" id="btnLoadLocalTerms">anon-regeln.lokal.json laden</button>
           <button type="button" class="primary" id="btnDownloadLocalTerms">Als anon-regeln.lokal.json speichern</button>
-          <button type="button" id="btnClearLocalTerms" class="danger">Eigene Begriffe leeren</button>
+          <button type="button" id="btnClearLocalTerms" class="danger">Eigene Einträge leeren</button>
           <input type="file" id="inputLocalTermsFile" accept=".json" style="display:none">
         </div>
-        <div id="customTermsValidationMsg" class="small-muted" style="margin-bottom:10px;"></div>
+        <div id="lokalUngespeichert" class="warn-text" hidden>Ungespeicherte Änderungen: Regeldatei speichern, sonst geht die Regel beim Schließen verloren.</div>
+        <div id="customTermsValidationMsg" class="small-muted" role="status" aria-live="polite" style="margin-bottom:10px;"></div>
         <div class="terms-grid">
           <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong>1. festeZuordnung (Original &rarr; Platzhalter)</strong>
+            <div class="terms-kopf">
+              <strong>Eigene Ersetzungen (Original &rarr; Platzhalter)</strong>
               <button type="button" class="btn-sm" id="btnAddFesteRow">+ Zeile</button>
             </div>
             <div class="small-muted" style="margin-bottom:6px;">Platzhalter optional (nur <code>[A-Z0-9-]{1,32}</code>), sonst automatisch.</div>
             <div id="festeZuordnungRows" style="max-height:260px; overflow:auto;"></div>
           </div>
           <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong>2. firmenUndStandorte</strong>
+            <div class="terms-kopf">
+              <strong>Firmen und Standorte</strong>
               <button type="button" class="btn-sm" id="btnAddFirmaRow">+ Zeile</button>
             </div>
             <div class="small-muted" style="margin-bottom:6px;">Ein Begriff (Firma, Standort, Personenname) pro Zeile.</div>
             <div id="firmenUndStandorteRows" style="max-height:260px; overflow:auto;"></div>
           </div>
           <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong>3. interneDomains</strong>
+            <div class="terms-kopf">
+              <strong>Interne Domains</strong>
               <button type="button" class="btn-sm" id="btnAddDomainRow">+ Zeile</button>
             </div>
             <div class="small-muted" style="margin-bottom:6px;">Eine interne Domain pro Zeile (z. B. <code>intern.example.com</code>).</div>
             <div id="interneDomainsRows" style="max-height:260px; overflow:auto;"></div>
           </div>
           <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong>4. Nicht anonymisieren (ausnahmen.exakteWoerter)</strong>
+            <div class="terms-kopf">
+              <strong>Nicht anonymisieren (in allen Kategorien)</strong>
               <button type="button" class="btn-sm" id="btnAddExaktRow">+ Zeile</button>
             </div>
-            <div class="small-muted" style="margin-bottom:6px;">Exakte Werte, die im Klartext bleiben (z. B. aus der Zuordnungstabelle entfernte Einträge).</div>
+            <div class="small-muted" style="margin-bottom:6px;">Exakte Werte, die überall im Klartext bleiben (z. B. aus der Zuordnung entfernte Einträge).</div>
             <div id="exakteWoerterRows" style="max-height:260px; overflow:auto;"></div>
           </div>
+          <div>
+            <div class="terms-kopf"><strong>Bewusst freigegebene Werte (nur ihre Kategorie)</strong></div>
+            <div class="small-muted" style="margin-bottom:6px;">Entstehen über „Unverändert lassen“ mit „als dauerhafte Regel übernehmen“. Der Wert bleibt sichtbar und wird im Prüfergebnis als „bewusst freigegeben“ gezählt.</div>
+            <div id="freigabenListe" style="max-height:260px; overflow:auto;"></div>
+          </div>
         </div>
-        <div style="margin-top:12px;">
-          <strong>5. Eigene Hostnamen-Muster (eigeneHostnamenMuster)</strong>
+      </div>
+
+      <details class="card" id="erweitertDetails">
+        <summary>Erweitert: Regeldatei, Muster, Strukturvorlage, Zuordnungstabelle, Verschlüsselung</summary>
+
+        <div class="unterkarte">
+          <h3>Eigene Gerätenamen-Muster</h3>
           <div class="small-muted" style="margin-bottom:6px;">Ein regulärer Ausdruck pro Zeile für Ihr Namensschema (z. B. <code>(?i)(?&lt;![A-Za-z0-9_-])(xy[0-9]-sw[0-9]{2})(?![A-Za-z0-9_-])</code>). Treffer werden zu <code>HOST-n</code>. Weitere Muster aus einer geladenen <code>anon-regeln.lokal.json</code> werden unverändert übernommen.</div>
-          <textarea id="eigeneHostnamenMusterInput" rows="4" spellcheck="false"></textarea>
+          <textarea id="eigeneHostnamenMusterInput" rows="4" spellcheck="false" aria-label="Eigene Gerätenamen-Muster"></textarea>
           <div class="small-muted" id="lokaleMusterInfo"></div>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Regeldatei (anon-regeln.json) bearbeiten, laden oder speichern</h2>
-        <div class="small-muted" style="margin-bottom:10px;">
-          Diese JSON-Struktur ist zu 100 % kompatibel mit <code>anon.ps1</code>. Es findet keinerlei Speicherung im Browser statt.
+        <div class="unterkarte">
+          <h3>Regeldatei (anon-regeln.json)</h3>
+          <div class="small-muted" style="margin-bottom:10px;">Kompatibel mit <code>anon.ps1</code>. Keine Speicherung im Browser.</div>
+          <div class="btn-row" style="margin-bottom:10px;">
+            <button type="button" id="btnLoadRulesFile">anon-regeln.json laden</button>
+            <button type="button" class="primary" id="btnApplyRules">Änderungen übernehmen</button>
+            <button type="button" id="btnDownloadRules">Als anon-regeln.json speichern</button>
+            <button type="button" id="btnResetRules">Standardregeln wiederherstellen</button>
+            <input type="file" id="inputRulesFile" accept=".json" style="display:none">
+          </div>
+          <textarea id="rulesTextarea" rows="18" spellcheck="false" aria-label="Regeldatei"></textarea>
+          <div id="rulesStatus" class="small-muted" role="status" aria-live="polite" style="margin-top:6px;"></div>
         </div>
-        <div class="btn-row" style="margin-bottom:10px;">
-          <button type="button" id="btnLoadRulesFile">anon-regeln.json von Festplatte laden</button>
-          <button type="button" class="primary" id="btnApplyRules">Änderungen übernehmen</button>
-          <button type="button" id="btnDownloadRules">Als anon-regeln.json speichern</button>
-          <button type="button" id="btnResetRules">Standardregeln wiederherstellen</button>
-          <input type="file" id="inputRulesFile" accept=".json" style="display:none">
-        </div>
-        <textarea id="rulesTextarea" rows="22" spellcheck="false"></textarea>
-        <div id="rulesStatus" class="small-muted" style="margin-top:6px;"></div>
-      </div>
-    </section>
 
-    <!-- TAB 3: ZUORDNUNGSTABELLE -->
-    <section id="tab-tabelle" class="tab-panel">
-      <div class="card">
-        <h2>Zuordnungstabelle verwalten (ANON-AES256-2: PBKDF2-SHA256 + AES-256-CBC + HMAC-SHA256)</h2>
-        <div class="small-muted" style="margin-bottom:12px;">
-          Die Zuordnungstabelle ist genauso vertraulich wie die Originaldaten! Sie wird mit Ihrem Passwort im Format ANON-AES256-2 (PBKDF2-SHA256 mit 600.000 Iterationen, AES-256-CBC, HMAC-SHA256) verschlüsselt heruntergeladen und ist damit auch in anon.ps1 ladbar. Ältere Tabellen (ANON-WEBCRYPTO-AESGCM-1, ANON-AES256-1) bleiben im Browser ladbar.
+        <div class="unterkarte">
+          <h3>Strukturvorlage (Regelentwicklung)</h3>
+          <div class="warn-banner" style="display:block; margin-bottom:8px;"><strong>Vor Weitergabe sichten!</strong> Die Strukturvorlage ersetzt alle Werte durch ihre Form (Großbuchstabe → <code>A</code>, Kleinbuchstabe → <code>a</code>, Ziffer → <code>9</code>, Sonderzeichen bleiben). Bekannte CLI-Schlüsselwörter und Tabellenköpfe (feste Liste) bleiben, Freitextfelder werden <code>&lt;FREITEXT&gt;</code>, Geheimnisse <code>*****</code>. Zweck: Regeln für reale Formate entwickeln, ohne Echtdaten weiterzugeben.</div>
+          <div class="btn-row">
+            <button type="button" id="btnStrukturvorlage">Strukturvorlage erzeugen</button>
+            <span id="strukturStatus" class="small-muted" role="status" aria-live="polite"></span>
+          </div>
+          <textarea id="strukturVorschau" rows="8" readonly style="margin-top:8px; display:none;" aria-label="Strukturvorlage"></textarea>
         </div>
-        <div class="grid-2">
-          <div>
-            <h3>Aktuelle Tabelle verschlüsselt speichern</h3>
-            <label class="small-muted">Passwort für Verschlüsselung:</label>
-            <input type="password" id="tableSavePass" placeholder="Starkes Passwort eingeben..." style="margin:6px 0 8px 0;">
-            <label class="small-muted">Passwort zur Bestätigung wiederholen:</label>
-            <input type="password" id="tableSavePassConfirm" placeholder="Passwort erneut eingeben..." style="margin:6px 0 10px 0;">
-            <div class="btn-row">
-              <button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Tabelle (.anontab) herunterladen</button>
+
+        <div class="unterkarte" id="tablePreviewCard">
+          <h3>Zuordnungstabelle ansehen und bearbeiten</h3>
+          <div class="small-muted" style="margin-bottom:8px;">Bearbeiten (Umbenennen, Entfernen, Hinzufügen) ist nur bei „Originale anzeigen“ möglich. Das Original eines Eintrags ist nicht änderbar – stattdessen entfernen und neu hinzufügen.</div>
+          <div id="tablePendingBanner" class="warn-banner" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
+            <span>Änderungen noch nicht angewendet</span>
+            <button type="button" class="primary btn-sm" id="btnReapplyAnon">Neu verarbeiten</button>
+          </div>
+          <div id="tableEditStatus" class="small-muted" role="status" aria-live="polite" style="margin-bottom:8px;"></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
+              <button type="button" id="btnHideTableOriginals" style="display:none;">wieder verdecken</button>
+              <span class="small-muted" style="color:#fde68a;">Hinweis: Nicht bei Bildschirmfreigabe verwenden</span>
             </div>
-            <div id="tableSaveStatus" class="small-muted" style="margin-top:8px;"></div>
-          </div>
-          <div>
-            <h3>Bestehende Tabelle für konsistente Läufe laden</h3>
-            <label class="small-muted">Passwort zum Entschlüsseln (falls verschlüsselt):</label>
-            <input type="password" id="tableLoadPass" placeholder="Passwort (leer lassen bei unverschlüsselter JSON)" style="margin:6px 0 10px 0;">
-            <div class="btn-row">
-              <button type="button" id="btnLoadTableFile">Tabellendatei auswählen &amp; laden</button>
-              <button type="button" class="danger" id="btnResetTableState">Neue leere Tabelle starten</button>
-              <input type="file" id="inputTableFile" accept=".json,.anontab,.anon-tab" style="display:none">
+            <div style="min-width:280px; flex:1; max-width:420px;">
+              <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original..." aria-label="Zuordnungstabelle durchsuchen">
             </div>
-            <div id="tableLoadStatus" class="small-muted" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
+          </div>
+          <div id="tableAddEntryBar" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+            <strong>Eintrag hinzufügen:</strong>
+            <input type="text" id="tableAddOriginal" placeholder="Original (Pflicht)" aria-label="Original" style="max-width:240px;">
+            <input type="text" id="tableAddPlaceholder" placeholder="Platzhalter (optional)" aria-label="Platzhalter" style="max-width:180px;">
+            <select id="tableAddCategory" aria-label="Kategorie" style="max-width:200px;">
+              <option value="FESTE_ZUORDNUNG">Eigene Ersetzung</option>
+              <option value="FIRMA">Firma / Standort</option>
+              <option value="DOMAIN">Interne Domain</option>
+            </select>
+            <button type="button" class="btn-sm" id="btnTableAddEntry">Hinzufügen</button>
+          </div>
+          <div id="tableCategoryCounts" class="stat-pills"></div>
+          <div style="max-height:380px; overflow:auto;">
+            <table class="report-table" id="mappingPreviewTable">
+              <thead>
+                <tr>
+                  <th class="sortable-th" data-sort="category" scope="col" tabindex="0">Kategorie &#8597;</th>
+                  <th class="sortable-th" data-sort="placeholder" scope="col" tabindex="0">Platzhalter &#8597;</th>
+                  <th class="sortable-th" data-sort="original" scope="col" tabindex="0">Original &#8597;</th>
+                  <th scope="col">Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="mappingPreviewTableBody">
+                <tr><td colspan="4" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
-      <div class="card" id="tablePreviewCard">
-        <h2>Zuordnungstabelle ansehen &amp; bearbeiten</h2>
-        <div class="small-muted" style="margin-bottom:8px;">Bearbeiten (Umbenennen, Entfernen, Hinzufügen) ist nur bei „Originale anzeigen“ möglich. Das Original eines Eintrags ist nicht änderbar – stattdessen entfernen und neu hinzufügen.</div>
-        <div id="tablePendingBanner" class="warn-banner" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
-          <span>Änderungen noch nicht angewendet</span>
-          <button type="button" class="primary btn-sm" id="btnReapplyAnon">Neu anonymisieren</button>
+        <div class="unterkarte">
+          <h3>Verschlüsselung der Zuordnungstabelle</h3>
+          <div class="small-muted">Format ANON-AES256-2: PBKDF2-SHA256 mit 600.000 Iterationen, AES-256-CBC, HMAC-SHA256; auch in <code>anon.ps1</code> ladbar. Ältere Tabellen (ANON-WEBCRYPTO-AESGCM-1, ANON-AES256-1) bleiben im Browser ladbar. Passwortfelder werden nach dem Speichern geleert.</div>
         </div>
-        <div id="tableEditStatus" class="small-muted" style="margin-bottom:8px;"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
-            <button type="button" id="btnHideTableOriginals" style="display:none;">wieder verdecken</button>
-            <span class="small-muted" style="color:#fde68a;">Hinweis: Nicht bei Bildschirmfreigabe verwenden</span>
-          </div>
-          <div style="min-width:280px; flex:1; max-width:420px;">
-            <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original...">
-          </div>
-        </div>
-        <div id="tableAddEntryBar" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-          <strong>Eintrag hinzufügen:</strong>
-          <input type="text" id="tableAddOriginal" placeholder="Original (Pflicht)" style="max-width:240px;">
-          <input type="text" id="tableAddPlaceholder" placeholder="Platzhalter (optional)" style="max-width:180px;">
-          <select id="tableAddCategory" style="max-width:200px;">
-            <option value="FESTE_ZUORDNUNG">FESTE_ZUORDNUNG</option>
-            <option value="FIRMA">FIRMA</option>
-            <option value="DOMAIN">DOMAIN</option>
-          </select>
-          <button type="button" class="btn-sm" id="btnTableAddEntry">Hinzufügen</button>
-        </div>
-        <div id="tableCategoryCounts" class="stat-pills"></div>
-        <div style="max-height:380px; overflow:auto;">
-          <table class="report-table" id="mappingPreviewTable">
-            <thead>
-              <tr>
-                <th class="sortable-th" data-sort="category">Kategorie &#8597;</th>
-                <th class="sortable-th" data-sort="placeholder">Platzhalter &#8597;</th>
-                <th class="sortable-th" data-sort="original">Original &#8597;</th>
-                <th>Aktion</th>
-              </tr>
-            </thead>
-            <tbody id="mappingPreviewTableBody">
-              <tr><td colspan="4" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 5: RÜCKÜBERSETZEN -->
-    <section id="tab-zurueck" class="tab-panel">
-      <div class="card">
-        <h2>Rückübersetzung (KI-Antwort &rarr; Echte Infrastruktur-Werte)</h2>
-        <div class="small-muted" style="margin-bottom:10px;">
-          Fügen Sie hier die Antwort der KI oder des externen Experten ein. Mithilfe der im Arbeitsspeicher geladenen (oder im Reiter „Zuordnungstabelle“ entsperrten) Tabelle werden Platzhalter wie <code>NET-1.H2</code>, <code>CORE-A</code>, <code>MAC-1</code> lokal zurückübersetzt.
-        </div>
-        <div class="btn-row" style="margin-bottom:10px;">
-          <button type="button" class="primary" id="btnRunDeanonymize">Jetzt rückübersetzen</button>
-          <button type="button" id="btnQuickLoadTableRev">Tabelle laden...</button>
-        </div>
-        <div class="diff-grid">
-          <div>
-            <div class="small-muted" style="margin-bottom:4px;">Text mit Platzhaltern (z. B. KI-Antwort)</div>
-            <textarea id="reverseInput" rows="18" placeholder="z. B.: Prüfen Sie auf CORE-A die Route zu NET-1.H1/24 über Interface Ethernet1/1/10 (MAC-1)..."></textarea>
-          </div>
-          <div>
-            <div class="small-muted" style="margin-bottom:4px;">Rückübersetztes Ergebnis (nur im RAM)</div>
-            <textarea id="reverseOutput" rows="18" readonly placeholder="Hier erscheint der Text mit den echten Werten..."></textarea>
-          </div>
-        </div>
-      </div>
+      </details>
     </section>
   </main>
 
@@ -5473,40 +5638,81 @@
   // 5. BROWSER-UI STEUERUNG (Wird nur im Browser ausgeführt, Node-kompatibel)
   // ============================================================================
   if (typeof window !== "undefined" && typeof document !== "undefined") {
+    const $ = (id) => document.getElementById(id);
     let currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
     let currentState = new AnonState();
-    let loadedInputFiles = []; // [{ path, bytes }]
-    let processedResults = []; // [{ path, originalText, anonText, findings }]
+    let loadedInputFiles = []; // [{ id, path, bytes, typ, status, meldung }]; bytes = null bei Fehler
+    let naechsteDateiId = 1;
+    let processedResults = []; // [{ path, originalPath, originalText, anonText, findings, freigegeben }]
     let skippedBinaryFiles = [];
     let lastReportObj = null;
     let releaseAllowed = false;      // ZIP und "Anonymisiert kopieren" nur bei KEINE_RESTFUNDE
     const releaseGuard = createReleaseGuard();
+    let laufErgebnis = null;          // { isProbe, freigegeben, nichtVerarbeitet, fehler }
+    let ergebnisVeraltet = false;     // Änderung seit dem letzten Lauf (außer Fundentscheidungen)
+    let laeuft = false;
+    let fortschritt = { aktuell: 0, gesamt: 0 };
+    let aktuellerSchritt = 1;
+
     // Jede relevante Änderung macht das bisherige Ergebnis ungültig (zentral, siehe createReleaseGuard)
     function markiereGeaendert(grund) {
       releaseGuard.markChanged(grund);
       releaseAllowed = releaseGuard.isAllowed();
+      if (laufErgebnis && grund !== "entscheidung") ergebnisVeraltet = true;
       if (typeof updateReleaseUI === "function") updateReleaseUI();
     }
     function onCustomTermsInput() {
       refreshCustomTermsValidationUI();
+      unsavedLocalTermsChanges = true;
       markiereGeaendert("eigeneBegriffe");
     }
-    let findingGroups = [];          // Fundgruppen des letzten Laufs
-    let findingDecisions = {};       // schluessel -> "ersetzen" | "fehlalarm"
+    let findingGroups = [];          // Fundgruppen des letzten Laufs (bildeFundgruppen)
+    let findingDecisions = {};       // schluessel -> { aktion: "ersetzen" | "unveraendert", umfang: "auftrag" | "dauerhaft", eintraege }
+    let auftragsEntscheidungen = []; // Entscheidungen "nur für diesen Auftrag": [{ schluessel, aktion, text, werte, eintraege }]
+    let dauerhafteEntscheidungen = []; // zum Rückgängigmachen dauerhafter Entscheidungen
+    let fundZeiger = -1;             // für "Nächster offener Fund"
 
     // Zustand für Vorschau der Zuordnungstabelle
     let tablePreviewShowOriginals = false;
     let tablePreviewSortBy = "category";
     let tablePreviewSortDir = "asc";
     // Bearbeitungszustand der Zuordnungstabelle
-    let tableHasPendingChanges = false;   // Änderungen noch nicht per "Neu anonymisieren" angewendet
-    let unsavedTableChanges = false;      // Zuordnungstabelle seit letzter Änderung nicht exportiert
-    let unsavedLocalTermsChanges = false;
-    let loadedLocalMuster = {}; // Musterlisten aus anon-regeln.lokal.json (außer eigeneHostnamenMuster, das editierbar ist) // anon-regeln.lokal.json seit letzter Änderung nicht exportiert
+    let tableHasPendingChanges = false;   // Änderungen noch nicht per "Neu verarbeiten" angewendet
+    let unsavedTableChanges = false;      // Zuordnungstabelle seit letzter Änderung nicht gespeichert
+    let unsavedLocalTermsChanges = false; // anon-regeln.lokal.json seit letzter Änderung nicht gespeichert
+    let loadedLocalMuster = {}; // Musterlisten aus anon-regeln.lokal.json (außer eigeneHostnamenMuster, das editierbar ist)
     let openInlineEdit = null;            // { ph, input, initial }
 
-    const rulesTextarea = document.getElementById("rulesTextarea");
+    // Vorschau
+    let vorschauIndex = -1;
+    let vorschauZiel = { zeile: 0, wert: "" };
+    let vorschauGeaendert = [];
+    let vorschauSuchZeile = 0;
+
+    const rulesTextarea = $("rulesTextarea");
     rulesTextarea.value = JSON.stringify(currentRules, null, 2);
+    const STANDARD_REGELN_TEXT = rulesTextarea.value;
+
+    // Meldung dauerhaft an der betroffenen Stelle (statt alert); leerer Text entfernt sie
+    function zeigeMeldung(id, text, art) {
+      const el = $(id);
+      if (!el) return;
+      el.classList.toggle("ok", art === "ok");
+      el.textContent = text || "";
+    }
+    function markiereFeld(id, ungueltig) {
+      const el = $(id);
+      if (el) { if (ungueltig) el.setAttribute("aria-invalid", "true"); else el.removeAttribute("aria-invalid"); }
+    }
+    // Feldnamen der Regeldatei in Meldungen verständlich benennen
+    function verstaendlich(text) {
+      return String(text || "")
+        .replace(/ausnahmen\.exakteWoerter/g, "Nicht anonymisieren")
+        .replace(/festeZuordnung/g, "Eigene Ersetzungen")
+        .replace(/firmenUndStandorte/g, "Firmen und Standorte")
+        .replace(/interneDomains/g, "Interne Domains")
+        .replace(/ausnahmen\.freigegeben/g, "Bewusst freigegebene Werte");
+    }
 
     function hasDirtyInlineEdit() {
       return Boolean(openInlineEdit && openInlineEdit.input && openInlineEdit.input.value !== openInlineEdit.initial);
@@ -5524,22 +5730,22 @@
     function maskTablePreviewOriginals() {
       tablePreviewShowOriginals = false;
       openInlineEdit = null;
-      const btnShow = document.getElementById("btnShowTableOriginals");
-      const btnHide = document.getElementById("btnHideTableOriginals");
+      const btnShow = $("btnShowTableOriginals");
+      const btnHide = $("btnHideTableOriginals");
       if (btnShow) btnShow.style.display = "";
       if (btnHide) btnHide.style.display = "none";
       renderTablePreviewUI();
     }
 
     function setTableEditStatus(msg, isError) {
-      const el = document.getElementById("tableEditStatus");
+      const el = $("tableEditStatus");
       if (!el) return;
       el.style.color = isError ? "#fca5a5" : "#86efac";
       el.textContent = msg || "";
     }
 
     function updatePendingBannerUI() {
-      const banner = document.getElementById("tablePendingBanner");
+      const banner = $("tablePendingBanner");
       if (banner) banner.style.display = tableHasPendingChanges ? "flex" : "none";
     }
 
@@ -5552,67 +5758,313 @@
     }
 
     function renderTablePreviewUI() {
-      const tbody = document.getElementById("mappingPreviewTableBody");
-      const countsEl = document.getElementById("tableCategoryCounts");
-      const searchEl = document.getElementById("tablePreviewSearch");
-      const addBar = document.getElementById("tableAddEntryBar");
+      const tbody = $("mappingPreviewTableBody");
+      const countsEl = $("tableCategoryCounts");
+      const searchEl = $("tablePreviewSearch");
+      const addBar = $("tableAddEntryBar");
       if (addBar) addBar.style.display = tablePreviewShowOriginals ? "flex" : "none";
       if (!tbody || !countsEl) return;
       openInlineEdit = null;
 
       const { entries, categoryCounts } = extractMappingTableEntries(currentState);
-      countsEl.innerHTML = "";
+      countsEl.textContent = "";
       const cats = Object.keys(categoryCounts).sort();
-      if (cats.length === 0) {
-        const pill = document.createElement("div");
-        pill.className = "stat-pill";
-        pill.textContent = "Gesamt: 0";
-        countsEl.appendChild(pill);
-      } else {
-        const totalPill = document.createElement("div");
-        totalPill.className = "stat-pill";
-        totalPill.textContent = `Gesamt: ${entries.length}`;
-        countsEl.appendChild(totalPill);
-        for (const c of cats) {
-          const pill = document.createElement("div");
-          pill.className = "stat-pill";
-          pill.textContent = `${c}: ${categoryCounts[c]}`;
-          countsEl.appendChild(pill);
-        }
-      }
+      const pill = (text) => { const p = document.createElement("div"); p.className = "stat-pill"; p.textContent = text; countsEl.appendChild(p); };
+      pill(`Gesamt: ${cats.length === 0 ? 0 : entries.length}`);
+      for (const c of cats) pill(`${c}: ${categoryCounts[c]}`);
 
       const filtered = filterAndSortMappingEntries(entries, {
         search: searchEl ? searchEl.value : "",
         sortBy: tablePreviewSortBy,
         sortDir: tablePreviewSortDir
       });
+      // Werte werden in renderMappingTableRowsHtml über escapeHtml eingesetzt; Originale nur bei "Originale anzeigen"
       tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals, editable: tablePreviewShowOriginals });
     }
 
-    // Tab-Navigation (verdeckt beim Tab-Wechsel automatisch wieder die Originale in der Zuordnungstabelle)
+    // Hauptnavigation (verdeckt beim Wechsel automatisch wieder die Originale in der Zuordnungstabelle)
+    function zeigeTab(tabId) {
+      const btn = document.querySelector(`nav.tabs button[data-tab="${tabId}"]`);
+      if (btn) btn.click();
+    }
     document.querySelectorAll("nav.tabs button").forEach(btn => {
       btn.addEventListener("click", () => {
         if (!discardInlineEditWithConfirm()) return;
-        document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll("nav.tabs button").forEach(b => { b.classList.remove("active"); b.removeAttribute("aria-current"); });
         document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
         btn.classList.add("active");
-        document.getElementById(btn.dataset.tab).classList.add("active");
+        btn.setAttribute("aria-current", "page");
+        $(btn.dataset.tab).classList.add("active");
         maskTablePreviewOriginals();
       });
     });
+    document.querySelectorAll("[data-gehe-tab]").forEach(b => b.addEventListener("click", () => zeigeTab(b.dataset.geheTab)));
+
+    // Schritte des Ablaufs (frei anspringbar)
+    function zeigeSchritt(n) {
+      aktuellerSchritt = n;
+      document.querySelectorAll("nav.schritte button").forEach(b => {
+        if (Number(b.dataset.schritt) === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+      });
+      document.querySelectorAll(".schritt-panel").forEach(p => p.classList.toggle("active", p.id === "schritt-" + n));
+    }
+    document.querySelectorAll("nav.schritte button").forEach(b => b.addEventListener("click", () => zeigeSchritt(Number(b.dataset.schritt))));
+    document.querySelectorAll("[data-gehe-schritt]").forEach(b => b.addEventListener("click", () => zeigeSchritt(Number(b.dataset.geheSchritt))));
 
     function updateTableStatusUI() {
-      const el = document.getElementById("tableLoadStatus");
-      if (el) el.textContent = `Aktuell aktive Zuordnungen im RAM: ${currentState.reverse.size}`;
+      const text = `Aktuell aktive Zuordnungen: ${currentState.reverse.size}`;
+      const el = $("tableLoadStatus");
+      if (el && !el.dataset.meldung) el.textContent = text;
+      const info = $("zuordnungInfo");
+      if (info) info.textContent = text;
+      const rev = $("reverseTableInfo");
+      if (rev) rev.textContent = text;
       renderTablePreviewUI();
+      updateReleaseUI();
     }
 
-    function renderPreviewForIndex(idx) {
-      if (!Number.isNaN(idx) && processedResults[idx]) {
-        document.getElementById("previewOriginal").textContent = formatPreviewText(processedResults[idx].originalText);
-        document.getElementById("previewAnon").textContent = formatPreviewText(processedResults[idx].anonText);
+    // ------------------------------------------------------------------
+    // Ablaufstatus, Schrittinfos, Einstellungen-Zusammenfassung
+    // ------------------------------------------------------------------
+    function aktiveKategorien() {
+      const set = new Set();
+      document.querySelectorAll(".cat-toggle:checked").forEach(cb => set.add(cb.value));
+      return set;
+    }
+
+    function ablaufStatusJetzt() {
+      const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
+      return berechneAblaufStatus({
+        dateien: loadedInputFiles.length,
+        laeuft,
+        fortschritt,
+        lauf: laufErgebnis ? Object.assign({}, laufErgebnis, { offeneGruppen: offen, gruppen: findingGroups.length }) : null,
+        veraltet: ergebnisVeraltet,
+        freigabe: releaseAllowed
+      });
+    }
+
+    function aktualisiereEinstellungsZusammenfassung() {
+      const ct = readCustomTermsFromUI();
+      const norm = normalizeCustomInputRows(ct);
+      const abw = einstellungsAbweichungen({
+        kategorien: aktiveKategorien(),
+        netzerhaltend: $("optNetzerhaltend").checked,
+        ipPrivPub: $("optIpPrivPub").checked,
+        regelnGeaendert: rulesTextarea.value !== STANDARD_REGELN_TEXT,
+        eigeneErsetzungen: norm.festeRows.filter(r => r.original.trim()).length,
+        freigaben: (ct.muster["ausnahmen.freigegeben"] || []).length,
+        auftragsEntscheidungen: auftragsEntscheidungen.length
+      });
+      for (const id of ["einstellungsZusammenfassung", "einstellungsZusammenfassung2"]) {
+        const el = $(id);
+        if (!el) continue;
+        el.textContent = "";
+        const kopf = document.createElement("div");
+        kopf.style.fontWeight = "700";
+        const nurZaehler = abw.every(t => /eigene Ersetzung|bewusst freigegeben|nur für diesen Auftrag/.test(t));
+        kopf.textContent = abw.length === 0 || nurZaehler ? "Standardeinstellungen aktiv" : "Abweichungen vom Standard";
+        el.appendChild(kopf);
+        const kurz = document.createElement("div");
+        kurz.className = "small-muted";
+        kurz.textContent = "Ersetzt werden IP-Adressen (netzerhaltend), MAC-Adressen, Gerätenamen und Domains, Benutzernamen, Seriennummern, Freitext und eigene Ersetzungen; Geheimnisse werden zu *****.";
+        if (abw.length === 0 || nurZaehler) el.appendChild(kurz);
+        if (abw.length > 0) {
+          const ul = document.createElement("ul");
+          for (const t of abw) { const li = document.createElement("li"); li.className = "abweichung"; li.textContent = t; ul.appendChild(li); }
+          el.appendChild(ul);
+        }
       }
     }
+
+    function aktualisiereLaufZusammenfassung() {
+      const el = $("laufZusammenfassung");
+      if (!el) return;
+      const bereit = loadedInputFiles.filter(f => f.status === "bereit" || f.status === "verarbeitet").length;
+      const nicht = loadedInputFiles.length - bereit;
+      el.textContent = "";
+      const z1 = document.createElement("div");
+      z1.textContent = loadedInputFiles.length === 0
+        ? "Dateien: keine – zuerst in Schritt 1 auswählen."
+        : `Dateien: ${bereit} werden verarbeitet${nicht > 0 ? `, ${nicht} nicht (siehe Dateiliste)` : ""}.`;
+      const z2 = document.createElement("div");
+      z2.textContent = `Zuordnung: ${$("zuordnungLaden").checked ? "vorhandene Zuordnung" : "neue Zuordnung"} (${currentState.reverse.size} Einträge).`;
+      el.append(z1, z2);
+    }
+
+    function updateReleaseUI() {
+      document.getElementById("btnDownloadZip").disabled = !releaseAllowed;
+      document.getElementById("btnCopyAnon").disabled = !releaseAllowed;
+      const st = ablaufStatusJetzt();
+      const status = $("ablaufStatus");
+      if (status) {
+        status.className = "ablauf-status " + st.ton;
+        status.dataset.code = st.code;
+        status.textContent = st.text;
+      }
+      const info = $("releaseLockInfo");
+      if (info) {
+        info.className = "sperr-info " + (releaseAllowed ? "frei" : "gesperrt");
+        info.dataset.code = st.code;
+        info.textContent = releaseAllowed
+          ? `Freigegeben: ${st.text}. Bitte trotzdem die Vorschau sichten.`
+          : `Gesperrt: ${st.grund} Nächster Schritt: ${st.aktion}`;
+      }
+      const unv = $("exportUnvollstaendig");
+      if (unv) unv.textContent = releaseAllowed && laufErgebnis && laufErgebnis.nichtVerarbeitet > 0 ? `${laufErgebnis.nichtVerarbeitet} Datei(en) sind nicht im ZIP (nicht verarbeitet, siehe Dateiliste).` : "";
+      const tabHinweis = $("tabelleGeaendertHinweis");
+      if (tabHinweis) tabHinweis.hidden = !unsavedTableChanges;
+      const lok = $("lokalUngespeichert");
+      if (lok) lok.hidden = !unsavedLocalTermsChanges;
+      const dh = $("dauerhaftHinweis");
+      if (dh) dh.hidden = !(unsavedLocalTermsChanges && dauerhafteEntscheidungen.length > 0);
+      // Schrittinfos
+      const s1 = $("schrittInfo1"); if (s1) s1.textContent = loadedInputFiles.length > 0 ? dateiZusammenfassung(loadedInputFiles) : "keine Dateien";
+      const s2 = $("schrittInfo2"); if (s2) s2.textContent = laeuft ? "läuft" : (!laufErgebnis ? "noch nicht verarbeitet" : (ergebnisVeraltet ? "veraltet" : "verarbeitet"));
+      const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
+      const s3 = $("schrittInfo3"); if (s3) s3.textContent = !laufErgebnis ? "" : (findingGroups.length === 0 ? "keine offenen Funde" : `${offen} von ${findingGroups.length} offen`);
+      const s4 = $("schrittInfo4"); if (s4) s4.textContent = releaseAllowed ? "freigegeben" : "gesperrt";
+      aktualisiereLaufZusammenfassung();
+    }
+
+    // ------------------------------------------------------------------
+    // Vorschau: Zeilennummern, ersetzte Stellen, Fundstelle markiert, Ausschnitt um die Zielzeile
+    // ------------------------------------------------------------------
+    function fuelleZeile(textEl, zeile, opts) {
+      // Bereiche: ersetzte Stellen (nur Ausgabe), Fundwert (Zielzeile), Suchtreffer; alles über textContent
+      const marken = [];
+      if (opts.ersetzt) for (const [a, b] of ersetzteStellen(zeile)) marken.push({ a, b, art: "ersetzt" });
+      const suche = (w, art) => {
+        if (!w) return;
+        const low = zeile.toLowerCase();
+        const wl = w.toLowerCase();
+        let i = low.indexOf(wl);
+        while (i >= 0) { marken.push({ a: i, b: i + w.length, art }); i = low.indexOf(wl, i + Math.max(1, w.length)); }
+      };
+      if (opts.fund) suche(opts.fund, "fund");
+      if (opts.suche) suche(opts.suche, "treffer");
+      marken.sort((x, y) => x.a - y.a || (x.art === "fund" ? -1 : 1));
+      let pos = 0;
+      for (const m of marken) {
+        if (m.a < pos) continue;
+        if (m.a > pos) textEl.appendChild(document.createTextNode(zeile.slice(pos, m.a)));
+        const el = document.createElement(m.art === "ersetzt" ? "span" : "mark");
+        el.className = m.art === "ersetzt" ? "ersetzt" : (m.art === "fund" ? "markiert-fund" : "treffer");
+        el.textContent = zeile.slice(m.a, m.b);
+        textEl.appendChild(el);
+        pos = m.b;
+      }
+      if (pos < zeile.length) textEl.appendChild(document.createTextNode(zeile.slice(pos)));
+      if (zeile.length === 0) textEl.appendChild(document.createTextNode(" "));
+    }
+
+    function renderVorschau(idx, ziel) {
+      const box = $("previewAnon");
+      const boxOrig = $("previewOriginal");
+      const info = $("vorschauInfo");
+      box.textContent = "";
+      boxOrig.textContent = "";
+      if (Number.isNaN(idx) || !processedResults[idx]) { if (info) info.textContent = ""; return; }
+      if (vorschauIndex !== idx) vorschauGeaendert = geaenderteZeilen(processedResults[idx].originalText, processedResults[idx].anonText);
+      vorschauIndex = idx;
+      vorschauZiel = ziel || { zeile: 0, wert: "" };
+      const res = processedResults[idx];
+      const fen = vorschauFenster(res.anonText, vorschauZiel.zeile, MAX_PREVIEW_CHARS);
+      const origZeilen = String(res.originalText || "").split(/\r?\n/);
+      const zeigeOriginal = $("optOriginalAnzeigen").checked;
+      const nurGeaendert = $("optNurGeaendert").checked;
+      const suchwort = $("vorschauSuche").value.trim();
+      const geaendert = new Set(vorschauGeaendert);
+      $("originalSpalte").hidden = !zeigeOriginal;
+      const fragA = document.createDocumentFragment();
+      const fragO = document.createDocumentFragment();
+      let gezeigt = 0;
+      let zielEl = null;
+      fen.zeilen.forEach((zeile, i) => {
+        const nr = fen.start + i;
+        const istZiel = nr === vorschauZiel.zeile;
+        if (nurGeaendert && !geaendert.has(nr) && !istZiel) return;
+        gezeigt++;
+        const mk = (text, ersetzt, fund) => {
+          const row = document.createElement("div");
+          row.className = "vz" + (geaendert.has(nr) ? " geaendert" : "") + (istZiel ? " ziel" : "");
+          row.dataset.zeile = String(nr);
+          const n = document.createElement("span"); n.className = "vz-nr"; n.textContent = String(nr);
+          const t = document.createElement("span"); t.className = "vz-text";
+          fuelleZeile(t, text, { ersetzt, fund, suche: suchwort });
+          row.append(n, t);
+          return row;
+        };
+        const rowA = mk(zeile, true, istZiel ? vorschauZiel.wert : "");
+        if (istZiel) zielEl = rowA;
+        fragA.appendChild(rowA);
+        // Originale stehen nur im DOM, wenn "Original anzeigen" eingeschaltet ist
+        if (zeigeOriginal) fragO.appendChild(mk(origZeilen[nr - 1] !== undefined ? origZeilen[nr - 1] : "", false, ""));
+      });
+      box.appendChild(fragA);
+      if (zeigeOriginal) boxOrig.appendChild(fragO);
+      if (info) {
+        info.textContent = `Zeilen ${fen.start}–${fen.ende} von ${fen.gesamtZeilen}` +
+          (fen.gekuerzt ? " (Ausschnitt; im ZIP ist die vollständige Datei)" : "") +
+          (nurGeaendert ? ` · ${gezeigt} geänderte Zeile(n) angezeigt` : "") +
+          ` · ${vorschauGeaendert.length} geänderte Zeile(n) in der Datei`;
+      }
+      if (zielEl) {
+        zielEl.scrollIntoView({ block: "center" });
+        if (zeigeOriginal) boxOrig.scrollTop = box.scrollTop;
+      } else {
+        box.scrollTop = 0;
+        boxOrig.scrollTop = 0;
+      }
+    }
+    function renderPreviewForIndex(idx) { renderVorschau(idx, null); }
+
+    function zeigeFundort(datei, zeile, wert) {
+      const idx = processedResults.findIndex(r => r.path === datei);
+      zeigeSchritt(3);
+      if (idx < 0) return;
+      $("previewFileSelect").value = String(idx);
+      if (!zeile) {
+        renderVorschau(idx, null);
+        $("vorschauInfo").textContent = "Der Fund steht im Dateinamen: " + datei;
+        return;
+      }
+      renderVorschau(idx, { zeile, wert });
+    }
+
+    let syncAktiv = false;
+    for (const [a, b] of [["previewAnon", "previewOriginal"], ["previewOriginal", "previewAnon"]]) {
+      $(a).addEventListener("scroll", () => {
+        if (!$("optSyncScroll").checked || syncAktiv || $("originalSpalte").hidden) return;
+        syncAktiv = true;
+        $(b).scrollTop = $(a).scrollTop;
+        syncAktiv = false;
+      });
+    }
+    $("optOriginalAnzeigen").addEventListener("change", () => renderVorschau(vorschauIndex, vorschauZiel));
+    $("optNurGeaendert").addEventListener("change", () => renderVorschau(vorschauIndex, vorschauZiel));
+    $("btnNaechsteAenderung").addEventListener("click", () => {
+      if (vorschauIndex < 0 || vorschauGeaendert.length === 0) { $("vorschauInfo").textContent = "Keine Änderungen in dieser Datei."; return; }
+      const ab = vorschauZiel.zeile || 0;
+      const naechste = vorschauGeaendert.find(n => n > ab) || vorschauGeaendert[0];
+      renderVorschau(vorschauIndex, { zeile: naechste, wert: "" });
+    });
+    function vorschauSuchen() {
+      const w = $("vorschauSuche").value.trim();
+      if (vorschauIndex < 0 || !w) { renderVorschau(vorschauIndex, vorschauZiel); return; }
+      const zeilen = processedResults[vorschauIndex].anonText.split(/\r?\n/);
+      const wl = w.toLowerCase();
+      let gefunden = 0;
+      for (let k = 1; k <= zeilen.length; k++) {
+        const nr = ((vorschauSuchZeile + k - 1) % zeilen.length) + 1;
+        if (zeilen[nr - 1].toLowerCase().indexOf(wl) >= 0) { gefunden = nr; break; }
+      }
+      if (!gefunden) { renderVorschau(vorschauIndex, vorschauZiel); $("vorschauInfo").textContent = "Kein Treffer in der anonymisierten Datei."; return; }
+      vorschauSuchZeile = gefunden;
+      renderVorschau(vorschauIndex, { zeile: gefunden, wert: "" });
+    }
+    $("btnVorschauSuche").addEventListener("click", vorschauSuchen);
+    $("vorschauSuche").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); vorschauSuchen(); } });
 
     async function writeTextToClipboard(text) {
       if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
@@ -5633,9 +6085,9 @@
     }
 
     async function handlePreviewCopy(mode) {
-      const sel = document.getElementById("previewFileSelect");
+      const sel = $("previewFileSelect");
       const idx = sel ? parseInt(sel.value, 10) : -1;
-      const statusEl = document.getElementById(mode === "original" ? "copyOriginalStatus" : "copyAnonStatus");
+      const statusEl = $(mode === "original" ? "copyOriginalStatus" : "copyAnonStatus");
       const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg), { freigegeben: releaseAllowed });
       if (!prep.allowed) {
         if (statusEl && prep.reason === "NO_FILE") {
@@ -5654,27 +6106,31 @@
           }, 4000);
         }
       } catch (err) {
-        alert("Kopieren in die Zwischenablage fehlgeschlagen: " + err.message);
+        if (statusEl) statusEl.textContent = "Kopieren in die Zwischenablage fehlgeschlagen: " + err.message;
       }
     }
 
-    document.getElementById("btnCopyOriginal").addEventListener("click", () => handlePreviewCopy("original"));
-    document.getElementById("btnCopyAnon").addEventListener("click", () => handlePreviewCopy("anon"));
+    $("btnCopyOriginal").addEventListener("click", () => handlePreviewCopy("original"));
+    $("btnCopyAnon").addEventListener("click", () => handlePreviewCopy("anon"));
 
-    // Eigene Begriffe UI-Zeilenverwaltung
+    // ------------------------------------------------------------------
+    // Eigene Ersetzungen und Ausnahmen (Zeilenverwaltung)
+    // ------------------------------------------------------------------
     function addFesteRowUI(originalVal = "", placeholderVal = "") {
-      const container = document.getElementById("festeZuordnungRows");
+      const container = $("festeZuordnungRows");
       const row = document.createElement("div");
-      row.className = "terms-list-row feste-row";
+      row.className = "terms-list-row feste-row term-row";
       const inpOrig = document.createElement("input");
       inpOrig.type = "text";
       inpOrig.className = "feste-orig-input";
       inpOrig.placeholder = "Original (z. B. sw-core-01)";
+      inpOrig.setAttribute("aria-label", "Original");
       inpOrig.value = originalVal;
       const inpPh = document.createElement("input");
       inpPh.type = "text";
       inpPh.className = "feste-ph-input";
       inpPh.placeholder = "Platzhalter (optional)";
+      inpPh.setAttribute("aria-label", "Platzhalter");
       inpPh.value = placeholderVal;
       inpPh.style.maxWidth = "155px";
       const btnDel = document.createElement("button");
@@ -5682,6 +6138,7 @@
       btnDel.className = "btn-sm danger";
       btnDel.textContent = "×";
       btnDel.title = "Zeile löschen";
+      btnDel.setAttribute("aria-label", "Zeile löschen");
       btnDel.addEventListener("click", () => {
         row.remove();
         onCustomTermsInput();
@@ -5693,19 +6150,21 @@
     }
 
     function addSimpleTermRowUI(containerId, inputClass, placeholderText, value = "") {
-      const container = document.getElementById(containerId);
+      const container = $(containerId);
       const row = document.createElement("div");
-      row.className = "terms-list-row";
+      row.className = "terms-list-row term-row";
       const inp = document.createElement("input");
       inp.type = "text";
       inp.className = inputClass;
       inp.placeholder = placeholderText;
+      inp.setAttribute("aria-label", placeholderText);
       inp.value = value;
       const btnDel = document.createElement("button");
       btnDel.type = "button";
       btnDel.className = "btn-sm danger";
       btnDel.textContent = "×";
       btnDel.title = "Zeile löschen";
+      btnDel.setAttribute("aria-label", "Zeile löschen");
       btnDel.addEventListener("click", () => {
         row.remove();
         onCustomTermsInput();
@@ -5738,34 +6197,62 @@
         exakteWoerter.push(inp.value);
       });
       const muster = JSON.parse(JSON.stringify(loadedLocalMuster));
-      const hostMusterEl = document.getElementById("eigeneHostnamenMusterInput");
+      const hostMusterEl = $("eigeneHostnamenMusterInput");
       const hostMuster = hostMusterEl ? hostMusterEl.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) : [];
       if (hostMuster.length > 0) muster.eigeneHostnamenMuster = hostMuster;
       else delete muster.eigeneHostnamenMuster;
       return { festeZuordnung, firmenUndStandorte, interneDomains, exakteWoerter, muster };
     }
 
-    function populateCustomTermsUI(data) {
-      const fContainer = document.getElementById("festeZuordnungRows");
-      const fiContainer = document.getElementById("firmenUndStandorteRows");
-      const dContainer = document.getElementById("interneDomainsRows");
-      const eContainer = document.getElementById("exakteWoerterRows");
+    // Bewusst freigegebene Werte (ausnahmen.freigegeben) anzeigen und einzeln entfernen
+    function renderFreigabenListe() {
+      const el = $("freigabenListe");
+      if (!el) return;
+      el.textContent = "";
+      const liste = loadedLocalMuster["ausnahmen.freigegeben"] || [];
+      if (liste.length === 0) {
+        const leer = document.createElement("div"); leer.className = "small-muted"; leer.textContent = "Keine dauerhaften Freigaben.";
+        el.appendChild(leer);
+      }
+      liste.forEach((e, i) => {
+        const row = document.createElement("div");
+        row.className = "entscheidung-zeile";
+        const t = document.createElement("span");
+        t.textContent = `${FREIGABE_KATEGORIE_TEXTE[e.kategorie] || e.kategorie}: ${e.wert}`;
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "btn-sm danger"; b.textContent = "Entfernen";
+        b.addEventListener("click", () => {
+          loadedLocalMuster["ausnahmen.freigegeben"].splice(i, 1);
+          if (loadedLocalMuster["ausnahmen.freigegeben"].length === 0) delete loadedLocalMuster["ausnahmen.freigegeben"];
+          renderFreigabenListe();
+          onCustomTermsInput();
+        });
+        row.append(t, b);
+        el.appendChild(row);
+      });
+    }
+
+    function populateCustomTermsUI(data, grund) {
+      const fContainer = $("festeZuordnungRows");
+      const fiContainer = $("firmenUndStandorteRows");
+      const dContainer = $("interneDomainsRows");
+      const eContainer = $("exakteWoerterRows");
       const lokaleMuster = (data && data.muster && typeof data.muster === "object") ? JSON.parse(JSON.stringify(data.muster)) : {};
-      const hostMusterEl = document.getElementById("eigeneHostnamenMusterInput");
+      const hostMusterEl = $("eigeneHostnamenMusterInput");
       if (hostMusterEl) hostMusterEl.value = (lokaleMuster.eigeneHostnamenMuster || []).join("\n");
       delete lokaleMuster.eigeneHostnamenMuster;
       loadedLocalMuster = lokaleMuster;
-      const musterInfoEl = document.getElementById("lokaleMusterInfo");
+      const musterInfoEl = $("lokaleMusterInfo");
       if (musterInfoEl) {
-        const keys = Object.keys(loadedLocalMuster);
+        const keys = Object.keys(loadedLocalMuster).filter(k => k !== "ausnahmen.freigegeben");
         musterInfoEl.textContent = keys.length > 0
-          ? "Zusätzlich aus der lokalen Datei übernommen: " + keys.map(k => `${k} (${loadedLocalMuster[k].length})`).join(", ")
+          ? "Zusätzlich aus der lokalen Datei bzw. aus Entscheidungen übernommen: " + keys.map(k => `${k} (${loadedLocalMuster[k].length})`).join(", ")
           : "";
       }
-      fContainer.innerHTML = "";
-      fiContainer.innerHTML = "";
-      dContainer.innerHTML = "";
-      eContainer.innerHTML = "";
+      fContainer.textContent = "";
+      fiContainer.textContent = "";
+      dContainer.textContent = "";
+      eContainer.textContent = "";
 
       const norm = normalizeCustomInputRows(data || {});
       if (norm.festeRows.length === 0) {
@@ -5788,12 +6275,31 @@
       } else {
         norm.exakteList.forEach(v => addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", v));
       }
+      renderFreigabenListe();
       refreshCustomTermsValidationUI();
-      markiereGeaendert("eigeneBegriffe");
+      markiereGeaendert(grund || "eigeneBegriffe");
+    }
+
+    // Fehlerhafte Zeilen bei den eigenen Einträgen markieren (Zeilennummer oder Wert in '...')
+    function markiereFehlerhafteBegriffe(errors) {
+      document.querySelectorAll("#customTermsCard input[aria-invalid]").forEach(i => i.removeAttribute("aria-invalid"));
+      const werte = new Set();
+      for (const e of errors) {
+        const zm = /festeZuordnung Zeile ([0-9]+)/.exec(e);
+        if (zm) {
+          const row = document.querySelectorAll("#festeZuordnungRows .feste-row")[parseInt(zm[1], 10) - 1];
+          if (row) row.querySelectorAll("input").forEach(i => i.setAttribute("aria-invalid", "true"));
+        }
+        for (const m of e.matchAll(/'([^']*)'/g)) werte.add(m[1].trim().toLowerCase());
+      }
+      if (werte.size === 0) return;
+      document.querySelectorAll("#customTermsCard .term-row input").forEach(i => {
+        if (werte.has(i.value.trim().toLowerCase()) && i.value.trim()) i.setAttribute("aria-invalid", "true");
+      });
     }
 
     function refreshCustomTermsValidationUI() {
-      const msgEl = document.getElementById("customTermsValidationMsg");
+      const msgEl = $("customTermsValidationMsg");
       if (!msgEl) return null;
       let base = currentRules;
       try {
@@ -5801,87 +6307,100 @@
       } catch (_) {}
       const custom = readCustomTermsFromUI();
       const res = validateAndMergeEigeneBegriffe(base, custom);
+      markiereFehlerhafteBegriffe(res.valid ? [] : res.errors);
       if (!res.valid) {
         msgEl.style.color = "#fca5a5";
-        msgEl.textContent = "Validierungsfehler: " + res.errors.join(" | ");
+        msgEl.textContent = "Bitte korrigieren (markierte Felder): " + verstaendlich(res.errors.join(" | "));
       } else {
         const countFeste = Object.keys(res.normalizedCustom.festeZuordnung).length;
         const countFirmen = res.normalizedCustom.firmenUndStandorte.length;
         const countDomains = res.normalizedCustom.interneDomains.length;
         const countExakt = res.normalizedCustom.exakteWoerter.length;
+        const countFrei = (custom.muster["ausnahmen.freigegeben"] || []).length;
         msgEl.style.color = "#86efac";
-        msgEl.textContent = `Eigene Begriffe gültig (${countFeste} feste Zuordnungen, ${countFirmen} Firmen/Standorte, ${countDomains} Domains, ${countExakt} Ausnahmen) – aktiv für den nächsten Lauf.`;
+        msgEl.textContent = `Gültig: ${countFeste} eigene Ersetzungen, ${countFirmen} Firmen/Standorte, ${countDomains} interne Domains, ${countExakt} Ausnahmen, ${countFrei} bewusst freigegebene Werte – aktiv beim nächsten Verarbeiten.`;
       }
+      if (typeof aktualisiereEinstellungsZusammenfassung === "function") aktualisiereEinstellungsZusammenfassung();
       return res;
     }
 
-    document.getElementById("btnAddFesteRow").addEventListener("click", () => addFesteRowUI("", ""));
-    document.getElementById("eigeneHostnamenMusterInput").addEventListener("input", onCustomTermsInput);
-    document.getElementById("btnAddFirmaRow").addEventListener("click", () =>
+    $("btnAddFesteRow").addEventListener("click", () => addFesteRowUI("", ""));
+    $("eigeneHostnamenMusterInput").addEventListener("input", onCustomTermsInput);
+    $("btnAddFirmaRow").addEventListener("click", () =>
       addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "")
     );
-    document.getElementById("btnAddDomainRow").addEventListener("click", () =>
+    $("btnAddDomainRow").addEventListener("click", () =>
       addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.example.com)", "")
     );
-    document.getElementById("btnAddExaktRow").addEventListener("click", () =>
+    $("btnAddExaktRow").addEventListener("click", () =>
       addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", "")
     );
 
-    document.getElementById("btnDownloadLocalTerms").addEventListener("click", () => {
+    $("btnDownloadLocalTerms").addEventListener("click", () => {
       try {
         let base = currentRules;
         try { base = JSON.parse(rulesTextarea.value); } catch (_) {}
         const jsonOut = exportLokaleBegriffeJson(readCustomTermsFromUI(), base);
         triggerDownload(jsonOut, "anon-regeln.lokal.json", "application/json");
         unsavedLocalTermsChanges = false;
+        updateReleaseUI();
+        $("customTermsValidationMsg").style.color = "#86efac";
+        $("customTermsValidationMsg").textContent = "anon-regeln.lokal.json gespeichert. Beim nächsten Mal wieder laden.";
       } catch (err) {
-        alert(err.message);
+        $("customTermsValidationMsg").style.color = "#fca5a5";
+        $("customTermsValidationMsg").textContent = "Speichern nicht möglich: " + verstaendlich(err.message);
       }
     });
 
-    document.getElementById("btnLoadLocalTerms").addEventListener("click", () => {
-      document.getElementById("inputLocalTermsFile").click();
+    $("btnLoadLocalTerms").addEventListener("click", () => {
+      $("inputLocalTermsFile").click();
     });
 
-    document.getElementById("inputLocalTermsFile").addEventListener("change", async (e) => {
+    $("inputLocalTermsFile").addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) return;
       try {
         const txt = await f.text();
         const loaded = importLokaleBegriffeJson(txt);
         populateCustomTermsUI(loaded);
+        unsavedLocalTermsChanges = false;
+        dauerhafteEntscheidungen = [];
+        updateReleaseUI();
       } catch (err) {
-        alert("Fehler beim Laden von anon-regeln.lokal.json: " + err.message);
+        $("customTermsValidationMsg").style.color = "#fca5a5";
+        $("customTermsValidationMsg").textContent = "anon-regeln.lokal.json konnte nicht geladen werden: " + verstaendlich(err.message);
       } finally {
         e.target.value = "";
       }
     });
 
-    document.getElementById("btnClearLocalTerms").addEventListener("click", () => {
+    $("btnClearLocalTerms").addEventListener("click", () => {
       populateCustomTermsUI({});
+      unsavedLocalTermsChanges = true;
+      updateReleaseUI();
     });
 
-    // Initiale leere Zeilen für Eigene Begriffe bereitstellen
+    // Initiale leere Zeilen für Eigene Ersetzungen bereitstellen
     populateCustomTermsUI({});
 
-    // Tabellen-Vorschau Steuerung (Tab 3)
-    document.getElementById("btnShowTableOriginals").addEventListener("click", () => {
+    // Tabellen-Vorschau Steuerung
+    $("btnShowTableOriginals").addEventListener("click", () => {
       tablePreviewShowOriginals = true;
-      document.getElementById("btnShowTableOriginals").style.display = "none";
-      document.getElementById("btnHideTableOriginals").style.display = "";
+      $("btnShowTableOriginals").style.display = "none";
+      $("btnHideTableOriginals").style.display = "";
       renderTablePreviewUI();
     });
 
-    document.getElementById("btnHideTableOriginals").addEventListener("click", () => {
+    $("btnHideTableOriginals").addEventListener("click", () => {
       maskTablePreviewOriginals();
     });
 
-    document.getElementById("tablePreviewSearch").addEventListener("input", () => {
+    $("tablePreviewSearch").addEventListener("input", () => {
       renderTablePreviewUI();
     });
 
     document.querySelectorAll("#mappingPreviewTable th.sortable-th").forEach(th => {
-      th.addEventListener("click", () => {
+      const sortiere = () => {
         const col = th.dataset.sort || "category";
         if (tablePreviewSortBy === col) {
           tablePreviewSortDir = tablePreviewSortDir === "asc" ? "desc" : "asc";
@@ -5890,7 +6409,9 @@
           tablePreviewSortDir = "asc";
         }
         renderTablePreviewUI();
-      });
+      };
+      th.addEventListener("click", sortiere);
+      th.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); sortiere(); } });
     });
 
     function currentBaseRulesForEdit() {
@@ -5912,6 +6433,7 @@
       input.value = ph; // Werte nur über .value, nie über innerHTML
       input.maxLength = 32;
       input.style.maxWidth = "180px";
+      input.setAttribute("aria-label", "Neuer Platzhalter");
       const btnOk = document.createElement("button");
       btnOk.type = "button";
       btnOk.className = "btn-sm primary";
@@ -5927,6 +6449,7 @@
       const commit = () => {
         const res = renameMappingTableEntry(currentState, ph, input.value.trim(), currentBaseRulesForEdit(), readCustomTermsFromUI());
         if (!res.ok) {
+          input.setAttribute("aria-invalid", "true");
           setTableEditStatus(res.error, true);
           return;
         }
@@ -5944,7 +6467,7 @@
       btnCancel.addEventListener("click", () => { openInlineEdit = null; renderTablePreviewUI(); });
     }
 
-    document.getElementById("mappingPreviewTableBody").addEventListener("click", (ev) => {
+    $("mappingPreviewTableBody").addEventListener("click", (ev) => {
       const target = ev.target;
       if (!target || !target.classList || !tablePreviewShowOriginals) return;
       const ph = target.dataset ? target.dataset.ph : null;
@@ -5958,33 +6481,34 @@
         if (!res.ok) { setTableEditStatus(res.error, true); return; }
         populateCustomTermsUI(res.customTerms);
         markTablePending();
-        setTableEditStatus(`'${ph}' entfernt – Wert wird nicht mehr anonymisiert (in ausnahmen.exakteWoerter übernommen).`, false);
+        setTableEditStatus(`'${ph}' entfernt – Wert wird nicht mehr anonymisiert (unter „Nicht anonymisieren“ eingetragen).`, false);
         renderTablePreviewUI();
       }
     });
 
-    document.getElementById("btnTableAddEntry").addEventListener("click", () => {
+    $("btnTableAddEntry").addEventListener("click", () => {
       if (!tablePreviewShowOriginals) return;
-      const origEl = document.getElementById("tableAddOriginal");
-      const phEl = document.getElementById("tableAddPlaceholder");
-      const catEl = document.getElementById("tableAddCategory");
+      const origEl = $("tableAddOriginal");
+      const phEl = $("tableAddPlaceholder");
+      const catEl = $("tableAddCategory");
       const res = addMappingTableEntry(currentState, {
         original: origEl.value,
         placeholder: phEl.value,
         category: catEl.value
       }, currentBaseRulesForEdit(), readCustomTermsFromUI());
-      if (!res.ok) { setTableEditStatus(res.error, true); return; }
+      if (!res.ok) { origEl.setAttribute("aria-invalid", "true"); setTableEditStatus(verstaendlich(res.error), true); return; }
+      origEl.removeAttribute("aria-invalid");
       populateCustomTermsUI(res.customTerms);
       origEl.value = "";
       phEl.value = "";
       markTablePending();
-      setTableEditStatus("Eintrag zu 'Eigene Begriffe' hinzugefügt – wird beim Neu-Anonymisieren ersetzt.", false);
+      setTableEditStatus("Eintrag zu den eigenen Ersetzungen hinzugefügt – wird beim nächsten Verarbeiten ersetzt.", false);
       renderTablePreviewUI();
     });
 
-    document.getElementById("btnReapplyAnon").addEventListener("click", async () => {
+    $("btnReapplyAnon").addEventListener("click", async () => {
       if (loadedInputFiles.length === 0) {
-        setTableEditStatus("Keine Dateien geladen – die Änderungen gelten automatisch beim nächsten Lauf.", false);
+        setTableEditStatus("Keine Dateien geladen – die Änderungen gelten automatisch beim nächsten Verarbeiten.", false);
         tableHasPendingChanges = false;
         updatePendingBannerUI();
         return;
@@ -5993,10 +6517,11 @@
       if (ok) {
         tableHasPendingChanges = false;
         updatePendingBannerUI();
-        setTableEditStatus("Neu anonymisiert – Prüfung und Vorschau aktualisiert. Unveränderte Platzhalter sind gleich geblieben.", false);
+        setTableEditStatus("Neu verarbeitet – Prüfung und Vorschau aktualisiert. Unveränderte Platzhalter sind gleich geblieben.", false);
       }
     });
 
+    // Warnung beim Schließen: ungespeicherte Zuordnung, ungespeicherte dauerhafte Regeln, offene Umbenennung
     window.addEventListener("beforeunload", (ev) => {
       if (unsavedTableChanges || unsavedLocalTermsChanges || hasDirtyInlineEdit()) {
         ev.preventDefault();
@@ -6006,55 +6531,121 @@
       return undefined;
     });
 
+    // ------------------------------------------------------------------
+    // Dateien: Einlesen, Dateiliste mit Status, Entfernen, Suche
+    // ------------------------------------------------------------------
+    function neuerDateiEintrag(path, bytes, status, meldung) {
+      const binaer = bytes ? isBinaryBytes(bytes) : false;
+      return { id: naechsteDateiId++, path, bytes, typ: bytes ? (binaer ? "Binär" : dateiTyp(path)) : "Archiv", status: status || dateiAnfangsStatus(path, binaer), meldung: meldung || (binaer ? "Binärinhalt, wird nicht verarbeitet" : "") };
+    }
+
+    function statusKlasse(st) {
+      return { "verarbeitet": "verarbeitet", "bereit": "bereit", "übersprungen": "uebersprungen", "nicht unterstützt": "nicht-unterstuetzt", "Fehler": "fehler" }[st] || "";
+    }
+
+    function renderDateiliste() {
+      const tbody = $("dateiListeBody");
+      const such = $("dateiSuche").value.trim().toLowerCase();
+      tbody.textContent = "";
+      $("dateiZusammenfassung").textContent = dateiZusammenfassung(loadedInputFiles);
+      const liste = loadedInputFiles.filter(f => !such || f.path.toLowerCase().indexOf(such) >= 0);
+      if (liste.length === 0) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td"); td.colSpan = 4; td.className = "small-muted";
+        td.textContent = loadedInputFiles.length === 0 ? "Noch keine Dateien geladen." : "Keine Datei passt zur Suche.";
+        tr.appendChild(td); tbody.appendChild(tr);
+        return;
+      }
+      const max = 2000;
+      for (const f of liste.slice(0, max)) {
+        const tr = document.createElement("tr");
+        const tdN = document.createElement("td"); tdN.textContent = f.path;
+        const tdT = document.createElement("td"); tdT.textContent = f.typ;
+        const tdS = document.createElement("td");
+        const badge = document.createElement("span"); badge.className = "status-badge " + statusKlasse(f.status); badge.textContent = f.status;
+        tdS.appendChild(badge);
+        if (f.meldung) { const m = document.createElement("div"); m.className = "small-muted"; m.textContent = f.meldung; tdS.appendChild(m); }
+        const tdA = document.createElement("td");
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "btn-sm"; b.textContent = "Entfernen";
+        b.setAttribute("aria-label", "Datei aus der Liste entfernen");
+        b.dataset.dateiId = String(f.id);
+        b.addEventListener("click", () => entferneDatei(f.id));
+        tdA.appendChild(b);
+        tr.append(tdN, tdT, tdS, tdA);
+        tbody.appendChild(tr);
+      }
+      if (liste.length > max) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td"); td.colSpan = 4; td.className = "small-muted";
+        td.textContent = `… sowie ${liste.length - max} weitere Dateien (Suche nutzen).`;
+        tr.appendChild(td); tbody.appendChild(tr);
+      }
+    }
+
+    function aktualisiereDateiInfo() {
+      $("fileCountInfo").textContent = loadedInputFiles.length === 0
+        ? "Noch keine Dateien geladen."
+        : `${dateiZusammenfassung(loadedInputFiles)} – bereit zur Verarbeitung in Schritt 2.`;
+      renderDateiliste();
+      updateReleaseUI();
+    }
+
+    function entferneDatei(id) {
+      loadedInputFiles = loadedInputFiles.filter(f => f.id !== id);
+      markiereGeaendert("dateien");
+      aktualisiereDateiInfo();
+    }
+
+    $("dateiSuche").addEventListener("input", renderDateiliste);
+
     async function ingestFileList(fileList) {
       if (!fileList || fileList.length === 0) return;
       markiereGeaendert("dateien");
-      const statusEl = document.getElementById("fileCountInfo");
+      zeigeMeldung("dateiMeldung", "");
+      const statusEl = $("fileCountInfo");
       statusEl.textContent = `Lade ${fileList.length} Datei(en) in den Arbeitsspeicher...`;
       await new Promise(r => setTimeout(r, 15));
 
-      let totalBytes = 0;
+      let fehler = 0;
       for (let idx = 0; idx < fileList.length; idx++) {
         const f = fileList[idx];
         const rel = f.webkitRelativePath || f.name;
-        statusEl.textContent = `Lese (${idx + 1}/${fileList.length}): ${rel} (${(f.size / (1024 * 1024)).toFixed(1)} MB)...`;
+        statusEl.textContent = `Lese Datei ${idx + 1} von ${fileList.length} (${(f.size / (1024 * 1024)).toFixed(1)} MB)...`;
         await new Promise(r => setTimeout(r, 5));
 
         const ab = await f.arrayBuffer();
         const u8 = new Uint8Array(ab);
-        totalBytes += u8.byteLength;
         const lower = rel.toLowerCase();
         try {
+          let extracted = null;
           if (lower.endsWith(".zip")) {
-            const base = rel.replace(/\.zip$/i, "");
-            const extracted = await extractZipBuffer(u8, base);
-            loadedInputFiles.push(...extracted);
+            extracted = await extractZipBuffer(u8, rel.replace(/\.zip$/i, ""));
           } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-            const base = rel.replace(/(\.tar\.gz|\.tgz)$/i, "");
-            const tarBytes = await decompressGzip(u8);
-            const extracted = extractTarBuffer(tarBytes, base);
-            loadedInputFiles.push(...extracted);
+            extracted = extractTarBuffer(await decompressGzip(u8), rel.replace(/(\.tar\.gz|\.tgz)$/i, ""));
           } else if (lower.endsWith(".tar")) {
-            const base = rel.replace(/\.tar$/i, "");
-            const extracted = extractTarBuffer(u8, base);
-            loadedInputFiles.push(...extracted);
+            extracted = extractTarBuffer(u8, rel.replace(/\.tar$/i, ""));
+          }
+          if (extracted) {
+            for (const x of extracted) loadedInputFiles.push(neuerDateiEintrag(x.path, x.bytes));
           } else {
-            loadedInputFiles.push({ path: rel, bytes: u8 });
+            loadedInputFiles.push(neuerDateiEintrag(rel, u8));
           }
         } catch (err) {
-          alert(`Fehler beim Entpacken von ${rel}: ${err.message}`);
+          fehler++;
+          loadedInputFiles.push(neuerDateiEintrag(rel, null, "Fehler", "Archiv konnte nicht entpackt werden: " + err.message));
         }
       }
-      const mbStr = (totalBytes / (1024 * 1024)).toFixed(2);
-      statusEl.textContent = `${loadedInputFiles.length} Datei(en) (${mbStr} MB) im Arbeitsspeicher bereit. Klicke auf 'Anonymisieren & Prüfen'.`;
+      if (fehler > 0) zeigeMeldung("dateiMeldung", `${fehler} Archiv(e) konnten nicht entpackt werden; siehe Status in der Dateiliste.`);
+      aktualisiereDateiInfo();
     }
 
-    document.getElementById("btnPickFiles").addEventListener("click", () => document.getElementById("inputFiles").click());
-    document.getElementById("btnPickFolder").addEventListener("click", () => document.getElementById("inputFolder").click());
-    document.getElementById("inputFiles").addEventListener("change", (e) => ingestFileList(e.target.files));
-    document.getElementById("inputFolder").addEventListener("change", (e) => ingestFileList(e.target.files));
+    $("btnPickFiles").addEventListener("click", () => $("inputFiles").click());
+    $("btnPickFolder").addEventListener("click", () => $("inputFolder").click());
+    $("inputFiles").addEventListener("change", (e) => ingestFileList(e.target.files));
+    $("inputFolder").addEventListener("change", (e) => ingestFileList(e.target.files));
 
-    const dz = document.getElementById("dropzone");
+    const dz = $("dropzone");
     dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
     dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
     dz.addEventListener("drop", (e) => {
@@ -6063,8 +6654,8 @@
       if (e.dataTransfer && e.dataTransfer.files) ingestFileList(e.dataTransfer.files);
     });
 
-    // Demo-Beispieldaten laden
-    document.getElementById("btnLoadDemo").addEventListener("click", () => {
+    // Demo-Beispieldaten laden (erfundene Werte)
+    $("btnLoadDemo").addEventListener("click", () => {
       const enc = new TextEncoder();
       const demoAruba = [
         "hostname dc1-sw-core01",
@@ -6113,80 +6704,99 @@
       }, null, 2);
 
       loadedInputFiles = [
-        { path: "aruba-show-tech.txt", bytes: enc.encode(demoAruba) },
-        { path: "sonic-config_db.json", bytes: enc.encode(demoSonicJson) }
+        neuerDateiEintrag("aruba-show-tech.txt", enc.encode(demoAruba)),
+        neuerDateiEintrag("sonic-config_db.json", enc.encode(demoSonicJson))
       ];
-      document.getElementById("fileCountInfo").textContent = "2 realistische Beispieldateien (Aruba AOS-CX & Dell SONiC JSON) geladen.";
       markiereGeaendert("dateien");
+      aktualisiereDateiInfo();
+      $("fileCountInfo").textContent = "2 Beispieldateien (Aruba AOS-CX und Dell SONiC JSON, erfundene Werte) – bereit zur Verarbeitung in Schritt 2.";
     });
 
+    // ------------------------------------------------------------------
+    // Verarbeiten und prüfen
+    // ------------------------------------------------------------------
     async function executeRun(isProbe) {
       // Während eines Laufs und bis zum neuen Prüfergebnis ist nichts freigegeben
       const laufStand = releaseGuard.startRun();
       releaseAllowed = false;
+      zeigeMeldung("laufMeldung", "");
       updateReleaseUI();
       if (loadedInputFiles.length === 0) {
-        alert("Bitte zuerst Dateien auswählen oder 'Beispieldaten laden' klicken.");
+        zeigeMeldung("laufMeldung", "Es sind keine Dateien geladen. Bitte zuerst in Schritt 1 Dateien auswählen oder „Beispieldaten laden“ wählen.");
+        zeigeSchritt(2);
         return false;
       }
       try {
         currentRules = JSON.parse(rulesTextarea.value);
+        markiereFeld("rulesTextarea", false);
       } catch (e) {
-        alert("Fehler in der Regeldatei (JSON ungültig): " + e.message);
+        markiereFeld("rulesTextarea", true);
+        zeigeMeldung("laufMeldung", "Die Regeldatei ist kein gültiges JSON (Einstellungen › Erweitert): " + e.message);
+        $("rulesStatus").textContent = "Ungültiges JSON: " + e.message;
+        zeigeSchritt(2);
         return false;
       }
 
-      const mergeRes = validateAndMergeEigeneBegriffe(currentRules, readCustomTermsFromUI());
+      // Dauerhafte eigene Begriffe plus Entscheidungen "nur für diesen Auftrag"
+      const laufBegriffe = baueLaufBegriffe(readCustomTermsFromUI(), auftragsEntscheidungen);
+      const mergeRes = validateAndMergeEigeneBegriffe(currentRules, laufBegriffe);
       refreshCustomTermsValidationUI();
       if (!mergeRes.valid) {
-        alert("Fehler in 'Eigene Begriffe':\n" + mergeRes.errors.join("\n"));
+        zeigeMeldung("laufMeldung", "Die eigenen Ersetzungen enthalten Fehler (in den Einstellungen markiert): " + verstaendlich(mergeRes.errors.join(" | ")));
+        zeigeSchritt(2);
         return false;
       }
       const effectiveRules = mergeRes.mergedRules;
       const laufKollisionen = findPlaceholderCollisions(currentState, effectiveRules.eigeneBegriffe.festeZuordnung);
       if (laufKollisionen.length > 0) {
-        alert("Lauf abgebrochen: " + laufKollisionen.join("; ") + ". Bitte festeZuordnung oder Zuordnungstabelle anpassen.");
+        zeigeMeldung("laufMeldung", "Verarbeitung abgebrochen: " + laufKollisionen.join("; ") + ". Bitte eigene Ersetzungen oder Zuordnung anpassen.");
+        zeigeSchritt(2);
         return false;
       }
 
-      const btnAnon = document.getElementById("btnRunAnon");
-      const btnProbe = document.getElementById("btnRunProbe");
+      const btnAnon = $("btnRunAnon");
+      const btnProbe = $("btnRunProbe");
       btnAnon.disabled = true;
       btnProbe.disabled = true;
+      const nutzbar = loadedInputFiles.filter(f => f.bytes);
+      laeuft = true;
+      fortschritt = { aktuell: 0, gesamt: nutzbar.length };
+      updateReleaseUI();
 
       try {
-        const activeCats = new Set();
-        document.querySelectorAll(".cat-toggle:checked").forEach(cb => activeCats.add(cb.value));
         const cfg = buildEngineConfig(effectiveRules, {
-          netzerhaltend: document.getElementById("optNetzerhaltend").checked,
-          ipPrivatOeffentlichTrennen: document.getElementById("optIpPrivPub").checked,
-          kategorien: activeCats
+          netzerhaltend: $("optNetzerhaltend").checked,
+          ipPrivatOeffentlichTrennen: $("optIpPrivPub").checked,
+          kategorien: aktiveKategorien()
         });
 
         const runState = isProbe ? AnonState.fromJSON(currentState.toJSON()) : currentState;
+        const zuordnungenVorher = currentState.forward.size;
         processedResults = [];
         skippedBinaryFiles = [];
         const allFindings = [];
-        const progressBar = document.getElementById("progressBar");
-        const progressStatus = document.getElementById("progressStatus");
+        const progressBar = $("progressBar");
+        const progressStatus = $("progressStatus");
         const tStart = performance.now();
 
-        // Durchlauf 1: Hostnamen aus späteren Dateien auch in früheren Dateien ersetzen (Ausgabe verwerfen)
+        // Durchlauf 1: Werte aus späteren Dateien auch in früheren Dateien ersetzen (Ausgabe verwerfen)
         progressStatus.textContent = "Erkenne Werte über alle Dateien...";
         await new Promise(r => setTimeout(r, 15));
-        for (const item of loadedInputFiles) {
+        for (const item of nutzbar) {
           processPath(item.path, cfg, runState);
           if (isBinaryBytes(item.bytes)) continue;
           processText(decodeBytesWithBom(item.bytes), cfg, runState);
         }
         runState.stats = new Map();
 
-        for (let i = 0; i < loadedInputFiles.length; i++) {
-          const item = loadedInputFiles[i];
-          const pct = Math.round(((i + 0.2) / loadedInputFiles.length) * 100);
+        for (let i = 0; i < nutzbar.length; i++) {
+          const item = nutzbar[i];
+          fortschritt = { aktuell: i + 1, gesamt: nutzbar.length };
+          const pct = Math.round(((i + 0.2) / nutzbar.length) * 100);
           progressBar.style.width = pct + "%";
           const kbSize = Math.round(item.bytes.byteLength / 1024);
-          progressStatus.textContent = `Verarbeite (${i + 1}/${loadedInputFiles.length}): ${item.path} (${kbSize} KB)...`;
+          progressStatus.textContent = `Verarbeite Datei ${i + 1} von ${nutzbar.length} (${kbSize} KB)...`;
+          updateReleaseUI();
           // Kurze Pause für Browser-Repaint, damit Fortschrittsbalken sofort sichtbar ist
           await new Promise(r => setTimeout(r, 15));
 
@@ -6200,6 +6810,8 @@
           // Befund 2: Jeden Pfadbestandteil durch die Engine schicken und in Prüfung aufnehmen
           const anonRelPath = processPath(item.path, cfg, runState);
           const anonText = processText(origText, cfg, runState);
+          item.status = "verarbeitet";
+          item.meldung = "";
           processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
         }
         // Prüfung mit allen im Lauf erkannten Werten
@@ -6211,14 +6823,15 @@
           bewusstFreigegeben += detail.freigegeben;
           for (const f of res.findings) allFindings.push(f);
         }
+        const nichtVerarbeitet = loadedInputFiles.filter(f => f.status !== "verarbeitet").length;
 
         const elapsedSec = ((performance.now() - tStart) / 1000).toFixed(2);
         progressBar.style.width = "100%";
-        progressStatus.textContent = `Fertig in ${elapsedSec} s (${processedResults.length} Textdatei(en) verarbeitet).`;
+        progressStatus.textContent = `Fertig in ${elapsedSec} s (${processedResults.length} Datei(en) verarbeitet${nichtVerarbeitet > 0 ? `, ${nichtVerarbeitet} nicht verarbeitet` : ""}).`;
 
-        // Statistiken & Prüfbericht anzeigen
-        const statPills = document.getElementById("statPills");
-        statPills.innerHTML = "";
+        // Statistiken & Prüfergebnis anzeigen
+        const statPills = $("statPills");
+        statPills.textContent = "";
         for (const [k, v] of runState.stats.entries()) {
           const pill = document.createElement("div");
           pill.className = "stat-pill";
@@ -6226,24 +6839,30 @@
           statPills.appendChild(pill);
         }
 
-        const skippedEl = document.getElementById("skippedInfo");
-        skippedEl.textContent = skippedBinaryFiles.length > 0
-          ? `Übersprungene Binärdateien (${skippedBinaryFiles.length}): ${skippedBinaryFiles.join(", ")}`
-          : `Verarbeitete Textdateien: ${processedResults.length} | Übersprungene Binärdateien: 0 | Dauer: ${elapsedSec} s`;
+        $("skippedInfo").textContent = `Verarbeitet: ${processedResults.length} | Nicht verarbeitet: ${nichtVerarbeitet}` +
+          (skippedBinaryFiles.length > 0 ? ` (Binärdateien: ${skippedBinaryFiles.join(", ")})` : "") +
+          ` | Bewusst freigegeben: ${bewusstFreigegeben} | Dauer: ${elapsedSec} s`;
 
-        const banner = document.getElementById("auditBanner");
-        const tbody = document.getElementById("auditTableBody");
-        tbody.innerHTML = "";
+        const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
+        findingGroups = bildeFundgruppen(allFindings, runState);
+        findingDecisions = {};
+        fundZeiger = -1;
 
+        const banner = $("auditBanner");
+        const tbody = $("auditTableBody");
+        tbody.textContent = "";
+        const frei = bewusstFreigegeben > 0 ? `, ${bewusstFreigegeben} bewusst freigegeben` : "";
         if (allFindings.length === 0) {
           banner.className = "audit-banner clean";
-          banner.textContent = `Prüfergebnis (-Pruefen): Keine Restfunde nach aktivem Regelwerk (0 Treffer in ${processedResults.length} Datei(en))${isProbe ? " [TROCKENLAUF]" : ""}`;
+          banner.textContent = `Prüfergebnis: Keine Restfunde nach aktivem Regelwerk (0 Treffer in ${processedResults.length} Datei(en)${frei})${isProbe ? " [TROCKENLAUF]" : ""}`;
           const tr = document.createElement("tr");
-          tr.innerHTML = `<td colspan="4" class="small-muted">0 Restfunde – Ausgabe ist laut Regelwerk sauber.</td>`;
+          const td = document.createElement("td"); td.colSpan = 4; td.className = "small-muted";
+          td.textContent = "0 Restfunde nach aktivem Regelwerk.";
+          tr.appendChild(td);
           tbody.appendChild(tr);
         } else {
           banner.className = "audit-banner dirty";
-          banner.textContent = `Prüfergebnis (-Pruefen): RESTFUNDE VORHANDEN (${allFindings.length} Treffer) – Bitte vor Weitergabe prüfen!`;
+          banner.textContent = `Prüfergebnis: Restfunde vorhanden (${allFindings.length} Treffer in ${findingGroups.length} Fundgruppe(n)${frei}) – vor der Weitergabe entscheiden.`;
           const maxRows = 500;
           const displayCount = Math.min(allFindings.length, maxRows);
           for (let idx = 0; idx < displayCount; idx++) {
@@ -6252,7 +6871,7 @@
             tr.className = "finding-row";
             const td1 = document.createElement("td"); td1.textContent = f.datei;
             const td2 = document.createElement("td"); td2.textContent = String(f.zeile);
-            const td3 = document.createElement("td"); td3.textContent = f.kategorie;
+            const td3 = document.createElement("td"); td3.textContent = fundKategorieText(f.kategorie);
             const td4 = document.createElement("td"); td4.textContent = f.fund;
             tr.append(td1, td2, td3, td4);
             tbody.appendChild(tr);
@@ -6269,26 +6888,31 @@
         }
 
         // Vorschau-Auswahl füllen
-        const sel = document.getElementById("previewFileSelect");
-        sel.innerHTML = "";
+        const sel = $("previewFileSelect");
+        sel.textContent = "";
         processedResults.forEach((res, idx) => {
           const opt = document.createElement("option");
           opt.value = String(idx);
           opt.textContent = `${res.path} (${Math.round(res.anonText.length / 1024)} KB)`;
           sel.appendChild(opt);
         });
+        vorschauIndex = -1;
         if (processedResults.length > 0) {
           sel.value = "0";
           renderPreviewForIndex(0);
+        } else {
+          renderVorschau(NaN, null);
         }
 
         const kategorienGesamt = {};
         for (const [k, v] of runState.stats.entries()) kategorienGesamt[k] = v;
+        // Technischer Bericht: nur Zahlen und anonymisierte Pfade, keine Werte
         lastReportObj = {
           zeitstempel: new Date().toISOString(),
           modus: isProbe ? "PROBE" : "ANONYMISIERUNG",
           netzerhaltend: cfg.netzerhaltend,
           verarbeiteteDateien: processedResults.length,
+          nichtVerarbeitet,
           uebersprungeneBinaer: skippedBinaryFiles,
           kategorienGesamt,
           pruefergebnis: allFindings.length === 0 ? "KEINE_RESTFUNDE" : "RESTFUNDE_VORHANDEN",
@@ -6296,53 +6920,83 @@
           bewusstFreigegeben
         };
 
-        const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
+        let fehler = "";
         if (pfadKollisionen.length > 0) {
-          alert(pfadKollisionen.join("\n") + ". Export gesperrt.");
+          fehler = "doppelter Ausgabepfad (" + pfadKollisionen.join("; ") + ")";
+          zeigeMeldung("laufMeldung", pfadKollisionen.join("; ") + ". Export gesperrt.");
         }
         releaseGuard.finishRun(laufStand, { findings: pfadKollisionen.length > 0 ? [{ kategorie: "Ausgabepfad-Kollision" }] : allFindings, isProbe, resultCount: processedResults.length });
         releaseAllowed = releaseGuard.isAllowed();
-        updateReleaseUI();
-        findingGroups = groupAuditFindings(allFindings);
-        findingDecisions = {};
+        laufErgebnis = { isProbe, freigegeben: bewusstFreigegeben, nichtVerarbeitet, fehler };
+        ergebnisVeraltet = false;
+        laeuft = false;
         renderFindingGroupsUI();
-        document.getElementById("btnDownloadReport").disabled = false;
+        renderEntscheidungsListe();
+        $("btnDownloadReport").disabled = false;
         if (!isProbe) {
           tableHasPendingChanges = false;
           updatePendingBannerUI();
+          if (currentState.forward.size !== zuordnungenVorher) unsavedTableChanges = true;
         }
         updateTableStatusUI();
+        aktualisiereDateiInfo();
+        zeigeSchritt(3);
+        updateReleaseUI();
         return true;
       } finally {
+        laeuft = false;
         btnAnon.disabled = false;
         btnProbe.disabled = false;
+        updateReleaseUI();
       }
     }
 
-    document.getElementById("btnRunAnon").addEventListener("click", () => executeRun(false));
-    document.getElementById("btnRunProbe").addEventListener("click", () => executeRun(true));
+    $("btnRunAnon").addEventListener("click", () => executeRun(false));
+    $("btnRunProbe").addEventListener("click", () => executeRun(true));
 
-    document.getElementById("previewFileSelect").addEventListener("change", (e) => {
+    $("previewFileSelect").addEventListener("change", (e) => {
       const idx = parseInt(e.target.value, 10);
+      vorschauSuchZeile = 0;
       renderPreviewForIndex(idx);
     });
 
-    document.getElementById("btnClearAll").addEventListener("click", () => {
+    $("btnClearAll").addEventListener("click", () => {
+      if (unsavedTableChanges && currentState.reverse.size > 0 && !window.confirm("Die Zuordnung ist nicht gespeichert. Ohne gespeicherte Zuordnung ist keine Rückübersetzung möglich. Trotzdem zurücksetzen?")) return;
       loadedInputFiles = [];
       processedResults = [];
       skippedBinaryFiles = [];
       currentState = new AnonState();
-      document.getElementById("previewOriginal").textContent = "";
-      document.getElementById("previewAnon").textContent = "";
-      document.getElementById("fileCountInfo").textContent = "Arbeitsspeicher vollständig geleert.";
-      markiereGeaendert("dateien");
+      laufErgebnis = null;
+      ergebnisVeraltet = false;
       findingGroups = [];
       findingDecisions = {};
-      updateReleaseUI();
+      auftragsEntscheidungen = [];
+      unsavedTableChanges = false;
+      lastReportObj = null;
+      vorschauIndex = -1;
+      $("previewOriginal").textContent = "";
+      $("previewAnon").textContent = "";
+      $("previewFileSelect").textContent = "";
+      $("vorschauInfo").textContent = "";
+      $("statPills").textContent = "";
+      $("skippedInfo").textContent = "";
+      $("auditBanner").className = "audit-banner neutral";
+      $("auditBanner").textContent = "Noch nicht geprüft.";
+      $("auditTableBody").textContent = "";
+      $("progressBar").style.width = "0%";
+      $("progressStatus").textContent = "Bereit.";
+      zeigeMeldung("laufMeldung", "");
+      zeigeMeldung("exportMeldung", "");
+      markiereGeaendert("dateien");
       renderFindingGroupsUI();
-      document.getElementById("btnDownloadReport").disabled = true;
+      renderEntscheidungsListe();
+      $("btnDownloadReport").disabled = true;
       maskTablePreviewOriginals();
       updateTableStatusUI();
+      aktualisiereDateiInfo();
+      $("fileCountInfo").textContent = "Dateien, Ergebnisse, Auftragsentscheidungen und Zuordnung zurückgesetzt.";
+      aktualisiereEinstellungsZusammenfassung();
+      zeigeSchritt(1);
     });
 
     function triggerDownload(bytesOrStr, filename, mime = "application/octet-stream") {
@@ -6356,87 +7010,247 @@
       setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 250);
     }
 
-    function updateReleaseUI() {
-      document.getElementById("btnDownloadZip").disabled = !releaseAllowed;
-      document.getElementById("btnCopyAnon").disabled = !releaseAllowed;
-      const info = document.getElementById("releaseLockInfo");
-      if (info) {
-        info.textContent = releaseAllowed
-          ? "Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“: Download und „Anonymisiert kopieren“ sind freigegeben. Bitte trotzdem sichten."
-          : "Gesperrt: Download und „Anonymisiert kopieren“ erst nach einem Lauf mit Prüfergebnis „Keine Restfunde nach aktivem Regelwerk“.";
+    // ------------------------------------------------------------------
+    // Fundkarten: Entscheidung je Fundgruppe, Sprung zur Fundstelle
+    // ------------------------------------------------------------------
+    function entscheidungsText(e) {
+      return (e.aktion === "ersetzen" ? "Alle Vorkommen ersetzen" : "Unverändert lassen") + (e.umfang === "dauerhaft" ? " (dauerhafte Regel)" : " (nur dieser Auftrag)");
+    }
+
+    function entscheide(g, aktion, umfang) {
+      if (findingDecisions[g.schluessel]) return;
+      const eintraege = entscheidungsEintraege(g, aktion);
+      const eintrag = { schluessel: g.schluessel, aktion, umfang, text: g.text, werte: g.werte.slice(), eintraege };
+      findingDecisions[g.schluessel] = eintrag;
+      if (umfang === "dauerhaft") {
+        populateCustomTermsUI(fuegeEintraegeHinzu(readCustomTermsFromUI(), eintraege), "entscheidung");
+        unsavedLocalTermsChanges = true;
+        dauerhafteEntscheidungen.push(eintrag);
+      } else {
+        auftragsEntscheidungen.push(eintrag);
+        markiereGeaendert("entscheidung");
+      }
+      renderFindingGroupsUI();
+      renderEntscheidungsListe();
+      aktualisiereEinstellungsZusammenfassung();
+      updateReleaseUI();
+    }
+
+    function nimmZurueck(eintrag) {
+      const ausAktuellemLauf = findingDecisions[eintrag.schluessel] === eintrag;
+      if (ausAktuellemLauf) delete findingDecisions[eintrag.schluessel];
+      const grund = ausAktuellemLauf ? "entscheidung" : "eigeneBegriffe";
+      if (eintrag.umfang === "dauerhaft") {
+        dauerhafteEntscheidungen = dauerhafteEntscheidungen.filter(e => e !== eintrag);
+        populateCustomTermsUI(entferneEintraege(readCustomTermsFromUI(), eintrag.eintraege), grund);
+        unsavedLocalTermsChanges = true;
+      } else {
+        auftragsEntscheidungen = auftragsEntscheidungen.filter(e => e !== eintrag);
+        markiereGeaendert(grund);
+      }
+      renderFindingGroupsUI();
+      renderEntscheidungsListe();
+      aktualisiereEinstellungsZusammenfassung();
+      updateReleaseUI();
+    }
+
+    function renderEntscheidungsListe() {
+      const el = $("entscheidungsListe");
+      if (!el) return;
+      el.textContent = "";
+      const alle = auftragsEntscheidungen.concat(dauerhafteEntscheidungen);
+      if (alle.length === 0) {
+        const leer = document.createElement("div"); leer.className = "small-muted"; leer.textContent = "Noch keine Entscheidungen.";
+        el.appendChild(leer);
+        return;
+      }
+      for (const e of alle) {
+        const row = document.createElement("div");
+        row.className = "entscheidung-zeile";
+        const t = document.createElement("span");
+        t.textContent = `${e.text}: ${e.werte.join(", ")} – ${entscheidungsText(e)}`;
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "btn-sm"; b.textContent = "Rückgängig";
+        b.addEventListener("click", () => nimmZurueck(e));
+        row.append(t, b);
+        el.appendChild(row);
       }
     }
 
     function renderFindingGroupsUI() {
-      const box = document.getElementById("fundgruppenBox");
-      const list = document.getElementById("fundgruppenListe");
-      const btn = document.getElementById("btnApplyFindingDecisions");
-      const status = document.getElementById("fundgruppenStatus");
-      list.innerHTML = "";
-      box.style.display = findingGroups.length > 0 ? "block" : "none";
-      for (const g of findingGroups) {
-        const row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.gap = "8px";
-        row.style.alignItems = "center";
-        row.style.margin = "3px 0";
-        const label = document.createElement("span");
-        label.style.flex = "1";
-        label.textContent = `${g.kategorie}: ${g.woerter.length > 0 ? g.woerter.join(", ") : g.fund} (${g.anzahl}×)`;
-        const mk = (wert, text) => {
-          const b = document.createElement("button");
-          b.type = "button";
-          b.className = "btn-sm" + (findingDecisions[g.schluessel] === wert ? " primary" : "");
-          b.textContent = text;
-          b.dataset.entscheidung = wert;
-          b.addEventListener("click", () => {
-            findingDecisions[g.schluessel] = wert;
-            renderFindingGroupsUI();
-          });
-          return b;
-        };
-        row.append(label, mk("ersetzen", "Immer ersetzen"), mk("fehlalarm", "Fehlalarm"));
-        list.appendChild(row);
+      const list = $("fundgruppenListe");
+      const btn = $("btnApplyFindingDecisions");
+      const status = $("fundgruppenStatus");
+      list.textContent = "";
+      if (findingGroups.length === 0) {
+        const leer = document.createElement("div");
+        leer.className = "small-muted";
+        leer.textContent = laufErgebnis ? "Keine Funde, die eine Entscheidung brauchen." : "Noch nicht geprüft.";
+        list.appendChild(leer);
       }
+      findingGroups.forEach((g, i) => {
+        const d = findingDecisions[g.schluessel];
+        const card = document.createElement("div");
+        card.className = "fundkarte" + (d ? " entschieden" : "");
+        card.dataset.schluessel = g.schluessel;
+        card.dataset.index = String(i);
+        card.setAttribute("role", "group");
+        card.setAttribute("aria-label", g.text);
+
+        const titel = document.createElement("div");
+        titel.className = "fk-titel";
+        titel.textContent = g.text;
+        const anzahl = document.createElement("div");
+        anzahl.className = "fk-anzahl";
+        anzahl.textContent = `${g.anzahl} Vorkommen in ${g.dateien.length} Datei${g.dateien.length === 1 ? "" : "en"}`;
+        const kontext = document.createElement("div");
+        kontext.className = "fk-kontext";
+        fuelleZeile(kontext, g.kontext || g.fund, { fund: g.kontextWert });
+        const orte = document.createElement("div");
+        orte.className = "fk-orte";
+        for (const o of g.orte.slice(0, 8)) {
+          const ob = document.createElement("button");
+          ob.type = "button";
+          ob.className = "btn-sm fund-ort";
+          ob.dataset.datei = o.datei;
+          ob.dataset.zeile = String(o.zeile);
+          ob.textContent = o.zeile > 0 ? `${o.datei} · Zeile ${o.zeile}` : `${o.datei} · Dateiname`;
+          ob.setAttribute("aria-label", `Fundstelle in der Vorschau zeigen: ${ob.textContent}`);
+          ob.addEventListener("click", () => {
+            document.querySelectorAll(".fundkarte.aktiv").forEach(k => k.classList.remove("aktiv"));
+            card.classList.add("aktiv");
+            fundZeiger = i;
+            zeigeFundort(o.datei, o.zeile, g.kontextWert);
+          });
+          orte.appendChild(ob);
+        }
+        if (g.orte.length > 8) { const mehr = document.createElement("span"); mehr.className = "small-muted"; mehr.textContent = `+${g.orte.length - 8} weitere`; orte.appendChild(mehr); }
+        card.append(titel, anzahl, kontext, orte);
+
+        if (d) {
+          const st = document.createElement("div");
+          st.textContent = "Entscheidung: " + entscheidungsText(d);
+          card.appendChild(st);
+          if (d.aktion === "unveraendert") {
+            const w = document.createElement("div");
+            w.className = "fk-warnung";
+            w.textContent = "Dieser Wert bleibt in den weiterzugebenden Dateien sichtbar.";
+            card.appendChild(w);
+          }
+          if (d.umfang === "dauerhaft") {
+            const w = document.createElement("div");
+            w.className = "fk-warnung";
+            w.textContent = "Regeldatei speichern, sonst geht die Regel beim Schließen verloren.";
+            card.appendChild(w);
+          }
+          const zur = document.createElement("button");
+          zur.type = "button"; zur.className = "btn-sm"; zur.dataset.aktion = "rueckgaengig"; zur.textContent = "Rückgängig";
+          zur.addEventListener("click", () => nimmZurueck(d));
+          card.appendChild(zur);
+        } else {
+          const umfang = document.createElement("div");
+          umfang.className = "fk-umfang";
+          const hinweis = document.createElement("div");
+          hinweis.className = "fk-warnung";
+          hinweis.hidden = true;
+          hinweis.textContent = "Regeldatei speichern, sonst geht die Regel beim Schließen verloren.";
+          for (const [wert, text] of [["auftrag", "nur für diesen Auftrag"], ["dauerhaft", "als dauerhafte Regel übernehmen"]]) {
+            const lab = document.createElement("label");
+            const r = document.createElement("input");
+            r.type = "radio"; r.name = "umfang-" + i; r.value = wert; r.checked = wert === "auftrag";
+            r.addEventListener("change", () => { hinweis.hidden = !(r.checked && wert === "dauerhaft"); });
+            lab.append(r, document.createTextNode(" " + text));
+            umfang.appendChild(lab);
+          }
+          const reihe = document.createElement("div");
+          reihe.className = "btn-row";
+          const gewaehlterUmfang = () => { const r = card.querySelector(`input[name="umfang-${i}"]:checked`); return r ? r.value : "auftrag"; };
+          const bE = document.createElement("button");
+          bE.type = "button"; bE.className = "btn-sm primary"; bE.dataset.aktion = "ersetzen";
+          bE.textContent = g.geheimnis ? "Alle Vorkommen ersetzen (*****)" : "Alle Vorkommen ersetzen";
+          bE.disabled = !g.kannErsetzen;
+          bE.addEventListener("click", () => entscheide(g, "ersetzen", gewaehlterUmfang()));
+          const bU = document.createElement("button");
+          bU.type = "button"; bU.className = "btn-sm"; bU.dataset.aktion = "unveraendert";
+          bU.textContent = "Unverändert lassen";
+          bU.disabled = !g.kannUnveraendert;
+          bU.addEventListener("click", () => entscheide(g, "unveraendert", gewaehlterUmfang()));
+          reihe.append(bE, bU);
+          card.append(umfang, hinweis, reihe);
+          if (!g.kannUnveraendert) {
+            const w = document.createElement("div");
+            w.className = "small-muted";
+            w.textContent = g.geheimnis
+              ? "Geheimnisse können nicht freigegeben werden; „Alle Vorkommen ersetzen“ macht daraus *****."
+              : "Dieser Fund kann nicht freigegeben werden (eigener Begriff, interne Domain oder Windows-Kennung).";
+            card.appendChild(w);
+          }
+        }
+        list.appendChild(card);
+      });
       const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
-      btn.disabled = findingGroups.length === 0 || !allGroupsDecided(findingGroups, findingDecisions);
-      status.textContent = findingGroups.length === 0 ? "" : (offen > 0 ? `${offen} von ${findingGroups.length} Gruppe(n) noch offen` : "Alle Gruppen entschieden");
+      btn.disabled = findingGroups.length === 0 || offen > 0;
+      $("btnNaechsterFund").disabled = offen === 0;
+      status.textContent = findingGroups.length === 0 ? "" : (offen > 0 ? `${offen} von ${findingGroups.length} Fundgruppe(n) noch offen` : "Alle Fundgruppen entschieden – jetzt neu verarbeiten");
     }
+
+    $("btnNaechsterFund").addEventListener("click", () => {
+      const n = findingGroups.length;
+      for (let k = 1; k <= n; k++) {
+        const i = (fundZeiger + k) % n;
+        const g = findingGroups[i];
+        if (findingDecisions[g.schluessel]) continue;
+        fundZeiger = i;
+        const card = document.querySelector(`.fundkarte[data-index="${i}"]`);
+        document.querySelectorAll(".fundkarte.aktiv").forEach(c => c.classList.remove("aktiv"));
+        if (card) { card.classList.add("aktiv"); card.scrollIntoView({ block: "nearest" }); }
+        const o = g.orte[0];
+        zeigeFundort(o.datei, o.zeile, g.kontextWert);
+        const erster = card ? card.querySelector("button[data-aktion]:not([disabled])") : null;
+        if (erster) erster.focus();
+        return;
+      }
+    });
 
     updateReleaseUI();
 
-    document.getElementById("btnApplyFindingDecisions").addEventListener("click", async () => {
-      if (!allGroupsDecided(findingGroups, findingDecisions)) return;
-      const neu = applyFindingDecisions(readCustomTermsFromUI(), findingGroups, findingDecisions);
-      populateCustomTermsUI(neu);
-      unsavedLocalTermsChanges = true;
+    $("btnApplyFindingDecisions").addEventListener("click", async () => {
+      if (findingGroups.some(g => !findingDecisions[g.schluessel])) return;
       await executeRun(false);
     });
 
     document.getElementById("btnDownloadZip").addEventListener("click", () => {
       if (!releaseAllowed) {
-        alert("Gesperrt: Restfunde vorhanden. Erst alle Fundgruppen entscheiden und neu anonymisieren.");
+        const st = ablaufStatusJetzt();
+        zeigeMeldung("exportMeldung", `Gesperrt: ${st.grund} Nächster Schritt: ${st.aktion}`);
         return;
       }
-      const entries = buildReleaseZipEntries(processedResults);
-      const zipBytes = createZipArchive(entries);
-      triggerDownload(zipBytes, "anonym-ausgabe.zip", "application/zip");
+      try {
+        const entries = buildReleaseZipEntries(processedResults);
+        const zipBytes = createZipArchive(entries);
+        triggerDownload(zipBytes, "anonym-ausgabe.zip", "application/zip");
+        zeigeMeldung("exportMeldung", "");
+      } catch (err) {
+        zeigeMeldung("exportMeldung", err.message);
+      }
     });
 
     // Strukturvorlage: nummerierte Dateien (Originalnamen können Werte enthalten) als ZIP
-    document.getElementById("btnStrukturvorlage").addEventListener("click", () => {
-      if (loadedInputFiles.length === 0) {
-        alert("Bitte zuerst Dateien auswählen.");
+    $("btnStrukturvorlage").addEventListener("click", () => {
+      const statusEl = $("strukturStatus");
+      const nutzbar = loadedInputFiles.filter(f => f.bytes);
+      if (nutzbar.length === 0) {
+        statusEl.textContent = "Bitte zuerst in Schritt 1 Dateien auswählen.";
         return;
       }
       let rules;
-      try { rules = JSON.parse(rulesTextarea.value); } catch (e) { alert("Fehler in der Regeldatei (JSON ungültig): " + e.message); return; }
+      try { rules = JSON.parse(rulesTextarea.value); } catch (e) { markiereFeld("rulesTextarea", true); statusEl.textContent = "Die Regeldatei ist kein gültiges JSON: " + e.message; return; }
       const mergeRes = validateAndMergeEigeneBegriffe(rules, readCustomTermsFromUI());
-      if (!mergeRes.valid) { alert("Fehler in 'Eigene Begriffe':\n" + mergeRes.errors.join("\n")); return; }
+      if (!mergeRes.valid) { statusEl.textContent = "Die eigenen Ersetzungen enthalten Fehler: " + verstaendlich(mergeRes.errors.join(" | ")); refreshCustomTermsValidationUI(); return; }
       const cfg = buildEngineConfig(mergeRes.mergedRules, {});
       const keywords = keywordSetFromVorlage(STRUKTUR_VORLAGE);
       const enc = new TextEncoder();
-      const sortiert = loadedInputFiles.slice().sort((a, b) => (a.path < b.path ? -1 : (a.path > b.path ? 1 : 0)));
+      const sortiert = nutzbar.slice().sort((a, b) => (a.path < b.path ? -1 : (a.path > b.path ? 1 : 0)));
       const erlaubt = [".txt", ".log", ".cfg", ".conf", ".json", ".xml", ".csv"];
       const entries = [];
       let erste = "";
@@ -6449,10 +7263,10 @@
         entries.push({ path: `strukturvorlage/strukturvorlage-${nr}${endung}`, data: enc.encode(vorlage) });
         if (!erste) erste = vorlage;
       });
-      const vorschau = document.getElementById("strukturVorschau");
+      const vorschau = $("strukturVorschau");
       vorschau.style.display = "block";
       vorschau.value = formatPreviewText(erste);
-      document.getElementById("strukturStatus").textContent = `${entries.length} Strukturvorlage(n) erzeugt. Vor Weitergabe sichten!`;
+      statusEl.textContent = `${entries.length} Strukturvorlage(n) erzeugt. Vor Weitergabe sichten!`;
       triggerDownload(createZipArchive(entries), "strukturvorlage.zip", "application/zip");
     });
 
@@ -6462,53 +7276,76 @@
     });
 
     // Regeldatei-Aktionen
-    document.getElementById("btnLoadRulesFile").addEventListener("click", () => document.getElementById("inputRulesFile").click());
-    document.getElementById("inputRulesFile").addEventListener("change", async (e) => {
+    $("btnLoadRulesFile").addEventListener("click", () => $("inputRulesFile").click());
+    $("inputRulesFile").addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) return;
       const txt = await f.text();
       rulesTextarea.value = txt;
-      document.getElementById("rulesStatus").textContent = `Regeldatei '${f.name}' geladen.`;
+      $("rulesStatus").textContent = `Regeldatei '${f.name}' geladen.`;
       refreshCustomTermsValidationUI();
       markiereGeaendert("regeln");
+      aktualisiereEinstellungsZusammenfassung();
     });
-    rulesTextarea.addEventListener("input", () => markiereGeaendert("regeln"));
-    document.getElementById("optNetzerhaltend").addEventListener("change", () => markiereGeaendert("optionen"));
-    document.getElementById("optIpPrivPub").addEventListener("change", () => markiereGeaendert("optionen"));
-    document.querySelectorAll(".cat-toggle").forEach(cb => cb.addEventListener("change", () => markiereGeaendert("optionen")));
-    document.getElementById("btnApplyRules").addEventListener("click", () => {
+    rulesTextarea.addEventListener("input", () => { markiereGeaendert("regeln"); aktualisiereEinstellungsZusammenfassung(); });
+    const beiOption = () => { markiereGeaendert("optionen"); aktualisiereEinstellungsZusammenfassung(); };
+    $("optNetzerhaltend").addEventListener("change", beiOption);
+    $("optIpPrivPub").addEventListener("change", beiOption);
+    document.querySelectorAll(".cat-toggle").forEach(cb => cb.addEventListener("change", beiOption));
+    $("btnApplyRules").addEventListener("click", () => {
       try {
         currentRules = JSON.parse(rulesTextarea.value);
-        document.getElementById("rulesStatus").textContent = "Regeln erfolgreich geprüft und im RAM aktiviert.";
+        markiereFeld("rulesTextarea", false);
+        $("rulesStatus").textContent = "Regeln geprüft und für das nächste Verarbeiten aktiviert.";
         refreshCustomTermsValidationUI();
         markiereGeaendert("regeln");
       } catch (e) {
-        alert("Ungültiges JSON: " + e.message);
+        markiereFeld("rulesTextarea", true);
+        $("rulesStatus").textContent = "Ungültiges JSON: " + e.message;
       }
     });
-    document.getElementById("btnDownloadRules").addEventListener("click", () => {
+    $("btnDownloadRules").addEventListener("click", () => {
       triggerDownload(rulesTextarea.value, "anon-regeln.json", "application/json");
     });
-    document.getElementById("btnResetRules").addEventListener("click", () => {
+    $("btnResetRules").addEventListener("click", () => {
       currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
       rulesTextarea.value = JSON.stringify(currentRules, null, 2);
-      document.getElementById("rulesStatus").textContent = "Standardregeln wiederhergestellt.";
+      markiereFeld("rulesTextarea", false);
+      $("rulesStatus").textContent = "Standardregeln wiederhergestellt.";
       refreshCustomTermsValidationUI();
       markiereGeaendert("regeln");
+      aktualisiereEinstellungsZusammenfassung();
     });
+
+    // Zuordnung: neu oder vorhandene laden
+    function aktualisiereZuordnungsWahl() {
+      const laden = $("zuordnungLaden").checked;
+      $("zuordnungLadenBox").hidden = !laden;
+      $("zuordnungNeuBox").hidden = laden;
+      updateReleaseUI();
+    }
+    $("zuordnungNeu").addEventListener("change", aktualisiereZuordnungsWahl);
+    $("zuordnungLaden").addEventListener("change", aktualisiereZuordnungsWahl);
 
     // Zuordnungstabelle-Aktionen (Export nur verschlüsselt über diesen Weg)
     document.getElementById("btnExportEncryptedTable").addEventListener("click", async () => {
       const pass = document.getElementById("tableSavePass").value;
       const passConfirm = document.getElementById("tableSavePassConfirm").value;
+      markiereFeld("tableSavePass", false);
+      markiereFeld("tableSavePassConfirm", false);
       if (!pass || pass.length < MIN_PASSWORD_LENGTH) {
-        alert(`Bitte ein Passwort (mind. ${MIN_PASSWORD_LENGTH} Zeichen) für die Tabellenverschlüsselung eingeben.`);
+        markiereFeld("tableSavePass", true);
+        zeigeMeldung("tableSavePassMeldung", `Bitte ein Passwort mit mindestens ${MIN_PASSWORD_LENGTH} Zeichen eingeben.`);
+        $("tableSavePass").focus();
         return;
       }
       if (pass !== passConfirm) {
-        alert("Die beiden eingegebenen Passwörter stimmen nicht überein. Bitte prüfen.");
+        markiereFeld("tableSavePassConfirm", true);
+        zeigeMeldung("tableSavePassMeldung", "Die beiden Passwörter stimmen nicht überein.");
+        $("tableSavePassConfirm").focus();
         return;
       }
+      zeigeMeldung("tableSavePassMeldung", "");
       const plain = JSON.stringify(currentState.toJSON(), null, 2);
       // Standardformat ANON-AES256-2 (auch von anon.ps1 lesbar)
       const encrypted = await encryptTableAes256V2(plain, pass);
@@ -6516,17 +7353,28 @@
       document.getElementById("tableSavePassConfirm").value = "";
       triggerDownload(encrypted, "zuordnungstabelle.anontab", "application/json");
       unsavedTableChanges = false;
-      document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (ANON-AES256-2, PBKDF2-SHA256, 600.000 Iterationen) heruntergeladen. Passwortfelder geleert.";
+      $("tableSaveStatus").textContent = "Verschlüsselte Zuordnungstabelle (ANON-AES256-2) heruntergeladen. Passwortfelder geleert.";
+      updateReleaseUI();
     });
 
-    document.getElementById("btnLoadTableFile").addEventListener("click", () => document.getElementById("inputTableFile").click());
-    document.getElementById("btnQuickLoadTableRev").addEventListener("click", () => document.getElementById("inputTableFile").click());
+    let tabelleLadenFuer = "schritt1";
+    document.getElementById("btnLoadTableFile").addEventListener("click", () => { tabelleLadenFuer = "schritt1"; $("inputTableFile").click(); });
+    $("btnQuickLoadTableRev").addEventListener("click", () => { tabelleLadenFuer = "zurueck"; $("inputTableFile").click(); });
     document.getElementById("inputTableFile").addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) return;
+      const passFeld = tabelleLadenFuer === "zurueck" ? "reverseTablePass" : "tableLoadPass";
+      const meldeFeld = tabelleLadenFuer === "zurueck" ? "reverseMeldung" : "tableLoadPassMeldung";
+      const melde = (text, ok) => {
+        zeigeMeldung(meldeFeld, text, ok ? "ok" : "");
+        const st = $("tableLoadStatus");
+        st.dataset.meldung = text ? "1" : "";
+        st.textContent = text || `Aktuell aktive Zuordnungen: ${currentState.reverse.size}`;
+      };
+      markiereFeld(passFeld, false);
       try {
         const raw = await f.text();
-        const pass = document.getElementById("tableLoadPass").value;
+        const pass = $(passFeld).value;
         const parsedCheck = JSON.parse(raw);
         const isEncrypted = parsedCheck && (
           parsedCheck.format === "ANON-WEBCRYPTO-AESGCM-1" ||
@@ -6534,44 +7382,78 @@
           parsedCheck.format === "ANON-AES256-1"
         );
         if (isEncrypted && !pass) {
-          alert("Diese Zuordnungstabelle ist verschlüsselt. Bitte zuerst das Passwort im Feld 'Passwort zum Entschlüsseln' eingeben und die Datei danach erneut auswählen.");
-          e.target.value = "";
+          markiereFeld(passFeld, true);
+          melde("Diese Zuordnungstabelle ist verschlüsselt. Bitte das Passwort eingeben und die Datei danach erneut auswählen.");
+          $(passFeld).focus();
           return;
         }
-        const obj = await decryptTableWebCrypto(raw, pass);
+        let obj;
+        try {
+          obj = await decryptTableWebCrypto(raw, pass);
+        } catch (err) {
+          markiereFeld(passFeld, true);
+          melde("Entschlüsseln fehlgeschlagen: Passwort falsch oder Datei beschädigt.");
+          $(passFeld).focus();
+          return;
+        }
         // Schema, Formatversion, beide Richtungen und Eindeutigkeit prüfen; bei Ablehnung bleibt der bisherige Zustand
         let ladeRegeln = currentRules;
         try { ladeRegeln = JSON.parse(rulesTextarea.value); } catch (_) {}
         const ladeMerge = validateAndMergeEigeneBegriffe(ladeRegeln, readCustomTermsFromUI());
         const pruefung = validateImportedTable(obj, ladeMerge.mergedRules.eigeneBegriffe.festeZuordnung);
         if (!pruefung.ok) {
-          alert("Zuordnungstabelle abgelehnt: " + pruefung.fehler.slice(0, 5).join("; ") + ". Die Tabelle wird nicht verwendet.");
+          melde("Zuordnungstabelle abgelehnt: " + pruefung.fehler.slice(0, 5).join("; ") + ". Die Tabelle wird nicht verwendet; die bisherige Zuordnung bleibt.");
           return;
         }
         currentState = pruefung.state;
+        unsavedTableChanges = false;
+        $(passFeld).value = "";
+        $("zuordnungLaden").checked = true;
+        aktualisiereZuordnungsWahl();
         markiereGeaendert("tabelleGeladen");
         maskTablePreviewOriginals();
+        melde(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge). Gleiche Werte bekommen dieselben Platzhalter.`, true);
         updateTableStatusUI();
-        alert(`Zuordnungstabelle geladen (${currentState.reverse.size} Einträge).`);
       } catch (err) {
-        alert("Fehler beim Laden/Entschlüsseln der Tabelle: " + err.message);
+        melde("Die Datei ist keine gültige Zuordnungstabelle: " + err.message);
+      } finally {
+        e.target.value = "";
       }
     });
 
     document.getElementById("btnResetTableState").addEventListener("click", () => {
+      if (unsavedTableChanges && currentState.reverse.size > 0 && !window.confirm("Die aktuelle Zuordnung ist nicht gespeichert. Trotzdem eine neue leere Zuordnung beginnen?")) return;
       currentState = new AnonState();
+      unsavedTableChanges = false;
+      $("tableLoadStatus").dataset.meldung = "";
+      zeigeMeldung("tableLoadPassMeldung", "");
       maskTablePreviewOriginals();
       updateTableStatusUI();
       markiereGeaendert("tabelleZurueckgesetzt");
     });
 
     // Rückübersetzen
-    document.getElementById("btnRunDeanonymize").addEventListener("click", () => {
-      const inp = document.getElementById("reverseInput").value;
+    $("btnRunDeanonymize").addEventListener("click", () => {
+      if (currentState.reverse.size === 0) {
+        zeigeMeldung("reverseMeldung", "Keine Zuordnung geladen. Bitte zuerst die Zuordnungstabelle laden (Passwort eingeben, dann „Zuordnungstabelle laden“).");
+      } else {
+        zeigeMeldung("reverseMeldung", "");
+      }
+      const inp = $("reverseInput").value;
       const out = deanonymizeText(inp, currentState);
-      document.getElementById("reverseOutput").value = out;
+      $("reverseOutput").value = out;
     });
+
+    // Anfangszustand
+    aktualisiereZuordnungsWahl();
+    updateTableStatusUI();
+    aktualisiereDateiInfo();
+    aktualisiereEinstellungsZusammenfassung();
+    renderFindingGroupsUI();
+    renderEntscheidungsListe();
+    updateReleaseUI();
   }
+
 
   // Export für automatisierte Tests unter Node.js
   if (typeof module !== "undefined" && module.exports) {
