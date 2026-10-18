@@ -1,18 +1,17 @@
-# Netzwerk-Anonymisierer (`anon.ps1` & `anonymisierer.html`) + Read-Only Switch-Sammler (`switch-sammler.ps1`)
+# Netzwerk-Anonymisierer (`anon.ps1` & `anonymisierer.html`)
 
-Offline-Werkzeug zum konsistenten Sammeln und Anonymisieren von Netzwerk-Logs, Show-Techs, Konfigurationsdateien und JSON-Dumps (Aruba AOS-CX/AOS-S, HPE Comware, Dell Enterprise SONiC, Dell OS10, MikroTik RouterOS v6/v7, Cisco IOS/NX-OS, FortiGate, Sophos XG/SFOS, Linux-Syslog, Windows-Eventlogs), bevor diese an eine KI oder externe Experten übergeben werden.
+Offline-Werkzeug zum konsistenten Anonymisieren von Netzwerk-Logs, Show-Techs, Konfigurationsdateien und JSON-Dumps (Aruba AOS-CX/AOS-S, HPE Comware, Dell Enterprise SONiC, Dell OS10, MikroTik RouterOS v6/v7, Cisco IOS/NX-OS, FortiGate, Sophos XG/SFOS, Linux-Syslog, Windows-Eventlogs), bevor diese an eine KI oder externe Experten übergeben werden.
 
 Beide Anonymisierer-Varianten verwenden exakt dasselbe Regelschema ([`anon-regeln.json`](./anon-regeln.json)) und liefern identische Ausgaben (sowohl bei LF- als auch bei CRLF-Dateien):
 1. **Variante A – PowerShell-CLI ([`anon.ps1`](./anon.ps1)):** Läuft auf Windows (Admin-VM) unter Windows PowerShell 5.1 (sowie PowerShell 7+) ohne Python, ohne externe Module und ohne Internetverbindung. Dank eingebetteter C#-Engine (mit 5-Sekunden-Regex-Timeout je Ausdruck) werden auch große Dateien (bis 50 MB) und Show-Tech-Archive mit tausenden Dateien schnell verarbeitet.
 2. **Variante B – Eigenständige Browser-App ([`anonymisierer.html`](./anonymisierer.html)):** Eine einzige HTML-Datei (HTML, CSS, JS inkl. eingebettetem ZIP/TAR.GZ-Codec), die per Doppelklick in Edge oder Chrome komplett offline im Arbeitsspeicher (RAM) läuft und durch eine strikte `Content-Security-Policy` (`default-src 'none'; connect-src 'none'`) jeglichen Netzwerkverkehr unterbindet.
-3. **Read-Only Switch-Sammler ([`switch-sammler.ps1`](./switch-sammler.ps1)):** Sammelt ausschließlich lesende Diagnose- und Konfigurationsdaten per SSH anhand einer harten 2-Stufen-Allowlist pro Plattform-Profil und übergibt sie optional direkt an `anon.ps1`.
 
 ---
 
 ## Inhaltsverzeichnis
 1. [Installation & Bereitstellung](#1-installation--bereitstellung)
 2. [Empfohlener Arbeitsablauf (6 Schritte)](#2-empfohlener-arbeitsablauf-6-schritte)
-3. [Bedienung Switch-Sammler (`switch-sammler.ps1`)](#3-bedienung-switch-sammler-switch-sammlerps1)
+3. [Sammler: eigenes Projekt](#3-sammler-eigenes-projekt)
 4. [Bedienung Variante A: PowerShell (`anon.ps1`)](#4-bedienung-variante-a-powershell-anonps1)
 5. [Bedienung Variante B: Offline-Browser-App (`anonymisierer.html`)](#5-bedienung-variante-b-offline-browser-app-anonymisiererhtml)
 6. [Lokale Regeldatei (`anon-regeln.lokal.json`) auf der Admin-VM pflegen](#6-lokale-regeldatei-anon-regelnlokaljson-auf-der-admin-vm-pflegen)
@@ -28,7 +27,6 @@ Kopieren Sie die Hauptdateien auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisie
 - `anon.ps1`
 - `anonymisierer.html`
 - `anon-regeln.json` (Beispiel- und Basisregelwerk ohne echte Infrastrukturdaten)
-- `switch-sammler.ps1` und `sammler-befehle.json` (Read-Only SSH-Sammler)
 
 Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShell-Modul benötigt.
 
@@ -44,7 +42,7 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
 ```
 
 1. **Sammeln:**
-   Sammeln Sie die Switch-Ausgaben per `switch-sammler.ps1` (oder legen Sie bestehende Show-Tech-Ordner / `.zip`/`.tar.gz`-Archive in einem lokalen Eingabeordner ab).
+   Legen Sie die Switch-Ausgaben (z. B. aus dem Sammler, siehe Abschnitt 3) oder bestehende Show-Tech-Ordner / `.zip`/`.tar.gz`-Archive in einem lokalen Eingabeordner ab.
 2. **Anonymisieren:**
    Starten Sie `anon.ps1` mit Ihrer lokalen Regeldatei `-LokaleRegeln .\anon-regeln.lokal.json` (oder laden Sie die lokale Regeldatei in `anonymisierer.html` unter „Eigene Begriffe“). `-Regeln` bleibt für das Basisregelwerk (`anon-regeln.json`, Standard im Skriptordner).
    - Alle Dateien werden in zwei Durchläufen verarbeitet: Ein Hostname, der erst in Datei 3 erkannt wird, wird so auch in Datei 1 ersetzt.
@@ -68,32 +66,9 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
 
 ---
 
-## 3. Bedienung Switch-Sammler (`switch-sammler.ps1`)
+## 3. Sammler: eigenes Projekt
 
-Der Sammler unterstützt die Profile `dell-sonic`, `dell-os10`, `aruba-aoscx`, `aruba-aoss`, `hpe-comware`, `mikrotik-routeros` und `cisco-ios`:
-- **2-Stufen-Sicherheitsprüfung ohne Blocklist:**
-  1. **Stufe 1 (Zeichensperre):** Verbietet `;`, `|`, `>`, `<`, `&`, `` ` ``, `$`, `\r`, `\n`.
-  2. **Stufe 2 (Exakte Allowlist):** Jeder Befehl (und im Shell-Modus jede Zeile der temporären Befehlsdatei) muss 1:1 in der fest im Skript verdrahteten Allowlist des Profils stehen. `sammler-befehle.json` kann Befehle nur **abwählen**, niemals ergänzen.
-- **Sitzungsmodell (`sitzungsModus`):**
-  - `"shell"` (eine einzige SSH-Sitzung pro Gerät über stdin bzw. `plink -m <Befehlsdatei>`, Aufteilung anhand des Befehls-Echos/Prompts) für `aruba-aoscx`, `aruba-aoss`, `hpe-comware`, `dell-os10`, `dell-sonic` (Standard: Klish-CLI `sonic-cli`) und `cisco-ios`.
-  - `"exec"` (ein Aufruf pro Befehl) für `dell-sonic` mit `-SonicClickCli` sowie `mikrotik-routeros`.
-- **Hostkey-Pflicht (kein TOFU):**
-  Das Pflichtfeld `hostkey` (sowie `sprungserverHostkey` bei Nutzung eines Sprungservers) enthält den vollständigen SSH Public Key (`"ssh-ed25519 AAAAC3Nza..."`). Daraus erzeugt `switch-sammler.ps1` pro Lauf eine temporäre `known_hosts` für `ssh.exe` und berechnet den `SHA256:...`-Fingerprint für `plink.exe -hostkey`.
-- **MikroTik RouterOS v6/v7 & DHCP-Leases:**
-  Führt zuerst `/system resource print without-paging` aus und wählt bei `6.x` automatisch `/export hide-sensitive`, bei `7.x` `/export terse`. Wird die Version nicht eindeutig als `6.x` oder `7.x` erkannt, wird **kein** `/export` ausgeführt und eine Warnung ausgegeben. `/ip dhcp-server lease print without-paging` liegt in `07_extra.txt` und ist standardmäßig abgewählt (Aktivierung nur per `-MitDhcpLeases`).
-- **Fehlerbehandlung & Exit-Code `3`:**
-  Teilausgaben bei Befehlsfehlern/Timeouts werden trotzdem gespeichert und in `_meta.json` vermerkt. Bei Login- oder Hostkey-Fehlern wird das betroffene Gerät sofort abgebrochen (kein Retry), der Lauf mit den übrigen Geräten fortgesetzt und am Ende mit **Exit-Code `3`** beendet.
-
-```powershell
-# Trockenlauf (zeigt für dell-sonic beide CLI-Varianten Klish + Click an):
-.\switch-sammler.ps1 -Geraete "sw-core01" -Profil "dell-sonic" `
-                     -Hostkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..." -Trockenlauf
-
-# Sammeln über Geräteliste (CSV/JSON) mit direkter Anonymisierung:
-.\switch-sammler.ps1 -GeraeteDatei ".\geraete.csv" `
-                     -AusgabeOrdner "C:\Faelle\Sammlung" `
-                     -DirektAnonymisieren -RegelDatei ".\anon-regeln.lokal.json"
-```
+Der Read-Only Switch-Sammler (`switch-sammler.ps1`, `sammler-befehle.json`) wird als eigenes Repository weiterentwickelt und ist nicht mehr Teil dieses Projekts. Seine Ausgaben (Ordner oder `.zip`/`.tar.gz`) werden hier wie jede andere Eingabe anonymisiert.
 
 ---
 
@@ -333,7 +308,7 @@ Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\f
 
 ## 9. Eingebettete Komponenten & Lizenzen
 
-- **Lizenz des Projekts (`anon.ps1`, `anonymisierer.html`, `anon-regeln.json`, `switch-sammler.ps1`):** noch offen.
+- **Lizenz des Projekts (`anon.ps1`, `anonymisierer.html`, `anon-regeln.json`):** noch offen.
 - **ZIP- und TAR/GZIP-Verarbeitung in `anonymisierer.html`:** Direkt eingebetteter Minimal-Codec auf Basis der standardisierten Browser-APIs (`DecompressionStream`, `DataView`, `Uint8Array`, `WebCrypto API`) ohne externe Fremdbibliotheken.
 
 ### Inspiriert von

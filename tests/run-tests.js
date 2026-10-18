@@ -578,7 +578,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   delete decryptedLegacy._loadedFormat;
   assert(JSON.stringify(decryptedLegacy) === sampleTableJson, "WebCrypto lädt alte Tabellen (100.000 Iterationen ohne iterations-Feld) weiterhin fehlerfrei");
 
-  console.log("=== 7. Prüfe HPE Comware, MikroTik & switch-sammler.ps1 Vorgaben ===");
+  console.log("=== 7. Prüfe HPE Comware & MikroTik Regeln ===");
   // Explizite MikroTik-Prüfungen (LF + CRLF):
   // - interface=ether1 und name=bridge1 dürfen NICHT ersetzt werden
   // - name=VLAN10_Intern und interface=VLAN10_Intern müssen denselben Platzhalter bekommen
@@ -614,18 +614,6 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(cwAnon.includes("local-user USER-1 class manage"), `HPE Comware (${label}): local-user <name> wird als USER-1 ersetzt`);
     assert(cwAnon.includes("password cipher *****") && cwAnon.includes("snmp-agent community write cipher *****") && cwAnon.includes("key simple *****"), `HPE Comware (${label}): password/community/key werden mit ***** maskiert`);
   }
-
-  // Prüfe switch-sammler.ps1 und sammler-befehle.json
-  const sammlerPs1Path = path.join(ROOT, "switch-sammler.ps1");
-  const sammlerJsonPath = path.join(ROOT, "sammler-befehle.json");
-  assert(fs.existsSync(sammlerPs1Path), "switch-sammler.ps1 existiert im Projektordner");
-  assert(fs.existsSync(sammlerJsonPath), "sammler-befehle.json existiert im Projektordner");
-  const sammlerPs1 = fs.readFileSync(sammlerPs1Path, "utf8");
-  const sammlerJson = JSON.parse(fs.readFileSync(sammlerJsonPath, "utf8"));
-  assert(sammlerPs1.includes("sitzungsModus") && sammlerPs1.includes("Split-ShellSessionOutput"), "switch-sammler.ps1 implementiert sitzungsModus (exec/shell) und Split-ShellSessionOutput");
-  assert(sammlerPs1.includes("ConvertFrom-SshPublicKey") && sammlerPs1.includes("sprungserverHostkey"), "switch-sammler.ps1 validiert vollständige SSH-Public-Keys und sprungserverHostkey (kein TOFU)");
-  assert(sammlerPs1.includes("/ip dhcp-server lease print without-paging") && sammlerPs1.includes("MitDhcpLeases"), "switch-sammler.ps1 führt MikroTik DHCP-Leases in 07_extra.txt standardmäßig abgewählt und nur per -MitDhcpLeases");
-  assert(Object.prototype.hasOwnProperty.call(sammlerJson, "abgewaehlteBefehle"), "sammler-befehle.json enthält abgewaehlteBefehle");
 
   console.log("=== 8. Prüfe Code-Review Commit 65cd5d4 (Befunde 1–3) ===");
   // Befund 1: Freitext-Leck bei geschützten Wörtern im Body (LF + CRLF)
@@ -707,57 +695,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
-  // Befunde 2 & 3: Prüfe switch-sammler.ps1 (Argument-Injection & %LOCALAPPDATA%\Anon\Temp mit ACL vor dem Schreiben)
+  // pwsh für Paritätstests mit anon.ps1 (Befunde 2 & 3 betrafen den Sammler, eigenes Projekt)
   const os = require("os");
   const { spawnSync } = require("child_process");
   const pwshCheck = spawnSync("pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], { encoding: "utf8" });
-  if (pwshCheck.status === 0) {
-    const tmpLocalAppData = fs.mkdtempSync(path.join(os.tmpdir(), "anon-js-localappdata-"));
-    const protokollPfad = path.join(tmpLocalAppData, "protokoll.json");
-    const sammlerAusgabe = path.join(tmpLocalAppData, "ausgabe");
-    const psTestScript = `
-      $ErrorActionPreference = "Stop"
-      . "${sammlerPs1Path.replace(/\\/g, "\\\\")}" -NurFunktionenLaden
-      $injCases = @(
-        @{ fn = { Test-SammlerBenutzerName -Benutzer "-oProxyCommand=calc" } },
-        @{ fn = { Test-SammlerBenutzerName -Benutzer "admin\`n" } },
-        @{ fn = { Test-SammlerHostNameOderIp -Wert "sw01\`n" } },
-        @{ fn = { Test-SammlerSprungserver -Sprungserver "admin@jump01\`n" } },
-        @{ fn = { Test-SammlerHostNameOderIp -Wert "-oProxyCommand=x" } },
-        @{ fn = { Test-SammlerSprungserver -Sprungserver "x -oProxyCommand=y" } },
-        @{ fn = { Test-SammlerHostNameOderIp -Wert "sw01 mit leerzeichen" } },
-        @{ fn = { Test-SammlerHostNameOderIp -Wert 'sw01"quote' } },
-        @{ fn = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "SshKeyPfad" } },
-        @{ fn = { Test-SammlerDateiPfad -Pfad "-oProxyCommand=calc" -ParameterName "PlinkPfad" } }
-      )
-      foreach ($c in $injCases) {
-        $threw = $false
-        try { & $c.fn } catch { $threw = $true }
-        if (-not $threw) { throw "Injection-Fall hat nicht geworfen!" }
-      }
-      $env:LOCALAPPDATA = "${tmpLocalAppData.replace(/\\/g, "\\\\")}"
-      $validKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@synthetic"
-      & "${sammlerPs1Path.replace(/\\/g, "\\\\")}" -Geraete @("sw-aoscx01") -Profil "aruba-aoscx" -Hostkey $validKey -MitPasswort -AusgabeOrdner "${sammlerAusgabe.replace(/\\/g, "\\\\")}" -TestModus -TestSimulationsOptionen @{
-        SimuliertesPasswort = "TestSecretPassword!"
-        ProtokollPfad       = "${protokollPfad.replace(/\\/g, "\\\\")}"
-      }
-    `;
-    const runRes = spawnSync("pwsh", ["-NoProfile", "-Command", psTestScript], { encoding: "utf8" });
-    assert(runRes.status === 0, `Befund 2 & 3 (via pwsh): Argument-Injection-Abwehr (inkl. 'admin\\n') und Temp-Datei-Lauf erfolgreich (${runRes.stderr || "ok"})`);
-    if (fs.existsSync(protokollPfad)) {
-      const prot = JSON.parse(fs.readFileSync(protokollPfad, "utf8"));
-      const expectedTempSuffix = path.join("Anon", "Temp");
-      assert(prot.tempOrdner && prot.tempOrdner.endsWith(expectedTempSuffix), `Befund 3: Temp-Ordner liegt unter %LOCALAPPDATA%\\Anon\\Temp (${prot.tempOrdner})`);
-      assert(Array.isArray(prot.dateien) && prot.dateien.length === 3, "Befund 3: Passwort-Datei, known_hosts und Befehlsdatei wurden protokolliert");
-      for (const d of prot.dateien) {
-        assert(d.aclVorSchreiben === true && d.groesseVorAcl === 0 && d.groesseBeiAcl === 0, `Befund 3: Datei ${path.basename(d.pfad)} wurde ERST leer erzeugt + ACL gesetzt (0 Bytes), DANN beschrieben`);
-        assert(d.geloeschtNachLauf === true && !fs.existsSync(d.pfad), `Befund 3: Datei ${path.basename(d.pfad)} wurde nach dem Lauf im finally gelöscht`);
-      }
-    } else {
-      assert(false, "Befund 3: Protokolldatei wurde von switch-sammler.ps1 erzeugt");
-    }
-    fs.rmSync(tmpLocalAppData, { recursive: true, force: true });
-  }
 
   // ============================================================================
   // 16. NEUE BEDIENFUNKTIONEN IN ANONYMISIERER.HTML (UI-Tests & Statische Prüfungen)
