@@ -359,7 +359,10 @@ Der Ordner `tests\` enthält **87 synthetische Test- und Grenzfälle** (`tests\f
   node tests/run-tests-browser.js
   ```
   Ohne Browser meldet er „NICHT AUSGEFÜHRT“; mit `BROWSER_PFLICHT=1` (CI) schlägt er dann fehl.
-- **CI** (`.github/workflows/ci.yml`): Node, Windows PowerShell 5.1 (Pflicht), PowerShell 7 und gitleaks (`.gitleaks.toml`, Allowlist nur für eindeutig erfundene Testwerte).
+- **CI** (`.github/workflows/ci.yml`, `actions/checkout@v5`, `actions/setup-node@v5`): Node, Windows PowerShell 5.1 (Pflicht), PowerShell 7 und gitleaks (`.gitleaks.toml`, Allowlist nur für eindeutig erfundene Testwerte).
+  - Windows PowerShell 5.1: Bei Erfolg erscheint die Zeile `TESTERGEBNIS` als Hinweis (`::notice::`); nur wenn der Testlauf fehlschlägt, werden `FEHLER`- und `TESTERGEBNIS`-Zeilen als Fehler-Annotation (`::error::`) ausgegeben.
+  - gitleaks, Arbeitsstand (HEAD): Pflicht, Funde lassen den Job scheitern.
+  - gitleaks, gesamte Historie: nur informativ (`continue-on-error`). Funde erscheinen als Warnung; es sind bekannte erfundene Testschlüssel aus Commit 65cd5d4 (alter Sammler), die mit einem frischen öffentlichen Repository verschwinden. Dafür gibt es keine Allowlist.
 - **Sicherheitslücken melden:** siehe [`SECURITY.md`](./SECURITY.md).
 - **Gemeinsamer Kern:** `core/` und `regeln/anon-regeln.json` werden mit `node tools/einbetten.js` in beide HTML-Seiten eingebettet; `node tools/einbetten.js --pruefen` (und die Testsuite) meldet Abweichungen.
 
