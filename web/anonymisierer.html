@@ -600,7 +600,7 @@
                 <h2 style="margin:0; border:none; padding:0;">Funde</h2>
                 <button type="button" id="btnNaechsterFund" disabled>Nächster offener Fund</button>
               </div>
-              <div class="small-muted" style="margin:6px 0 8px;">Für jede Fundgruppe entscheiden: <strong>Alle Vorkommen ersetzen</strong> (Wert wird durch einen Platzhalter bzw. Geheimnisse durch <code>*****</code> ersetzt) oder <strong>Unverändert lassen</strong> (Wert bleibt sichtbar, nur für seine Kategorie). Ein Klick auf einen Fundort zeigt die Stelle in der Vorschau.</div>
+              <div class="small-muted" style="margin:6px 0 8px;">Für jede Fundgruppe entscheiden: <strong>Alle Vorkommen ersetzen</strong> (Wert wird durch einen Platzhalter bzw. Geheimnisse durch <code>*****</code> ersetzt) oder <strong>Unverändert lassen</strong> (Wert bleibt sichtbar, nur für seine Kategorie). Verdachtsfunde (z. B. Build-ID) nach Prüfung freigeben oder als Geheimnis maskieren; sicher erkannte Geheimnisse nur maskieren. Ein Klick auf einen Fundort zeigt die Stelle in der Vorschau.</div>
               <div id="fundgruppenListe" class="fundkarten"><div class="small-muted">Noch keine Funde.</div></div>
               <div class="btn-row" style="margin-top:8px;">
                 <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden und neu verarbeiten</button>
@@ -6036,6 +6036,9 @@
         b.setAttribute("aria-selected", aktiv ? "true" : "false");
         $(b.dataset.reiter).hidden = !aktiv;
       }
+      // Entscheidungen und Einzelfunde gehören zum Reiter "Funde"
+      $("entscheidungenDetails").hidden = id !== "fundgruppenBox";
+      $("einzelfundeDetails").hidden = id !== "fundgruppenBox";
       if (id === "tablePreviewCard") renderTablePreviewUI();
     }
     document.querySelectorAll(".unter-reiter button").forEach(b => b.addEventListener("click", () => {
@@ -7154,7 +7157,7 @@
         processedResults.forEach((res, idx) => {
           const opt = document.createElement("option");
           opt.value = String(idx);
-          opt.textContent = `${res.path} (${Math.round(res.anonText.length / 1024)} KB)`;
+          opt.textContent = `${res.path} (${groesseText(res.anonText.length)})`;
           sel.appendChild(opt);
         });
         vorschauIndex = -1;
@@ -7516,6 +7519,10 @@
       await executeRun(false);
     });
 
+    function groesseText(zeichen) {
+      return zeichen < 1024 ? "unter 1 KB" : `${Math.round(zeichen / 1024)} KB`;
+    }
+
     // Einzelne anonymisierte Datei herunterladen (gleiche Sperrregeln wie das ZIP)
     function ladeEinzelDatei(idx, meldungId) {
       if (!exportFrei()) {
@@ -7550,7 +7557,7 @@
       processedResults.slice(0, max).forEach((res, idx) => {
         const tr = document.createElement("tr");
         const tdN = document.createElement("td"); tdN.textContent = res.path;
-        const tdG = document.createElement("td"); tdG.textContent = `${Math.max(1, Math.round(res.anonText.length / 1024))} KB`;
+        const tdG = document.createElement("td"); tdG.textContent = groesseText(res.anonText.length);
         const tdA = document.createElement("td");
         const b = document.createElement("button");
         b.type = "button"; b.className = "btn-sm einzel-download-btn"; b.textContent = "Herunterladen";
