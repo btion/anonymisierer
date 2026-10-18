@@ -7,6 +7,8 @@ Stand: 2026-10-18. Nur Konzepte, kein übernommener Code.
 
 ## 1. Geheimnismuster, die uns fehlen
 
+**Nachtrag:** Alle 12 Punkte sind seit dem Commit „Punkt 6“ als Muster in `anon-regeln.json` enthalten (TC63–TC74), der Fehler bei `priv aes 128` ist behoben, und der Prüfmodus meldet nicht entfernte Geheimnisse als `Rest-Geheimnis`.
+
 Abgleich der Kategorien aus netconan (`default_pwd_regexes.py`, `sensitive_item_removal.py`) mit `anon-regeln.json`. Geprüft mit erfundenen Beispielzeilen durch die Engine; „offen“ heißt: Das Geheimnis steht nach der Anonymisierung noch im Klartext, und der Prüfmodus meldet es nicht.
 
 | # | Beispiel (erfunden) | Status heute |

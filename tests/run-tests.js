@@ -195,6 +195,9 @@ for (const tc of cases) {
   if (tc.pruefeRoh) {
     const rawFindings = core.auditText(tc.eingabe, tc.id + ".txt", cfg);
     assert(rawFindings.length > 0, `${tc.id}: Prüfmodus meldet die Lücke in den Rohdaten (${rawFindings.length} Treffer)`);
+    if (tc.pruefeRohKategorie) {
+      assert(rawFindings.some(f => f.kategorie === tc.pruefeRohKategorie), `${tc.id}: Prüfmodus meldet in den Rohdaten die Kategorie ${tc.pruefeRohKategorie}`);
+    }
   }
 
   if (tc.jsonValid) {

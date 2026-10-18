@@ -1822,6 +1822,17 @@ namespace AnonTool
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Geheimnis-Blob", Fund = m.Value, Kontext = getLineCtx(ln) });
             }
 
+            // 6b. Geheimnismuster: Fundstellen, an denen die Ersetzung noch etwas ändern würde, sind nicht entfernte Geheimnisse
+            foreach (SecretRule sRule in cfg.GeheimnisMuster)
+            {
+                foreach (Match m in sRule.Compiled.Matches(cleanText))
+                {
+                    if (m.Result(sRule.Replacement) == m.Value) continue;
+                    int ln = GetLineNumber(lineStarts, m.Index);
+                    findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-Geheimnis", Fund = m.Value, Kontext = getLineCtx(ln) });
+                }
+            }
+
             // 7. Hostnamen, Seriennummern und Benutzer anhand der Erkennungsmuster auch im Inhalt prüfen
             List<KeyValuePair<string, List<Regex>>> patternGroups = new List<KeyValuePair<string, List<Regex>>>();
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Hostname", cfg.HostnamenMuster));

@@ -512,5 +512,125 @@
     "netzerhaltend": true,
     "sauber": true,
     "pruefeRueck": true
+  },
+  {
+    "id": "TC63",
+    "name": "Geheimnis 1: ip ospf authentication-key (mit Typ 7)",
+    "eingabe": "interface vlan10\n ip ospf authentication-key 7 GeheimOspf1",
+    "erwartet": "interface vlan10\n ip ospf authentication-key 7 *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC64",
+    "name": "Geheimnis 2: ip ospf message-digest-key md5",
+    "eingabe": "interface vlan10\n ip ospf message-digest-key 1 md5 7 GeheimMd5Key2",
+    "erwartet": "interface vlan10\n ip ospf message-digest-key 1 md5 7 *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC65",
+    "name": "Geheimnis 3: HSRP standby authentication text und ohne Typ",
+    "eingabe": "standby 1 authentication text GeheimHsrp3\nstandby 2 authentication GeheimHsrp3b",
+    "erwartet": "standby 1 authentication text *****\nstandby 2 authentication *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC66",
+    "name": "Geheimnis 4: ntp authentication-key md5 (Typ-Ziffer danach bleibt)",
+    "eingabe": "ntp authentication-key 1 md5 GeheimNtp4 7",
+    "erwartet": "ntp authentication-key 1 md5 ***** 7",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC67",
+    "name": "Geheimnis 5: IS-IS isis password, domain-password, area-password",
+    "eingabe": "interface ge-0/0/1\n isis password GeheimIsis5 level-1\nrouter isis\n domain-password GeheimDomain5\n area-password clear GeheimArea5",
+    "erwartet": "interface ge-0/0/1\n isis password ***** level-1\nrouter isis\n domain-password *****\n area-password clear *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC68",
+    "name": "Geheimnis 6: snmp-server user ... priv aes 128 <geheimnis> (Schlüssellänge bleibt)",
+    "eingabe": "snmp-server user nms grp1 v3 auth sha GeheimAuth6 priv aes 128 GeheimPriv6",
+    "erwartet": "snmp-server user nms grp1 v3 auth sha ***** priv aes 128 *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC69",
+    "name": "Geheimnis 7: Community in snmp-server host (IP bleibt anonymisierbar)",
+    "eingabe": "snmp-server host 192.0.2.9 version 2c GeheimComm7 udp-port 162\nsnmp-server host 192.0.2.10 informs version 3 priv GeheimComm7b",
+    "erwartet": "snmp-server host NET-1.H1 version 2c ***** udp-port 162\nsnmp-server host NET-1.H2 informs version 3 priv *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC70",
+    "name": "Geheimnis 8: Juniper simple-password",
+    "eingabe": "authentication {\n    simple-password GeheimJuniper8;\n}",
+    "erwartet": "authentication {\n    simple-password *****;\n}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC71",
+    "name": "Geheimnis 9: ldap-login-password",
+    "eingabe": "aaa-server LDAP1 host 192.0.2.20\n ldap-login-password GeheimLdap9",
+    "erwartet": "aaa-server LDAP1 host NET-1.H1\n ldap-login-password *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC72",
+    "name": "Geheimnis 10: radius-server host ... key 7 <geheimnis> (Typ-Ziffer und IP bleiben)",
+    "eingabe": "radius-server host 192.0.2.3 auth-port 1812 key 7 GeheimRadius10\ntacacs-server host 192.0.2.4 key GeheimTacacs10",
+    "erwartet": "radius-server host NET-1.H1 auth-port 1812 key 7 *****\ntacacs-server host NET-1.H2 key *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC73",
+    "name": "Geheimnis 11: alleinstehende key 7 <wert>-Zeile in einer Key-Chain",
+    "eingabe": "key chain RIP-KEYS\n key 1\n  key 7 GeheimKey11",
+    "erwartet": "key chain RIP-KEYS\n key 1\n  key 7 *****",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC74",
+    "name": "Geheimnis 12: IS-IS hello-authentication-key",
+    "eingabe": "protocols isis interface ge-0/0/1 level 2 hello-authentication-key GeheimHello12;",
+    "erwartet": "protocols isis interface ge-0/0/1 level 2 hello-authentication-key *****;",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis"
   }
 ]

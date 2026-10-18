@@ -198,9 +198,9 @@
       "ersetzen": "$1*****"
     },
     {
-      "name": "SNMPv3 Auth/Priv Passwörter",
+      "name": "SNMPv3 Auth/Priv Passwörter (Schlüssellänge 128/192/256 nach aes wird übersprungen)",
       "hersteller": "Alle",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:128|192|256)(?=[ \\t]+[^ \\t\\r\\n]))?(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
       "ersetzen": "$1*****"
     },
     {
@@ -213,6 +213,61 @@
       "name": "Authorization Bearer Header",
       "hersteller": "Alle",
       "suche": "(?i)((?<![A-Za-z0-9_])Authorization[ \\t]*:[ \\t]*Bearer[ \\t]+)(\\S+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "OSPF authentication-key (Cisco ip ospf)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ip[ \\t]+ospf[ \\t]+authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "OSPF message-digest-key md5",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:ip[ \\t]+ospf[ \\t]+)?message-digest-key[ \\t]+[0-9]+[ \\t]+md5(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "HSRP standby authentication (text oder ohne Typ)",
+      "suche": "(?i)((?<![A-Za-z0-9_-])standby(?:[ \\t]+[0-9]+)?[ \\t]+authentication(?:[ \\t]+text)?[ \\t]+)(?!md5(?![A-Za-z0-9]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "NTP authentication-key",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ntp[ \\t]+authentication-key[ \\t]+[0-9]+[ \\t]+(?:md5|sha1|sha256|hmac-sha[0-9-]*|cmac-aes-128)[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "IS-IS password, domain-password, area-password",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:isis[ \\t]+password|domain-password|area-password)[ \\t]+(?:(?:clear|encrypted|hmac-md5|md5|text|[0-9])[ \\t]+)?)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "SNMP-Community in snmp-server host",
+      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3[ \\t]+(?:auth|noauth|priv)))?[ \\t]+)()(?!(?:version|informs|traps|vrf)(?![A-Za-z0-9_-]))(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "Juniper simple-password",
+      "suche": "(?i)((?<![A-Za-z0-9_-])simple-password[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "LDAP ldap-login-password",
+      "suche": "(?i)((?<![A-Za-z0-9_-])ldap-login-password(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "RADIUS/TACACS key in server host-Zeile",
+      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "Alleinstehende key <Typ> <Wert>-Zeile (Key-Chain)",
+      "suche": "(?im)^([ \\t]*key[ \\t]+[0-9][ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)(?=[ \\t]*\\r?$)",
+      "ersetzen": "$1*****"
+    },
+    {
+      "name": "IS-IS hello-authentication-key",
+      "suche": "(?i)((?<![A-Za-z0-9_-])hello-authentication-key(?:[ \\t]+[0-9](?=[ \\t]))?[ \\t]+)(\"[^\"]*\"|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {

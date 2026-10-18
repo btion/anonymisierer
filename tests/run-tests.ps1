@@ -176,6 +176,10 @@ foreach ($tc in $cases) {
     if ($null -ne $tc.PSObject.Properties["pruefeRoh"] -and [bool]$tc.pruefeRoh) {
         $rawFindings = [AnonTool.AnonEngine]::AuditText([string]$tc.eingabe, "$($tc.id).txt", $cfg)
         Assert-True ($rawFindings.Count -gt 0) "$($tc.id): Prüfmodus meldet die Lücke in den Rohdaten ($($rawFindings.Count) Treffer)"
+        if ($null -ne $tc.PSObject.Properties["pruefeRohKategorie"]) {
+            $rohKat = [string]$tc.pruefeRohKategorie
+            Assert-True (@($rawFindings | Where-Object { $_.Kategorie -eq $rohKat }).Count -gt 0) "$($tc.id): Prüfmodus meldet in den Rohdaten die Kategorie $rohKat"
+        }
     }
 
     if ($null -ne $tc.PSObject.Properties["jsonValid"] -and [bool]$tc.jsonValid) {
