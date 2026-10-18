@@ -1388,6 +1388,69 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // 18.x HTML-Kopie der Freitext-Engine muss mit core/text/text-engine.js übereinstimmen
+  {
+    const coreSrc = fs.readFileSync(textEnginePath, "utf8");
+    const coreStart = coreSrc.indexOf('function () {\n  "use strict";\n') + 'function () {\n  "use strict";\n'.length;
+    const coreBody = coreSrc.slice(coreStart, coreSrc.lastIndexOf("\n});"));
+    const htmlMarker = 'const TextPseudonymizer = (function () {\n\n  "use strict";\n';
+    const htmlStart = htmlContent.indexOf(htmlMarker) + htmlMarker.length;
+    const htmlBody = htmlContent.slice(htmlStart, htmlContent.indexOf("\n  })();", htmlStart));
+    assert(coreBody.length > 10000 && coreBody === htmlBody, "Freitext-Engine: Kopie in anonymisierer.html ist identisch mit core/text/text-engine.js");
+  }
+
+  // 18.y Mechanismus pro Kategorie (platzhalter | entfernen | generalisieren)
+  {
+    const mText = "Geb. 12.03.1987, wohnhaft Musterweg 12a, 12345 Musterstadt, Tel. 030 1234567, Mail max@beispiel.example, IP 192.0.2.44, Herr Hans Beispiel";
+    const spanOf = (needle, category) => {
+      const i = mText.indexOf(needle);
+      return { start: i, end: i + needle.length, category, active: true, text: needle };
+    };
+    const mSpans = [
+      spanOf("12.03.1987", "GEBURTSDATUM"),
+      spanOf("Musterweg 12a", "STRASSE_NR"),
+      spanOf("12345 Musterstadt", "PLZ_ORT"),
+      spanOf("030 1234567", "TELEFON"),
+      spanOf("max@beispiel.example", "EMAIL"),
+      spanOf("192.0.2.44", "IP"),
+      spanOf("Hans Beispiel", "NAME")
+    ];
+    const allGen = {};
+    for (const s of mSpans) allGen[s.category] = "generalisieren";
+    const gen = textCore.pseudonymizeText(mText, mSpans, { mechanismen: allGen });
+    assert(gen.text === "Geb. 1987, wohnhaft Musterweg, 12xxx, Tel. 030 …, Mail …@beispiel.example, IP 192.0.2.x, Herr [NAME-1]",
+      `Mechanismus generalisieren: Werte vergröbert, NAME ohne Regel fällt auf Platzhalter zurück (${gen.text})`);
+    assert(gen.mapping.length === 1 && gen.mapping[0].placeholder === "[NAME-1]", "Mechanismus generalisieren: nur Platzhalter landen in der Zuordnungstabelle");
+    assert(gen.mechanismusZaehler.generalisieren === 6 && gen.mechanismusZaehler.platzhalter === 1, "Mechanismus generalisieren: Zähler je Mechanismus stimmen");
+
+    const mixed = textCore.pseudonymizeText(mText, mSpans, { mode: "token", mechanismen: { EMAIL: "entfernen", GEBURTSDATUM: "generalisieren" } });
+    assert(mixed.text.includes("Geb. 1987,") && mixed.text.includes("Mail " + "█".repeat(20) + ",") && mixed.text.includes("[NAME-1]") && mixed.text.includes("[IP-1]"),
+      `Mechanismus gemischt: pro Kategorie unterschiedlich, Rest nach Modus (${mixed.text})`);
+    const redactDefault = textCore.pseudonymizeText(mText, mSpans, { mode: "redaction", mechanismen: { NAME: "platzhalter" } });
+    assert(redactDefault.text.includes("[NAME-1]") && !redactDefault.text.includes("[IP-"), "Mechanismus: Modus Schwärzung als Vorgabe, Ausnahme pro Kategorie möglich");
+    assert(textCore.generalisiereWert("NAME", "Hans") === null && textCore.generalisiereWert("PLZ_ORT", "Musterstadt") === null, "generalisiereWert: ohne Regel bzw. ohne passenden Wert null");
+    assert(JSON.stringify(textCore.MECHANISMEN) === JSON.stringify(["platzhalter", "entfernen", "generalisieren"]), "Mechanismen: platzhalter, entfernen, generalisieren");
+
+    // Fortlaufende Nummerierung über mehrere Texte und Übernahme in die Zuordnungstabelle
+    const tState = new core.AnonState();
+    const t1 = "Herr Hans Beispiel";
+    const r1 = textCore.pseudonymizeText(t1, [{ start: 5, end: 18, category: "NAME", active: true }], { bekannt: core.collectKnownTextTokens(tState) });
+    core.registerTextMappingInState(tState, r1.mapping);
+    const t2 = "Frau Erika Beispiel und Herr Hans Beispiel";
+    const r2 = textCore.pseudonymizeText(t2, [
+      { start: 5, end: 19, category: "NAME", active: true },
+      { start: 29, end: 42, category: "NAME", active: true }
+    ], { bekannt: core.collectKnownTextTokens(tState) });
+    core.registerTextMappingInState(tState, r2.mapping);
+    assert(r1.text === "Herr [NAME-1]" && r2.text === "Frau [NAME-2] und Herr [NAME-1]",
+      `Text-Reiter: Nummerierung bleibt über mehrere Texte eindeutig (${r2.text})`);
+    assert(core.deanonymizeText("[NAME-2] schreibt an [NAME-1]", tState) === "Erika Beispiel schreibt an Hans Beispiel",
+      "Text-Reiter: Platzhalter aus der Zuordnungstabelle werden zurückübersetzt");
+    const execHandler = htmlContent.slice(htmlContent.indexOf('getElementById("btnTextExecute")'), htmlContent.indexOf("// ICD/OPS Schutzprüfung") > 0 ? htmlContent.indexOf("// ICD/OPS Schutzprüfung") : htmlContent.length);
+    assert(!htmlContent.includes("currentState.reverseMap") && !htmlContent.includes("currentState.categories"), "Text-Reiter: keine Zugriffe auf nicht vorhandene Felder reverseMap/categories");
+    assert(execHandler.includes("registerTextMappingInState(") && execHandler.includes("readTextMechanismenFromUI()"), "Text-Reiter: Übernahme nutzt registerTextMappingInState und Mechanismen aus der Oberfläche");
+  }
+
   // Mathematische Schaltjahr-Tests für shiftDate
   assert(textCore.shiftDate("28.02.2024", 1) === "29.02.2024", "shiftDate: Schaltjahr 2024 korrekt behandelt (28.02. -> 29.02.)");
   assert(textCore.shiftDate("28.02.2023", 1) === "01.03.2023", "shiftDate: Kein Schaltjahr 2023 korrekt behandelt (28.02. -> 01.03.)");

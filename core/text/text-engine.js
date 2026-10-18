@@ -10,7 +10,8 @@
  *     ROT  = Sicher & automatisch ersetzt (Prüfziffern, strenge Formate)
  *     GELB = Kandidaten zur Sichtprüfung (Namen, Adressen, Aktenzeichen)
  *     MANUELL = Benutzerdefinierte Bereiche
- * - Modus: Token ([NAME-1], ...) oder Schwärzung (████████).
+ * - Mechanismus pro Kategorie: platzhalter ([NAME-1], rückführbar), entfernen (████████)
+ *   oder generalisieren (z. B. Datum → Jahr); Vorgabe über den Modus Token / Schwärzung.
  * - Wording: "pseudonymisieren", "Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich"
  */
 
@@ -957,28 +958,93 @@
     return resolved;
   }
 
+  // =========================================================================
+  // 7b. Mechanismus pro Kategorie: platzhalter | entfernen | generalisieren
+  // =========================================================================
+
+  const MECHANISMEN = ["platzhalter", "entfernen", "generalisieren"];
+
+  // Kategorien mit Generalisierungsregel; alle anderen fallen auf "platzhalter" zurück
+  const GENERALISIERBAR = ["DATUM", "GEBURTSDATUM", "PLZ_ORT", "STRASSE_NR", "TELEFON", "EMAIL", "IP"];
+
+  /**
+   * Vergröbert einen Wert so, dass er die Person nicht mehr eindeutig bestimmt.
+   * Liefert null, wenn die Kategorie keine Regel hat oder der Wert nicht passt.
+   * - DATUM / GEBURTSDATUM: nur das Jahr ("1987")
+   * - PLZ_ORT: Leitregion, die ersten beiden Ziffern ("12xxx"), ohne Ort
+   * - STRASSE_NR: Straßenname ohne Hausnummer
+   * - TELEFON: nur Vorwahl ("030 …" bzw. "+49 89 …")
+   * - EMAIL: nur die Domain ("…@beispiel.example")
+   * - IP: IPv4 ohne letztes Oktett ("192.0.2.x")
+   */
+  function generalisiereWert(category, value) {
+    const v = String(value || "").trim();
+    if (!v) return null;
+    if (category === "DATUM" || category === "GEBURTSDATUM") {
+      const m = v.match(/(?:^|[^0-9])((?:19|20)[0-9]{2})(?:[^0-9]|$)/);
+      return m ? m[1] : null;
+    }
+    if (category === "PLZ_ORT") {
+      const m = v.match(/(?:^|[^0-9])([0-9]{2})[0-9]{3}(?:[^0-9]|$)/);
+      return m ? m[1] + "xxx" : null;
+    }
+    if (category === "STRASSE_NR") {
+      const m = v.match(/^(.*?)[ \t]+[0-9]+[ \t]*[a-zA-Z]?(?:[ \t]*[-\/][ \t]*[0-9]+[a-zA-Z]?)?$/);
+      return m && m[1].trim() ? m[1].trim() : null;
+    }
+    if (category === "TELEFON") {
+      const m = v.match(/^((?:\+|00)[0-9]{2}[ \t\/-]*\(?0?\)?[ \t]*[0-9]{2,4}|0[0-9]{2,4})/);
+      return m ? m[1].trim() + " …" : null;
+    }
+    if (category === "EMAIL") {
+      const at = v.lastIndexOf("@");
+      return at > 0 && at < v.length - 1 ? "…@" + v.slice(at + 1) : null;
+    }
+    if (category === "IP") {
+      const m = v.match(/^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}$/);
+      return m ? m[1] + ".x" : null;
+    }
+    return null;
+  }
+
   /**
    * Pseudonymisiert den Text anhand der aktiven Spans.
    *
-   * Modi:
-   * - "token" (Standard): Ersetzt Treffer durch strukturierte Token [NAME-1], [IBAN-1]
-   * - "redaction" / "schwaerzung": Ersetzt Treffer durch Schwärzungsblöcke ████████
+   * Optionen:
+   * - mechanismen: { KATEGORIE: "platzhalter" | "entfernen" | "generalisieren" }
+   *     platzhalter    = Token [NAME-1], rückführbar über die Zuordnungstabelle
+   *     entfernen      = Schwärzung ████████, nicht rückführbar
+   *     generalisieren = vergröberter Wert (siehe generalisiereWert), nicht rückführbar;
+   *                      ohne Regel für die Kategorie wird ein Platzhalter gesetzt
+   * - mode: Vorgabe für Kategorien ohne Eintrag in mechanismen
+   *     "token" (Standard) = platzhalter, "redaction" / "schwaerzung" = entfernen
+   * - bekannt: { tokens: Map("KATEGORIE|original" -> Token), zaehler: { KATEGORIE: n } }
+   *     bereits vergebene Platzhalter, damit die Nummerierung über mehrere Texte eindeutig bleibt
+   * - shiftDates / dateShiftDays: Datumsverschiebung (hat Vorrang für DATUM / GEBURTSDATUM)
    *
    * Liefert:
    * - text: Der pseudonymisierte Text
-   * - mapping: Array von { category, placeholder, original }
+   * - mapping: Array von { category, placeholder, original } (nur rückführbare Ersetzungen)
+   * - mechanismusZaehler: { platzhalter, entfernen, generalisieren }
    * - status: "Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich"
    */
   function pseudonymizeText(text, spans, options) {
     options = options || {};
-    const mode = options.mode || "token"; // "token" oder "redaction"
+    const mode = options.mode || "token";
+    const defaultMechanismus = (mode === "redaction" || mode === "schwaerzung") ? "entfernen" : "platzhalter";
+    const mechanismen = options.mechanismen || {};
     const shiftDates = Boolean(options.shiftDates && options.dateShiftDays);
     const dateShiftDays = shiftDates ? parseInt(options.dateShiftDays, 10) : 0;
     const activeSpans = (spans || []).filter(s => s.active).sort((a, b) => a.start - b.start);
 
+    const bekannt = options.bekannt || {};
     const mapping = [];
-    const categoryCounters = {};
+    const categoryCounters = Object.assign({}, bekannt.zaehler || {});
     const originalToToken = new Map();
+    if (bekannt.tokens && typeof bekannt.tokens.forEach === "function") {
+      bekannt.tokens.forEach((tok, key) => { originalToToken.set(key, tok); });
+    }
+    const mechanismusZaehler = { platzhalter: 0, entfernen: 0, generalisieren: 0 };
 
     let result = "";
     let lastIdx = 0;
@@ -989,24 +1055,31 @@
       result += text.slice(lastIdx, span.start);
 
       const origText = text.slice(span.start, span.end);
-      let replacement = "";
+      const catKey = span.category || "TEXT";
+      let mech = mechanismen[catKey];
+      if (MECHANISMEN.indexOf(mech) < 0) mech = defaultMechanismus;
+      let replacement = null;
 
-      if (shiftDates && (span.category === "DATUM" || span.category === "GEBURTSDATUM")) {
+      if (shiftDates && (catKey === "DATUM" || catKey === "GEBURTSDATUM")) {
         // Datumsverschiebung: Ersetzt durch das verschobene Datum
         // WICHTIG: Versatz steht NUR in der Zuordnungstabelle, niemals in der Ausgabe!
         replacement = shiftDate(origText, dateShiftDays);
         mapping.push({
-          category: span.category,
+          category: catKey,
           placeholder: replacement,
           original: origText,
           meta: { dateShiftDays: dateShiftDays }
         });
-      } else if (mode === "redaction") {
-        // Schwärzung: Zeichengenaue Blöcke
+      } else if (mech === "entfernen") {
         replacement = "█".repeat(Math.max(1, origText.length));
-      } else {
-        // Token-Modus: [KATEGORIE-n], über den Text konsistent gehalten
-        const catKey = span.category || "TEXT";
+        mechanismusZaehler.entfernen++;
+      } else if (mech === "generalisieren") {
+        replacement = generalisiereWert(catKey, origText);
+        if (replacement !== null) mechanismusZaehler.generalisieren++;
+      }
+
+      if (replacement === null) {
+        // Platzhalter [KATEGORIE-n], über den Text (und mit "bekannt" über mehrere Texte) konsistent
         const mapKey = catKey + "|" + origText;
         if (originalToToken.has(mapKey)) {
           replacement = originalToToken.get(mapKey);
@@ -1020,6 +1093,7 @@
             original: origText
           });
         }
+        mechanismusZaehler.platzhalter++;
       }
 
       result += replacement;
@@ -1035,6 +1109,8 @@
       text: result,
       mapping: mapping,
       replacedCount: replacedCount,
+      mechanismusZaehler: mechanismusZaehler,
+      zaehler: categoryCounters,
       status: statusMsg,
       notice: "Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage."
     };
@@ -1058,6 +1134,9 @@
     findEmailSpans: findEmailSpans,
     resolveSpans: resolveSpans,
     analyzeText: analyzeText,
-    pseudonymizeText: pseudonymizeText
+    pseudonymizeText: pseudonymizeText,
+    generalisiereWert: generalisiereWert,
+    MECHANISMEN: MECHANISMEN,
+    GENERALISIERBAR: GENERALISIERBAR
   };
 });

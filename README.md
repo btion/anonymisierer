@@ -185,7 +185,10 @@ Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldat
      - **ROT (automatisch aktiv):** E-Mail-Adressen, IBAN (Mod 97), Steuer-ID (Mod 11,10), KVNR (Mod 10), Telefon mit Vorwahl, Geburtsdatum mit Signalwort, IPv4/IPv6/URL, Personalausweis (Mod 10).
      - **GELB (Kandidaten zur Sichtprüfung):** Namen (Anrede, Listen, Grußzeilen), Straße+Nr, PLZ+Ort, Kfz-Kennzeichen, übrige Daten, RVNR (§ 147 SGB VI), LANR (KBV-Prüfziffer), BSNR (Signalwort), Fall-/Patientennummern, Station/Zimmer.
      - **Interaktive Farbvorschau:** Klick auf einen Treffer schaltet ihn aus bzw. an.
-   - **Modi:** Strukturierte Token (`[NAME-1]`, `[IBAN-1]`) oder Schwärzung (`████████`).
+   - **Mechanismus pro Kategorie** (Auswahl im Reiter, „Vorgabe“ folgt dem Ersetzungs-Modus Token bzw. Schwärzung):
+     - `Platzhalter`: `[NAME-1]`, `[IBAN-1]`, rückführbar über die Zuordnungstabelle; die Nummerierung läuft über mehrere Texte weiter.
+     - `Entfernen`: Schwärzung `████████`, nicht rückführbar.
+     - `Generalisieren`: vergröberter Wert, nicht rückführbar. Regeln: Datum/Geburtsdatum → Jahr, PLZ + Ort → `12xxx`, Straße + Nr. → Straße, Telefon → Vorwahl `030 …`, E-Mail → `…@domain`, IPv4 → `192.0.2.x`. Kategorien ohne Regel erhalten einen Platzhalter.
    - **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein unkritisches `SAUBER`).
 6. **Reiter „5. Rückübersetzen“:**
    - Fügen Sie die Antwort der KI ein und klicken Sie auf **„Jetzt rückübersetzen“**. Alles bleibt ausschließlich im RAM des Browsers.
