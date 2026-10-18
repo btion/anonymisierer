@@ -99,6 +99,7 @@ function collectRulePatterns(rules) {
   (rules.freitextMuster || []).forEach((f, i) => list.push({ where: `freitextMuster[${i}]`, pattern: f.suche }));
   add("seriennummerMuster", rules.seriennummerMuster);
   add("benutzerMuster", rules.benutzerMuster);
+  add("benutzerMusterSchwach", rules.benutzerMusterSchwach);
   add("hostnamenMuster", rules.hostnamenMuster);
   add("eigeneHostnamenMuster", rules.eigeneHostnamenMuster);
   return list;
@@ -1436,6 +1437,9 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     const hatNachpruefung = typeof core.nachpruefen === "function";
     assert(hatNachpruefung, "Nachprüfung: core.nachpruefen vorhanden");
     const kCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+    // Ein Fund deckt den Zielwert, wenn er ihm entspricht oder ihn als eigenen Teil enthält
+    // ('Alpha BetaSecret77', 'part1"SecretTail77', '-42.5e3'); eine andere Fundstelle genügt nicht
+    const deckt = (fund, wert) => fund === wert || String(fund).split(/[\s"'`]+/).some(t => t === wert || t.replace(/^[-+]/, "") === wert);
     for (const k of katalog.faelle) {
       const dateien = k.dateien || [{ path: k.id + ".txt", text: k.eingabe }];
       const kState = new core.AnonState();
@@ -1448,9 +1452,21 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
         assert(!ausgabe.includes(z.wert), `${kurz}: Zielwert steht nicht in der Ausgabe`);
         if (z.art === "geheimnis") assert(!tabelle.includes(z.wert), `${kurz}: Geheimnis steht nicht in der Zuordnungstabelle`);
         const soll = katalog.kategorien[z.kategorie];
-        assert(rohFunde.some(f => f.kategorie === soll && f.fund === z.wert),
+        assert(rohFunde.some(f => f.kategorie === soll && deckt(f.fund, z.wert)),
           `${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als ${soll}`);
       }
+    }
+    // Parität A == B: Nachprüfung auf den Roheingaben (Katalog, tests/beispiele) gegen tests/nachpruefung-erwartet.json
+    if (hatNachpruefung) {
+      const quellen = [];
+      for (const k of katalog.faelle) for (const d of (k.dateien || [{ path: k.id + ".txt", text: k.eingabe }])) quellen.push([k.id + "/" + d.path, d.text]);
+      for (const f of fs.readdirSync(BEISPIELE_DIR).filter(n => !n.startsWith(".")).sort()) quellen.push(["beispiele/" + f, fs.readFileSync(path.join(BEISPIELE_DIR, f), "utf8")]);
+      const zeilenNach = [];
+      for (const [q, t] of quellen) for (const f of core.nachpruefen(t, q, kCfg)) zeilenNach.push(`${q}|${f.zeile}|${f.kategorie}|${f.fund}`);
+      const sollPfad = path.join(__dirname, "nachpruefung-erwartet.json");
+      if (AKTUALISIEREN) fs.writeFileSync(sollPfad, JSON.stringify(zeilenNach, null, 2) + "\n", "utf8");
+      const sollNach = fs.existsSync(sollPfad) ? JSON.parse(fs.readFileSync(sollPfad, "utf8")) : null;
+      assert(JSON.stringify(sollNach) === JSON.stringify(zeilenNach), `Nachprüfung: Funde auf den Roheingaben entsprechen tests/nachpruefung-erwartet.json (${zeilenNach.length})`);
     }
     // Rückwirkend und dateiübergreifend: mehrdeutige Benutzer nur im Feldkontext
     const mState = new core.AnonState();

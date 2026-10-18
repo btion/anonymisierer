@@ -139,7 +139,8 @@
       "BGP4",
       "DOT1X",
       "RADIUS",
-      "TACACS"
+      "TACACS",
+      "switch"
     ],
     "erlaubtMuster": [
       "^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|MAC-[0-9]+|HOST-[0-9]+|DOMAIN-[0-9]+|USER-[0-9]+|SERIAL-[0-9]+|TEXT-[0-9]+|MAIL-[0-9]+|URL-[0-9]+|ORT-[0-9]+|KONTAKT-[0-9]+|BANNER-[0-9]+|FIRMA-[0-9]+|PERSON-[0-9]+|SW-EIGEN-[0-9]+)$",
@@ -376,12 +377,20 @@
     "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
   ],
   "benutzerMuster": [
-    "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type|\\u0002)|[ \\t]*(?=\\r?$))",
+    "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type|\\u0002))",
     "(?im)^([ \\t]*local-user[ \\t]+)([A-Za-z0-9._-]{2,64})()(?=[ \\t]|\\r?$)",
     "(?im)(/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))[^\\r\\n]*?(?<![A-Za-z0-9-])name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)((?<![A-Za-z0-9_])(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
     "(?i)(\"(?:username|user_name|account_name|login_user)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._\\\\@-]{2,32})(\")",
-    "(?i)((?<![A-Za-z0-9_])(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
+    "(?i)((?<![A-Za-z0-9_])(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)",
+    "(?i)((?<![A-Za-z0-9_-])(?:for|by)[ \\t]+(?:invalid[ \\t]+|illegal[ \\t]+)?user(?:name)?[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
+    "(?i)(\\[[ \\t]*user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)([ \\t]*\\])",
+    "(?i)((?<![A-Za-z0-9_\\[-])user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
+    "(?i)((?<![A-Za-z0-9_-])snmp-server[ \\t]+user[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t])"
+  ],
+  "benutzerMusterSchwach": [
+    "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]*\\r?$)",
+    "(?i)((?<![A-Za-z0-9_-])user(?:name)?[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t]+(?:logged|login|logout|logoff|authenticated|connected|disconnected|failed|succeeded)(?![A-Za-z0-9]))"
   ],
   "hostnamenMuster": [
     "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",

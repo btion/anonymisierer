@@ -118,6 +118,7 @@ function New-TestConfig {
     }
     foreach ($x in $RulesObj.seriennummerMuster) { $cfg.SeriennummerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.benutzerMuster) { $cfg.BenutzerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
+    foreach ($x in $RulesObj.benutzerMusterSchwach) { $cfg.BenutzerMusterSchwach.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.hostnamenMuster) { $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     if ($null -ne $RulesObj.PSObject.Properties["eigeneHostnamenMuster"]) {
         foreach ($x in $RulesObj.eigeneHostnamenMuster) { $cfg.HostnamenMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
@@ -944,6 +945,14 @@ Assert-True (@($katalog.faelle).Count -ge 15) "Leck-Katalog: mindestens 15 Fäll
 $hatNachpruefung = $null -ne [AnonTool.AnonEngine].GetMethod("Nachpruefen")
 Assert-True $hatNachpruefung "Nachprüfung: AnonEngine.Nachpruefen vorhanden"
 $kCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+# Ein Fund deckt den Zielwert, wenn er ihm entspricht oder ihn als eigenen Teil enthält
+# ('Alpha BetaSecret77', 'part1"SecretTail77', '-42.5e3'); eine andere Fundstelle genügt nicht
+function Test-Deckt {
+    param([string]$Fund, [string]$Wert)
+    if ($Fund -ceq $Wert) { return $true }
+    foreach ($t in [regex]::Split($Fund, "[\s`"'``]+")) { if ($t -ceq $Wert -or ($t -replace '^[-+]', '') -ceq $Wert) { return $true } }
+    return $false
+}
 # Lauf wie in anon.ps1: Durchlauf 1 lernt, Durchlauf 2 schreibt
 function Invoke-KatalogLauf {
     param($Dateien, $State)
@@ -964,9 +973,27 @@ foreach ($k in $katalog.faelle) {
         Assert-True (-not $ausgabe.Contains([string]$z.wert)) "${kurz}: Zielwert steht nicht in der Ausgabe"
         if ($z.art -eq "geheimnis") { Assert-True (-not $tabelle.Contains([string]$z.wert)) "${kurz}: Geheimnis steht nicht in der Zuordnungstabelle" }
         $soll = [string]$katalog.kategorien.($z.kategorie)
-        $treffer = @($rohFunde | Where-Object { $_.Kategorie -eq $soll -and $_.Fund -ceq [string]$z.wert }).Count
+        $treffer = @($rohFunde | Where-Object { $_.Kategorie -eq $soll -and (Test-Deckt ([string]$_.Fund) ([string]$z.wert)) }).Count
         Assert-True ($treffer -gt 0) "${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als $soll"
     }
+}
+if ($hatNachpruefung) {
+    $zeilenNach = New-Object 'System.Collections.Generic.List[string]'
+    $quellen = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($k in $katalog.faelle) {
+        $kd = if ($null -ne $k.PSObject.Properties["dateien"]) { @($k.dateien) } else { @([pscustomobject]@{ path = "$($k.id).txt"; text = [string]$k.eingabe }) }
+        foreach ($d in $kd) { $quellen.Add(@("$($k.id)/$($d.path)", [string]$d.text)) }
+    }
+    foreach ($f in @(Get-ChildItem -LiteralPath $beispieleDir -File | Where-Object { -not $_.Name.StartsWith(".") } | Sort-Object { $_.Name } -Culture "")) {
+        $quellen.Add(@("beispiele/$($f.Name)", [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)))
+    }
+    foreach ($q in $quellen) {
+        foreach ($nf in [AnonTool.AnonEngine]::Nachpruefen([string]$q[1], [string]$q[0], $kCfg)) { $zeilenNach.Add("$($q[0])|$($nf.Zeile)|$($nf.Kategorie)|$($nf.Fund)") }
+    }
+    $sollNach = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "nachpruefung-erwartet.json"), [System.Text.Encoding]::UTF8)))
+    $gleich = ($sollNach.Count -eq $zeilenNach.Count)
+    if ($gleich) { for ($i = 0; $i -lt $sollNach.Count; $i++) { if (-not ([string]$sollNach[$i] -ceq $zeilenNach[$i])) { $gleich = $false; break } } }
+    Assert-True $gleich "Parität: Nachprüfung auf den Roheingaben entspricht tests\nachpruefung-erwartet.json ($($zeilenNach.Count) Funde)"
 }
 $mState = New-Object AnonTool.AnonState
 $mAus = Invoke-KatalogLauf -Dateien @([pscustomobject]@{ text = "show backup status`nbackup completed`n" }, [pscustomobject]@{ text = "user backup group operators`n" }) -State $mState

@@ -380,6 +380,7 @@ namespace AnonTool
         public List<FreeTextRule> FreitextMuster = new List<FreeTextRule>();
         public List<Regex> SeriennummerMuster = new List<Regex>();
         public List<Regex> BenutzerMuster = new List<Regex>();
+        public List<Regex> BenutzerMusterSchwach = new List<Regex>();
         public List<Regex> HostnamenMuster = new List<Regex>();
         public List<TableRule> TabellenSpalten = new List<TableRule>();
         // CLI-Schlüsselwörter und Tabellenköpfe (regeln/strukturvorlage.json): werden nie als Host/Benutzer/Seriennummer gelernt
@@ -1103,6 +1104,20 @@ namespace AnonTool
             return v;
         }
 
+        // Allgemeine Wörter, die als Benutzername vorkommen, aber auch im normalen Text stehen (identisch zu anonymisierer.html)
+        private static readonly HashSet<string> AllgemeineBenutzerwoerter = new HashSet<string>(new string[] { "admin", "administrator", "anonymous", "audit", "backup", "default", "demo", "ftp", "guest",
+            "manager", "monitor", "monitoring", "network", "nobody", "operator", "readonly", "readwrite", "root", "security", "service",
+            "support", "system", "test", "tester", "user" }, StringComparer.Ordinal);
+        // Wörter, die nach einem Feldnamen stehen können, aber kein Wert sind ("for user from ...")
+        private static readonly HashSet<string> KeinFeldwert = new HashSet<string>(new string[] { "from", "to", "on", "at", "with", "via", "in", "by", "for", "is", "was", "has", "the", "a", "an", "of", "and", "or", "not", "name", "id" }, StringComparer.Ordinal);
+
+        // Mehrdeutiger Benutzer: CLI-Schlüsselwort oder allgemeines Wort; wird nur im Feldkontext ersetzt, nie als freies Wort
+        public static bool IsAmbiguousUser(string value, EngineConfig cfg)
+        {
+            string v = (value ?? "").Trim();
+            return AllgemeineBenutzerwoerter.Contains(v.ToLowerInvariant()) || !IsLearnable("USER", v, cfg, true);
+        }
+
         // Bekannte Originalwerte bestimmter Kategorien (Schlüssel "PREFIX|wert") -> Platzhalter
         public static SortedDictionary<string, string> CollectKnownValues(AnonState state, string[] prefixes, EngineConfig cfg)
         {
@@ -1113,6 +1128,7 @@ namespace AnonTool
                 {
                     if (!kv.Key.StartsWith(pf, StringComparison.OrdinalIgnoreCase)) continue;
                     string v = kv.Key.Substring(pf.Length).Trim().ToLowerInvariant();
+                    if (string.Equals(pf, "USER|", StringComparison.OrdinalIgnoreCase) && IsAmbiguousUser(v, cfg)) break;
                     if (v.Length >= 3 && !cfg.ExakteAusnahmen.Contains(v) && !sorted.ContainsKey(v)) sorted[v] = kv.Value;
                     break;
                 }
@@ -1436,13 +1452,21 @@ namespace AnonTool
             // ----------------------------------------------------------------
             if (cfg.CatBenutzer)
             {
-                foreach (Regex uRx in cfg.BenutzerMuster)
+                // Starke Feldmuster (user X password ..., for user X, [user: X]): Stoppliste blockiert nicht.
+                // Schwache Muster (user X am Zeilenende, User X logged in): keine CLI-Wörter, keine allgemeinen Wörter.
+                List<KeyValuePair<Regex, bool>> userRules = new List<KeyValuePair<Regex, bool>>();
+                foreach (Regex r in cfg.BenutzerMuster) userRules.Add(new KeyValuePair<Regex, bool>(r, true));
+                foreach (Regex r in cfg.BenutzerMusterSchwach) userRules.Add(new KeyValuePair<Regex, bool>(r, false));
+                foreach (KeyValuePair<Regex, bool> ur in userRules)
                 {
+                    Regex uRx = ur.Key;
+                    bool stark = ur.Value;
                     text = uRx.Replace(text, (Match m) =>
                     {
                         string val = m.Groups[2].Value.Trim();
-                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || !IsLearnable("USER", val, cfg, true))
+                        if (string.IsNullOrEmpty(val) || cfg.ExakteAusnahmen.Contains(val) || val == "*****" || KeinFeldwert.Contains(val.ToLowerInvariant()))
                             return m.Value;
+                        if (!stark && IsAmbiguousUser(val, cfg)) return m.Value;
                         state.AddStat("benutzer", 1);
                         string tok = state.GetOrCreateToken("USER", val, "USER");
                         string suffix = m.Groups.Count >= 4 ? m.Groups[3].Value : "";
@@ -2343,18 +2367,22 @@ namespace AnonTool
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Hostname", cfg.HostnamenMuster));
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Seriennummer", cfg.SeriennummerMuster));
             patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Benutzer", cfg.BenutzerMuster));
+            patternGroups.Add(new KeyValuePair<string, List<Regex>>("Rest-Benutzer-Schwach", cfg.BenutzerMusterSchwach));
             foreach (KeyValuePair<string, List<Regex>> pg in patternGroups)
             {
+                string kat = pg.Key == "Rest-Benutzer-Schwach" ? "Rest-Benutzer" : pg.Key;
                 foreach (Regex rx in pg.Value)
                 {
                     foreach (Match m in rx.Matches(cleanText))
                     {
                         string val = PickGroupValue(m);
                         if (string.IsNullOrEmpty(val) || val.IndexOf('\u0002') >= 0 || IsAllowedInAudit(val, cfg) || AreAllPartsAllowed(val, cfg)) continue;
-                        // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
-                        if (!IsLearnable(lernKategorie[pg.Key], val, cfg, true)) continue;
+                        // Gleiche Regel wie bei der Ersetzung: CLI-Wörter sind kein Restfund (starke Benutzerfelder: nur Nicht-Werte)
+                        if (pg.Key == "Rest-Benutzer") { if (KeinFeldwert.Contains(val.ToLowerInvariant())) continue; }
+                        else if (pg.Key == "Rest-Benutzer-Schwach") { if (IsAmbiguousUser(val, cfg)) continue; }
+                        else if (!IsLearnable(lernKategorie[kat], val, cfg, true)) continue;
                         int ln = GetLineNumber(lineStarts, m.Index);
-                        findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = pg.Key, Fund = val, Kontext = getLineCtx(ln) });
+                        findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = kat, Fund = val, Kontext = getLineCtx(ln) });
                     }
                 }
             }
@@ -2400,6 +2428,7 @@ namespace AnonTool
                     {
                         if (!kv.Key.StartsWith(cat, StringComparison.OrdinalIgnoreCase)) continue;
                         string v = kv.Key.Substring(cat.Length).Trim().ToLowerInvariant();
+                        if (string.Equals(cat, "USER|", StringComparison.OrdinalIgnoreCase) && IsAmbiguousUser(v, cfg)) break;
                         if (v.Length >= 3 && !IsAllowedInAudit(v, cfg) && seenKnown.Add(v)) known.Add(v);
                         break;
                     }
@@ -2426,10 +2455,192 @@ namespace AnonTool
                 }
             }
 
+            // 11. Unabhängige Nachprüfung (eigene Feldregeln, keine Lernregel)
+            findings.AddRange(Nachpruefen(text, fileName, cfg));
+
             if (findings.Count > 1)
                 findings = findings.OrderBy(f => f.Zeile).ToList();
 
             return findings;
+        }
+
+        // ----------------------------------------------------------------
+        // Unabhängige Nachprüfung: eigene Entscheidungen über verdächtige Werte nach eindeutigen Feldnamen.
+        // Nutzt keine Lernregel und keine Ausschlussfilter der Engine; erlaubt sind nur Platzhalter, *****,
+        // Werte der festen Zuordnung und ausdrücklich eingetragene Ausnahmen (exakteWoerter, erlaubtListe).
+        // Identisch zu nachpruefen() in anonymisierer.html.
+        // ----------------------------------------------------------------
+        private const RegexOptions NachOpt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+        private static readonly Regex RxNachPlatzhalter = new Regex("^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN)-[0-9]+)$", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachFeldFrei = new Regex("(?<![A-Za-z0-9_./-])\"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)\"?(?![A-Za-z0-9_-])(?:[ \\t]*[:=][ \\t]*|[ \\t]+)", NachOpt, RxTimeout);
+        private static readonly Regex RxNachFeldDoppelpunkt = new Regex("(?<![A-Za-z0-9_./-])\"?(System[ \\t]+Name|Device[ \\t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \\t]+|System[ \\t]+|Board[ \\t]+)?Serial(?:[ \\t_-]*(?:Number|Nbr|No|Num)\\.?)?|SN|Service[ \\t]+Tag|Asset[ \\t]+Tag|Authorization)\"?(?![A-Za-z0-9_-])[ \\t]*[:=][ \\t]*", NachOpt, RxTimeout);
+        private static readonly HashSet<string> NachTypwoerter = new HashSet<string>(new string[] { "0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> NachStrukturwoerter = new HashSet<string>(new string[] { "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication" }, StringComparer.Ordinal);
+        private static readonly Regex RxNachSid = new Regex("(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachUrlZugang = new Regex("(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+.-]*://([^\\s/:@\"'<>]+):([^\\s/@\"'<>]+)@", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachSnmpHost = new Regex("(?<![A-Za-z0-9-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3(?:[ \\t]+(?:auth|noauth|priv))?))?[ \\t]+([^ \\t\\r\\n]+)", NachOpt, RxTimeout);
+        private static readonly Regex RxNachXmlData = new Regex("<Data[ \\t]+Name=\"([A-Za-z]+)\">([^<\\r\\n]*)</Data>", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachXmlComputer = new Regex("<Computer>([^<\\r\\n]*)</Computer>", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachWert = new Regex("^(?:\"((?:[^\"\\\\\\r\\n]|\\\\.)*)\"|'([^'\\r\\n]*)'|([^\\s\"',;\\])<>{}]+))", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachSerialKopf = new Regex("(?<![A-Za-z0-9-])(?:Serial|SERIAL|serial)(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachTrennlinie = new Regex("^[ \\t]*[-=+]{3,}[-=+ \\t]*$", RegexOptions.CultureInvariant, RxTimeout);
+
+        private static string NachFeldart(string name)
+        {
+            string n = Regex.Replace(name.ToLowerInvariant(), "[ \\t_-]+", "");
+            if (n.EndsWith("username", StringComparison.Ordinal) || n == "user" || n == "localuser") return "B";
+            if (n.EndsWith("domainname", StringComparison.Ordinal)) return "D";
+            if (n == "hostname" || n == "sysname" || n == "switchname" || n == "systemname" || n == "deviceid" || Regex.IsMatch(n, "^(computer|workstation)(name)?$")) return "H";
+            if (Regex.IsMatch(n, "^(chassis|system|board)?serial") || n == "sn" || n == "servicetag" || n == "assettag") return "S";
+            return "G";
+        }
+
+        private static string NachKategorie(string art)
+        {
+            switch (art)
+            {
+                case "B": return "Nachpruefung-Benutzer";
+                case "H": return "Nachpruefung-Hostname";
+                case "D": return "Nachpruefung-Domaene";
+                case "S": return "Nachpruefung-Seriennummer";
+                default: return "Nachpruefung-Geheimnis";
+            }
+        }
+
+        private static bool NachErlaubt(string v, EngineConfig cfg, HashSet<string> fest)
+        {
+            if (string.IsNullOrEmpty(v) || v == "*****") return true;
+            string low = v.ToLowerInvariant();
+            if (cfg.ExakteAusnahmen.Contains(low) || cfg.PruefungErlaubtListe.Contains(low)) return true;
+            if (fest.Contains(low)) return true;
+            // Aus Platzhaltern zusammengesetzt (HOST-1.DOMAIN-2, DOMAIN-1\USER-3, USER-1@DOMAIN-1)
+            foreach (string t in v.Split('.', '\\', '@'))
+            {
+                if (t.Length == 0 || !(RxNachPlatzhalter.IsMatch(t) || fest.Contains(t.ToLowerInvariant()))) return false;
+            }
+            return true;
+        }
+
+        public static List<AuditFinding> Nachpruefen(string text, string fileName, EngineConfig cfg)
+        {
+            List<AuditFinding> funde = new List<AuditFinding>();
+            if (string.IsNullOrEmpty(text)) return funde;
+            text = DecodeJsonStringEscapes(text);
+            string[] zeilen = Regex.Split(text, "\\r?\\n");
+            HashSet<string> gesehen = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> fest = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string fv in cfg.FesteZuordnung.Values) fest.Add((fv ?? "").ToLowerInvariant());
+
+            Action<int, string, string, string> melde = (ln, art, wert, kategorie) =>
+            {
+                string kat = kategorie ?? ((art == "G" && wert != "*****" && wert.IndexOf("*****", StringComparison.Ordinal) >= 0) ? "Nachpruefung-Teilmaskierung" : NachKategorie(art));
+                if (!gesehen.Add(ln + "|" + kat + "|" + wert)) return;
+                funde.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = kat, Fund = wert, Kontext = zeilen[ln - 1].Trim() });
+            };
+            Action<int, string, string, string> pruefeWert = (ln, art, wert, feld) =>
+            {
+                if (string.IsNullOrEmpty(wert)) return;
+                if (art == "G")
+                {
+                    if (wert == "*****") return;
+                    if (wert.IndexOf("*****", StringComparison.Ordinal) < 0 && NachErlaubt(wert, cfg, fest)) return;
+                    // BGP-Communities (65000:100, no-export) sind keine Geheimnisse
+                    if (feld == "community" && (Regex.IsMatch(wert, "^[0-9]+:[0-9]+$") || Regex.IsMatch(wert, "^(?:no-export|no-advertise|internet|local-as|additive)$", RegexOptions.IgnoreCase))) return;
+                }
+                else if (NachErlaubt(wert, cfg, fest)) return;
+                melde(ln, art, wert, null);
+            };
+            Action<int, string, int, string, string> feldWert = (ln, zeile, ab, art, name) =>
+            {
+                string rest = zeile.Substring(ab);
+                for (int i = 0; i < 4; i++)
+                {
+                    Match w = RxNachWert.Match(rest);
+                    if (!w.Success) return;
+                    bool zitiert = !w.Groups[3].Success;
+                    string wert = w.Groups[1].Success ? Regex.Replace(w.Groups[1].Value, "\\\\([\"\\\\])", "$1") : (w.Groups[2].Success ? w.Groups[2].Value : w.Groups[3].Value.TrimEnd('.', ':'));
+                    string low = wert.ToLowerInvariant();
+                    if (!zitiert && KeinFeldwert.Contains(low)) return;
+                    if (!zitiert && art == "G" && NachStrukturwoerter.Contains(low)) return;
+                    if (!zitiert && art == "B" && NachStrukturwoerter.Contains(low)) return;
+                    // Schlüsselnummer ("key 1", "authentication-key 1 md5 ...") ist kein Wert
+                    bool istSchluesselNr = art == "G" && Regex.IsMatch(name, "^(?:key|authentication-key)$", RegexOptions.IgnoreCase) && Regex.IsMatch(wert, "^[0-9]{1,5}$") && !NachTypwoerter.Contains(low);
+                    if (!zitiert && (istSchluesselNr || (NachTypwoerter.Contains(low) && (art == "G" || art == "B"))))
+                    {
+                        rest = rest.Substring(w.Length).TrimStart(' ', '\t');
+                        continue;
+                    }
+                    // MikroTik-Form "user add name=X"
+                    Match nv = Regex.Match(wert, "^name=(.+)$", RegexOptions.IgnoreCase);
+                    pruefeWert(ln, art, nv.Success ? Regex.Replace(nv.Groups[1].Value, "^\"|\"$", "") : wert, name.ToLowerInvariant());
+                    return;
+                }
+            };
+
+            for (int i = 0; i < zeilen.Length; i++)
+            {
+                string zeile = zeilen[i];
+                int ln = i + 1;
+                foreach (Regex rx in new Regex[] { RxNachFeldFrei, RxNachFeldDoppelpunkt })
+                {
+                    foreach (Match m in rx.Matches(zeile)) feldWert(ln, zeile, m.Index + m.Length, NachFeldart(m.Groups[1].Value), m.Groups[1].Value);
+                }
+                foreach (Match m in RxNachXmlData.Matches(zeile))
+                {
+                    string n = m.Groups[1].Value;
+                    if (n.EndsWith("Sid", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (n.EndsWith("UserName", StringComparison.OrdinalIgnoreCase)) pruefeWert(ln, "B", m.Groups[2].Value.Trim(), null);
+                    else if (n.EndsWith("DomainName", StringComparison.OrdinalIgnoreCase)) pruefeWert(ln, "D", m.Groups[2].Value.Trim(), null);
+                    else if (Regex.IsMatch(n, "^(?:Workstation|Computer)Name$", RegexOptions.IgnoreCase)) pruefeWert(ln, "H", m.Groups[2].Value.Trim(), null);
+                }
+                foreach (Match m in RxNachXmlComputer.Matches(zeile)) pruefeWert(ln, "H", m.Groups[1].Value.Trim(), null);
+                foreach (Match m in RxNachSnmpHost.Matches(zeile))
+                {
+                    string w = Regex.Replace(m.Groups[1].Value, "^[\"']|[\"']$", "");
+                    if (!Regex.IsMatch(w, "^(?:informs|traps|version|udp-port|vrf)$", RegexOptions.IgnoreCase)) pruefeWert(ln, "G", w, null);
+                }
+                foreach (Match m in RxNachUrlZugang.Matches(zeile))
+                {
+                    pruefeWert(ln, "B", m.Groups[1].Value, null);
+                    pruefeWert(ln, "G", m.Groups[2].Value, null);
+                }
+                foreach (Match m in RxNachSid.Matches(zeile)) melde(ln, "", m.Value, "Nachpruefung-SID");
+            }
+
+            // Tabellen mit Spalte "Serial": Wert unter dem Spaltenkopf (Zeilen bis zur nächsten Leerzeile)
+            for (int i = 0; i < zeilen.Length; i++)
+            {
+                string kopf = zeilen[i];
+                if (kopf.IndexOf(':') >= 0 || kopf.IndexOf('=') >= 0 || Regex.Split(kopf.Trim(), "[ \\t]+").Length < 3) continue;
+                Match km = RxNachSerialKopf.Match(kopf);
+                if (!km.Success) continue;
+                // Tabelle: innerhalb von drei Zeilen folgt eine Trennlinie aus "-" / "="; Daten stehen darunter
+                int trenn = -1;
+                for (int t = i + 1; t <= i + 3 && t < zeilen.Length; t++)
+                {
+                    if (RxNachTrennlinie.IsMatch(zeilen[t])) { trenn = t; break; }
+                }
+                if (trenn < 0) continue;
+                for (int j = trenn + 1; j < zeilen.Length && j < i + 500 && zeilen[j].Trim() != ""; j++)
+                {
+                    string z = zeilen[j];
+                    int a = km.Index;
+                    if (a >= z.Length) continue;
+                    if (z[a] == ' ' || z[a] == '\t')
+                    {
+                        int k = 1;
+                        while (k <= 3 && !(a + k < z.Length && z[a + k] != ' ' && z[a + k] != '\t')) k++;
+                        if (k > 3) continue;
+                        a += k;
+                    }
+                    while (a > 0 && z[a - 1] != ' ' && z[a - 1] != '\t') a--;
+                    int b = a;
+                    while (b < z.Length && z[b] != ' ' && z[b] != '\t') b++;
+                    string wert = z.Substring(a, b - a);
+                    if (Regex.IsMatch(wert, "[0-9]") && Regex.IsMatch(wert, "[A-Za-z]") && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "S", wert, null);
+                }
+            }
+            return funde;
         }
     }
 }
@@ -2683,6 +2894,9 @@ function Load-EngineConfig {
 
     foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "" "benutzerMuster")) {
         $cfg.BenutzerMuster.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
+    }
+    foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "" "benutzerMusterSchwach")) {
+        $cfg.BenutzerMusterSchwach.Add((New-Object System.Text.RegularExpressions.Regex ([string]$pat, $rxCompiled, $rxTimeout)))
     }
 
     # Reihenfolge wie in anonymisierer.html: hostnamenMuster (Basis, lokal), danach eigeneHostnamenMuster (Basis, lokal)

@@ -863,7 +863,8 @@
         "BGP4",
         "DOT1X",
         "RADIUS",
-        "TACACS"
+        "TACACS",
+        "switch"
       ],
       "erlaubtMuster": [
         "^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|MAC-[0-9]+|HOST-[0-9]+|DOMAIN-[0-9]+|USER-[0-9]+|SERIAL-[0-9]+|TEXT-[0-9]+|MAIL-[0-9]+|URL-[0-9]+|ORT-[0-9]+|KONTAKT-[0-9]+|BANNER-[0-9]+|FIRMA-[0-9]+|PERSON-[0-9]+|SW-EIGEN-[0-9]+)$",
@@ -1100,12 +1101,20 @@
       "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
     ],
     "benutzerMuster": [
-      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type|\\u0002)|[ \\t]*(?=\\r?$))",
+      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type|\\u0002))",
       "(?im)^([ \\t]*local-user[ \\t]+)([A-Za-z0-9._-]{2,64})()(?=[ \\t]|\\r?$)",
       "(?im)(/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))[^\\r\\n]*?(?<![A-Za-z0-9-])name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)((?<![A-Za-z0-9_])(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
       "(?i)(\"(?:username|user_name|account_name|login_user)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._\\\\@-]{2,32})(\")",
-      "(?i)((?<![A-Za-z0-9_])(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
+      "(?i)((?<![A-Za-z0-9_])(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)",
+      "(?i)((?<![A-Za-z0-9_-])(?:for|by)[ \\t]+(?:invalid[ \\t]+|illegal[ \\t]+)?user(?:name)?[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
+      "(?i)(\\[[ \\t]*user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)([ \\t]*\\])",
+      "(?i)((?<![A-Za-z0-9_\\[-])user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
+      "(?i)((?<![A-Za-z0-9_-])snmp-server[ \\t]+user[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t])"
+    ],
+    "benutzerMusterSchwach": [
+      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]*\\r?$)",
+      "(?i)((?<![A-Za-z0-9_-])user(?:name)?[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t]+(?:logged|login|logout|logoff|authenticated|connected|disconnected|failed|succeeded)(?![A-Za-z0-9]))"
     ],
     "hostnamenMuster": [
       "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
@@ -2162,6 +2171,7 @@
       })),
       seriennummerMuster: ((rulesObj && rulesObj.seriennummerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
       benutzerMuster: ((rulesObj && rulesObj.benutzerMuster) || []).map(p => compileDotNetPatternToJS(p, true)),
+      benutzerMusterSchwach: ((rulesObj && rulesObj.benutzerMusterSchwach) || []).map(p => compileDotNetPatternToJS(p, true)),
       // Reihenfolge wie anon.ps1: hostnamenMuster, danach eigeneHostnamenMuster
       hostnamenMuster: [
         ...((rulesObj && rulesObj.hostnamenMuster) || []),
@@ -2562,12 +2572,26 @@
   }
 
   // Bekannte Originalwerte bestimmter Kategorien (Schlüssel "prefix|wert") -> Platzhalter
+  // Allgemeine Wörter, die als Benutzername vorkommen, aber auch im normalen Text stehen (identisch zu anon.ps1)
+  const ALLGEMEINE_BENUTZERWOERTER = new Set(["admin", "administrator", "anonymous", "audit", "backup", "default", "demo", "ftp", "guest",
+    "manager", "monitor", "monitoring", "network", "nobody", "operator", "readonly", "readwrite", "root", "security", "service",
+    "support", "system", "test", "tester", "user"]);
+  // Wörter, die nach einem Feldnamen stehen können, aber kein Wert sind ("for user from ...")
+  const KEIN_FELDWERT = new Set(["from", "to", "on", "at", "with", "via", "in", "by", "for", "is", "was", "has", "the", "a", "an", "of", "and", "or", "not", "name", "id"]);
+
+  // Mehrdeutiger Benutzer: CLI-Schlüsselwort oder allgemeines Wort; wird nur im Feldkontext ersetzt, nie als freies Wort
+  function isAmbiguousUser(value, cfg) {
+    const v = String(value == null ? "" : value).trim();
+    return ALLGEMEINE_BENUTZERWOERTER.has(v.toLowerCase()) || !isLearnable("USER", v, cfg, true);
+  }
+
   function collectKnownValues(state, prefixes, cfg) {
     const map = new Map();
     for (const [key, tok] of state.forward.entries()) {
       for (const pf of prefixes) {
         if (!key.startsWith(pf)) continue;
         const v = key.slice(pf.length).trim().toLowerCase();
+        if (pf === "user|" && isAmbiguousUser(v, cfg)) break;
         if (v.length >= 3 && !cfg.exakteAusnahmen.has(v) && !map.has(v)) map.set(v, tok);
         break;
       }
@@ -2800,13 +2824,17 @@
 
     // STUFE 6: Benutzernamen
     if (cfg.catBenutzer) {
-      for (const uRx of cfg.benutzerMuster) {
+      // Starke Feldmuster (user X password ..., for user X, [user: X]): Stoppliste blockiert nicht.
+      // Schwache Muster (user X am Zeilenende, User X logged in): keine CLI-Wörter, keine allgemeinen Wörter.
+      const userRules = cfg.benutzerMuster.map(rx => ({ rx, stark: true })).concat(cfg.benutzerMusterSchwach.map(rx => ({ rx, stark: false })));
+      for (const { rx: uRx, stark } of userRules) {
         text = text.replace(uRx, (...args) => {
           const m = args[0];
           const g1 = args[1] || "";
           const g2 = (args[2] || "").trim();
           const g3 = typeof args[3] === "string" ? args[3] : "";
-          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || !isLearnable("USER", g2, cfg, true)) return m;
+          if (!g2 || cfg.exakteAusnahmen.has(g2.toLowerCase()) || g2 === "*****" || KEIN_FELDWERT.has(g2.toLowerCase())) return m;
+          if (!stark && isAmbiguousUser(g2, cfg)) return m;
           state.addStat("benutzer", 1);
           const tok = state.getOrCreateToken("USER", g2, "USER");
           return protect(g1 + tok + g3);
@@ -3237,6 +3265,152 @@
     return low;
   }
 
+  // --------------------------------------------------------------------------
+  // Unabhängige Nachprüfung: eigene Entscheidungen über verdächtige Werte nach eindeutigen Feldnamen.
+  // Nutzt keine Lernregel und keine Ausschlussfilter der Engine; erlaubt sind nur Platzhalter, *****,
+  // Werte der festen Zuordnung und ausdrücklich eingetragene Ausnahmen (exakteWoerter, erlaubtListe).
+  // Identisch zu AnonEngine.Nachpruefen in anon.ps1.
+  // --------------------------------------------------------------------------
+  const RxNachPlatzhalter = /^(?:NET-[0-9]+(?:\.H[0-9]+)?(?:\/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN)-[0-9]+)$/;
+  const NACH_KATEGORIE = { B: "Nachpruefung-Benutzer", H: "Nachpruefung-Hostname", D: "Nachpruefung-Domaene", S: "Nachpruefung-Seriennummer", G: "Nachpruefung-Geheimnis" };
+  // Feldnamen mit Trennzeichen ":" / "=" oder Leerzeichen; Feldnamen, die ein ":" / "=" verlangen
+  const RxNachFeldFrei = /(?<![A-Za-z0-9_.\/-])"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)"?(?![A-Za-z0-9_-])(?:[ \t]*[:=][ \t]*|[ \t]+)/gi;
+  const RxNachFeldDoppelpunkt = /(?<![A-Za-z0-9_.\/-])"?(System[ \t]+Name|Device[ \t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \t]+|System[ \t]+|Board[ \t]+)?Serial(?:[ \t_-]*(?:Number|Nbr|No|Num)\.?)?|SN|Service[ \t]+Tag|Asset[ \t]+Tag|Authorization)"?(?![A-Za-z0-9_-])[ \t]*[:=][ \t]*/gi;
+  const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
+  const NACH_STRUKTURWOERTER = new Set(["chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
+  const RxNachSid = /(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])/g;
+  const RxNachUrlZugang = /(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+.-]*:\/\/([^\s\/:@"'<>]+):([^\s\/@"'<>]+)@/g;
+  const RxNachSnmpHost = /(?<![A-Za-z0-9-])snmp-server[ \t]+host[ \t]+[^ \t\r\n]+(?:[ \t]+(?:informs|traps))?(?:[ \t]+version[ \t]+(?:1|2c|3(?:[ \t]+(?:auth|noauth|priv))?))?[ \t]+([^ \t\r\n]+)/gi;
+  const RxNachXmlData = /<Data[ \t]+Name="([A-Za-z]+)">([^<\r\n]*)<\/Data>/g;
+  const RxNachXmlComputer = /<Computer>([^<\r\n]*)<\/Computer>/g;
+
+  function nachFeldart(name) {
+    const n = name.toLowerCase().replace(/[ \t_-]+/g, "");
+    if (/username$/.test(n) || n === "user" || n === "localuser") return "B";
+    if (/domainname$/.test(n)) return "D";
+    if (n === "hostname" || n === "sysname" || n === "switchname" || n === "systemname" || n === "deviceid" || /^(computer|workstation)(name)?$/.test(n)) return "H";
+    if (/^(chassis|system|board)?serial/.test(n) || n === "sn" || n === "servicetag" || n === "assettag") return "S";
+    return "G";
+  }
+
+  function nachErlaubt(v, cfg) {
+    if (!v || v === "*****") return true;
+    const low = v.toLowerCase();
+    if (cfg.exakteAusnahmen.has(low) || cfg.pruefungErlaubtListe.has(low)) return true;
+    const fest = new Set(Object.values(cfg.festeZuordnung).map(x => String(x).toLowerCase()));
+    if (fest.has(low)) return true;
+    // Aus Platzhaltern zusammengesetzt (HOST-1.DOMAIN-2, DOMAIN-1\USER-3, USER-1@DOMAIN-1)
+    return v.split(/[.\\@]/).every(t => t.length > 0 && (RxNachPlatzhalter.test(t) || fest.has(t.toLowerCase())));
+  }
+
+  // Nächster Wert nach einem Feldnamen: Wert in Anführungszeichen oder ein Wort
+  function nachWert(rest) {
+    const m = /^(?:"((?:[^"\\\r\n]|\\.)*)"|'([^'\r\n]*)'|([^\s"',;\]\)<>{}]+))/.exec(rest);
+    if (!m) return null;
+    let v = m[1] !== undefined ? m[1].replace(/\\(["\\])/g, "$1") : (m[2] !== undefined ? m[2] : m[3].replace(/[.:]+$/, ""));
+    return { wert: v, laenge: m[0].length, zitiert: m[3] === undefined };
+  }
+
+  function nachpruefen(text, fileName, cfg) {
+    const funde = [];
+    if (!text) return funde;
+    text = decodeJsonStringEscapes(text);
+    const zeilen = text.split(/\r?\n/);
+    const gesehen = new Set();
+    const melde = (ln, art, wert, kategorie) => {
+      const kat = kategorie || ((art === "G" && wert !== "*****" && wert.indexOf("*****") >= 0) ? "Nachpruefung-Teilmaskierung" : NACH_KATEGORIE[art]);
+      const schluessel = ln + "|" + kat + "|" + wert;
+      if (gesehen.has(schluessel)) return;
+      gesehen.add(schluessel);
+      funde.push({ datei: fileName, zeile: ln, kategorie: kat, fund: wert, kontext: zeilen[ln - 1].trim() });
+    };
+    const pruefeWert = (ln, art, wert, feld) => {
+      if (!wert) return;
+      if (art === "G") {
+        if (wert === "*****") return;
+        if (wert.indexOf("*****") < 0 && nachErlaubt(wert, cfg)) return;
+        // BGP-Communities (65000:100, no-export) sind keine Geheimnisse
+        if (feld === "community" && (/^[0-9]+:[0-9]+$/.test(wert) || /^(?:no-export|no-advertise|internet|local-as|additive)$/i.test(wert))) return;
+      } else if (nachErlaubt(wert, cfg)) return;
+      melde(ln, art, wert);
+    };
+    const feldWert = (ln, zeile, ab, art, name) => {
+      let rest = zeile.slice(ab);
+      for (let i = 0; i < 4; i++) {
+        const w = nachWert(rest);
+        if (!w) return;
+        const low = w.wert.toLowerCase();
+        if (!w.zitiert && KEIN_FELDWERT.has(low)) return;
+        if (!w.zitiert && art === "G" && NACH_STRUKTURWOERTER.has(low)) return;
+        if (!w.zitiert && art === "B" && NACH_STRUKTURWOERTER.has(low)) return;
+        // Schlüsselnummer ("key 1", "authentication-key 1 md5 ...") ist kein Wert
+        const istSchluesselNr = art === "G" && /^(?:key|authentication-key)$/i.test(name) && /^[0-9]{1,5}$/.test(w.wert) && !NACH_TYPWOERTER.has(low);
+        if (!w.zitiert && (istSchluesselNr || (NACH_TYPWOERTER.has(low) && (art === "G" || art === "B")))) {
+          rest = rest.slice(w.laenge).replace(/^[ \t]+/, "");
+          continue;
+        }
+        // MikroTik-Form "user add name=X"
+        const nv = /^name=(.+)$/i.exec(w.wert);
+        pruefeWert(ln, art, nv ? nv[1].replace(/^"|"$/g, "") : w.wert, name.toLowerCase());
+        return;
+      }
+    };
+    zeilen.forEach((zeile, i) => {
+      const ln = i + 1;
+      for (const rx of [RxNachFeldFrei, RxNachFeldDoppelpunkt]) {
+        rx.lastIndex = 0;
+        for (const m of zeile.matchAll(rx)) feldWert(ln, zeile, m.index + m[0].length, nachFeldart(m[1]), m[1]);
+      }
+      for (const m of zeile.matchAll(RxNachXmlData)) {
+        const n = m[1];
+        if (/Sid$/i.test(n)) continue;
+        if (/UserName$/i.test(n)) pruefeWert(ln, "B", m[2].trim());
+        else if (/DomainName$/i.test(n)) pruefeWert(ln, "D", m[2].trim());
+        else if (/^(?:Workstation|Computer)Name$/i.test(n)) pruefeWert(ln, "H", m[2].trim());
+      }
+      for (const m of zeile.matchAll(RxNachXmlComputer)) pruefeWert(ln, "H", m[1].trim());
+      for (const m of zeile.matchAll(RxNachSnmpHost)) {
+        const w = m[1].replace(/^["']|["']$/g, "");
+        if (!/^(?:informs|traps|version|udp-port|vrf)$/i.test(w)) pruefeWert(ln, "G", w);
+      }
+      for (const m of zeile.matchAll(RxNachUrlZugang)) {
+        pruefeWert(ln, "B", m[1]);
+        pruefeWert(ln, "G", m[2]);
+      }
+      for (const m of zeile.matchAll(RxNachSid)) melde(ln, "", m[0], "Nachpruefung-SID");
+    });
+    // Tabellen mit Spalte "Serial": Wert unter dem Spaltenkopf (Zeilen bis zur nächsten Leerzeile)
+    for (let i = 0; i < zeilen.length; i++) {
+      const kopf = zeilen[i];
+      if (/[:=]/.test(kopf) || kopf.trim().split(/[ \t]+/).length < 3) continue;
+      const km = /(?<![A-Za-z0-9-])(?:Serial|SERIAL|serial)(?![A-Za-z0-9-])/.exec(kopf);
+      if (!km) continue;
+      // Tabelle: innerhalb von drei Zeilen folgt eine Trennlinie aus "-" / "="; Daten stehen darunter
+      let trenn = -1;
+      for (let t = i + 1; t <= i + 3 && t < zeilen.length; t++) {
+        if (/^[ \t]*[-=+]{3,}[-=+ \t]*$/.test(zeilen[t])) { trenn = t; break; }
+      }
+      if (trenn < 0) continue;
+      for (let j = trenn + 1; j < zeilen.length && j < i + 500 && zeilen[j].trim() !== ""; j++) {
+        const z = zeilen[j];
+        let a = km.index;
+        if (a >= z.length) continue;
+        if (/[ \t]/.test(z[a])) {
+          let k = 1;
+          while (k <= 3 && !(a + k < z.length && !/[ \t]/.test(z[a + k]))) k++;
+          if (k > 3) continue;
+          a += k;
+        }
+        while (a > 0 && !/[ \t]/.test(z[a - 1])) a--;
+        let b = a;
+        while (b < z.length && !/[ \t]/.test(z[b])) b++;
+        const wert = z.slice(a, b);
+        if (/[0-9]/.test(wert) && /[A-Za-z]/.test(wert) && !/^-+$/.test(wert)) pruefeWert(j + 1, "S", wert);
+      }
+    }
+    return funde;
+  }
+
   // state (optional): zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
   function auditText(text, fileName, cfg, state) {
     const findings = [];
@@ -3482,15 +3656,19 @@
     const patternGroups = [
       ["Rest-Hostname", cfg.hostnamenMuster],
       ["Rest-Seriennummer", cfg.seriennummerMuster],
-      ["Rest-Benutzer", cfg.benutzerMuster]
+      ["Rest-Benutzer", cfg.benutzerMuster],
+      ["Rest-Benutzer-Schwach", cfg.benutzerMusterSchwach]
     ];
-    for (const [kat, list] of patternGroups) {
+    for (const [gruppe, list] of patternGroups) {
+      const kat = gruppe === "Rest-Benutzer-Schwach" ? "Rest-Benutzer" : gruppe;
       for (const rx of list) {
         for (const m of cleanText.matchAll(rx)) {
           const val = pickGroupValue(m);
           if (!val || val.indexOf("\u0002") >= 0 || isAllowedInAudit(val, cfg) || areAllPartsAllowed(val, cfg)) continue;
-          // Gleiche Lernregel wie bei der Ersetzung: CLI-Wörter sind kein Restfund
-          if (!isLearnable(lernKategorie[kat], val, cfg, true)) continue;
+          // Gleiche Regel wie bei der Ersetzung: CLI-Wörter sind kein Restfund (starke Benutzerfelder: nur Nicht-Werte)
+          if (gruppe === "Rest-Benutzer") { if (KEIN_FELDWERT.has(val.toLowerCase())) continue; }
+          else if (gruppe === "Rest-Benutzer-Schwach") { if (isAmbiguousUser(val, cfg)) continue; }
+          else if (!isLearnable(lernKategorie[kat], val, cfg, true)) continue;
           const ln = getLineNumberFromIndex(lineStarts, m.index);
           findings.push({ datei: fileName, zeile: ln, kategorie: kat, fund: val, kontext: getLineCtx(ln) });
         }
@@ -3530,6 +3708,7 @@
         for (const cat of KNOWN_VALUE_CATEGORIES) {
           if (!key.startsWith(cat)) continue;
           const v = key.slice(cat.length).trim().toLowerCase();
+          if (cat === "user|" && isAmbiguousUser(v, cfg)) break;
           if (v.length >= 3 && !isAllowedInAudit(v, cfg) && !seenKnown.has(v)) {
             seenKnown.add(v);
             known.push(v);
@@ -3554,6 +3733,9 @@
         }
       }
     }
+
+    // 11. Unabhängige Nachprüfung (eigene Feldregeln, keine Lernregel)
+    for (const f of nachpruefen(text, fileName, cfg)) findings.push(f);
 
     if (findings.length > 1) {
       findings.sort((a, b) => a.zeile - b.zeile);
@@ -4111,6 +4293,7 @@
     ["", "eigeneHostnamenMuster"],
     ["", "seriennummerMuster"],
     ["", "benutzerMuster"],
+    ["", "benutzerMusterSchwach"],
     ["", "geheimnisMuster"],
     ["", "freitextMuster"],
     ["", "tabellenSpalten"],
@@ -6071,6 +6254,7 @@
       removeMappingTableEntry,
       addMappingTableEntry,
       reprocessFilesWithState,
+      nachpruefen,
       createReleaseGuard,
       findPathCollisions,
       validateImportedTable,

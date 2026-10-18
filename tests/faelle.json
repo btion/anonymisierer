@@ -131,7 +131,7 @@
     "id": "TC17",
     "name": "SNMP Community und SNMPv3 Auth/Priv Passwörter entfernen",
     "eingabe": "snmp-server community GeheimeCommunityRO ro\nsnmp-server user snmpadmin grp v3 auth sha256 AuthPass123! priv aes128 PrivPass456!",
-    "erwartet": "snmp-server community ***** ro\nsnmp-server user snmpadmin grp v3 auth sha256 ***** priv aes128 *****",
+    "erwartet": "snmp-server community ***** ro\nsnmp-server user USER-1 grp v3 auth sha256 ***** priv aes128 *****",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -567,7 +567,7 @@
     "id": "TC68",
     "name": "Geheimnis 6: snmp-server user ... priv aes 128 <geheimnis> (Schlüssellänge bleibt)",
     "eingabe": "snmp-server user nms grp1 v3 auth sha GeheimAuth6 priv aes 128 GeheimPriv6",
-    "erwartet": "snmp-server user nms grp1 v3 auth sha ***** priv aes 128 *****",
+    "erwartet": "snmp-server user USER-1 grp1 v3 auth sha ***** priv aes 128 *****",
     "netzerhaltend": true,
     "sauber": true,
     "pruefeRoh": true,
