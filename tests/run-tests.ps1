@@ -935,6 +935,49 @@ foreach ($wert in @("xy7", "core03", "Uplink", "192", "Buchhaltung", "Qwertz77",
 }
 Assert-True ($svText.Contains("description <FREITEXT>") -and $svText.Contains("snmp-server community *****") -and $svText.Contains("interface 9/9/99")) "-Strukturvorlage: Freitext, Geheimnis und Form wie erwartet"
 
+# ----------------------------------------------------------------------------
+# 10. Leck-Katalog (tests\leck-katalog.json) und unabhängige Nachprüfung
+# ----------------------------------------------------------------------------
+Write-Host "=== 10. Leck-Katalog und unabhängige Nachprüfung ===" -ForegroundColor Cyan
+$katalog = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "leck-katalog.json"), [System.Text.Encoding]::UTF8))
+Assert-True (@($katalog.faelle).Count -ge 15) "Leck-Katalog: mindestens 15 Fälle ($(@($katalog.faelle).Count))"
+$hatNachpruefung = $null -ne [AnonTool.AnonEngine].GetMethod("Nachpruefen")
+Assert-True $hatNachpruefung "Nachprüfung: AnonEngine.Nachpruefen vorhanden"
+$kCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+# Lauf wie in anon.ps1: Durchlauf 1 lernt, Durchlauf 2 schreibt
+function Invoke-KatalogLauf {
+    param($Dateien, $State)
+    foreach ($d in $Dateien) { [void][AnonTool.AnonEngine]::ProcessText([string]$d.text, $kCfg, $State) }
+    $aus = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($d in $Dateien) { $aus.Add([AnonTool.AnonEngine]::ProcessText([string]$d.text, $kCfg, $State)) }
+    return $aus.ToArray()
+}
+foreach ($k in $katalog.faelle) {
+    $dateien = if ($null -ne $k.PSObject.Properties["dateien"]) { @($k.dateien) } else { @([pscustomobject]@{ path = "$($k.id).txt"; text = [string]$k.eingabe }) }
+    $kState = New-Object AnonTool.AnonState
+    $ausgabe = (Invoke-KatalogLauf -Dateien $dateien -State $kState) -join "`n"
+    $tabelle = (@($kState.Forward.Keys) + @($kState.Forward.Values) + @($kState.Reverse.Keys) + @($kState.Reverse.Values) + @($kState.Aliases.Keys) + @($kState.Aliases.Values)) -join "`n"
+    $rohFunde = @()
+    if ($hatNachpruefung) { foreach ($d in $dateien) { $rohFunde += @([AnonTool.AnonEngine]::Nachpruefen([string]$d.text, [string]$d.path, $kCfg)) } }
+    foreach ($z in $k.ziele) {
+        $kurz = "$($k.id)/$($z.kategorie)"
+        Assert-True (-not $ausgabe.Contains([string]$z.wert)) "${kurz}: Zielwert steht nicht in der Ausgabe"
+        if ($z.art -eq "geheimnis") { Assert-True (-not $tabelle.Contains([string]$z.wert)) "${kurz}: Geheimnis steht nicht in der Zuordnungstabelle" }
+        $soll = [string]$katalog.kategorien.($z.kategorie)
+        $treffer = @($rohFunde | Where-Object { $_.Kategorie -eq $soll -and $_.Fund -ceq [string]$z.wert }).Count
+        Assert-True ($treffer -gt 0) "${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als $soll"
+    }
+}
+$mState = New-Object AnonTool.AnonState
+$mAus = Invoke-KatalogLauf -Dateien @([pscustomobject]@{ text = "show backup status`nbackup completed`n" }, [pscustomobject]@{ text = "user backup group operators`n" }) -State $mState
+Assert-True ($mAus[0] -ceq "show backup status`nbackup completed`n" -and $mAus[1] -ceq "user USER-1 group operators`n") "A2-Folge 2: gelernter Benutzer 'backup' nur im Feldkontext ersetzt"
+if ($hatNachpruefung) {
+    foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $testDir "erwartet") -File)) {
+        $nf = @([AnonTool.AnonEngine]::Nachpruefen([System.IO.File]::ReadAllText($f.FullName), $f.Name, $kCfg))
+        Assert-True ($nf.Count -eq 0) "Nachprüfung: keine Fehlalarme in tests\erwartet\$($f.Name) ($(@($nf | ForEach-Object { $_.Kategorie + ':' + $_.Zeile }) -join ', '))"
+    }
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

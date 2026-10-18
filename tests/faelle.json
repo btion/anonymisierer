@@ -783,5 +783,24 @@
     "sauber": true,
     "pruefeRoh": true,
     "pruefeRohKategorie": "Rest-Hostname"
+  },
+  {
+    "id": "TC88",
+    "name": "A2-Folge 1: Benutzer in Log-Meldungen (for user X, [user: X], User X logged in)",
+    "eingabe": "login failed for user bwagner from 198.51.100.4\n%SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: kmeier] [Source: 198.51.100.6]\nUser mmueller logged in via SSH\nsession closed for bwagner",
+    "erwartet": "login failed for user USER-1 from NET-1.H1\n%SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: USER-2] [Source: NET-1.H2]\nUser USER-3 logged in via SSH\nsession closed for USER-1",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Nachpruefung-Benutzer",
+    "pruefeRueck": true
+  },
+  {
+    "id": "TC89",
+    "name": "A2-Folge 2: Mehrdeutiger Benutzer (backup) nur im Feldkontext ersetzt, nicht als freies Wort",
+    "eingabe": "user backup group operators password ciphertext AQBx12\nusername backup role operator\nshow backup status\nbackup completed",
+    "erwartet": "user USER-1 group operators password ciphertext *****\nusername USER-1 role operator\nshow backup status\nbackup completed",
+    "netzerhaltend": true,
+    "sauber": true
   }
 ]

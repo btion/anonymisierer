@@ -1,0 +1,314 @@
+{
+  "beschreibung": "Leck-Katalog: alle bisher gefundenen Leckfälle (erfundene Werte). Identitätswerte dürfen nicht in der Ausgabe stehen (in der Zuordnungstabelle schon), Geheimnisse weder in der Ausgabe noch in der Zuordnungstabelle. Die unabhängige Nachprüfung muss auf der ROHEN Eingabe jeden Zielwert mit passender Kategorie melden.",
+  "kategorien": {
+    "Benutzer": "Nachpruefung-Benutzer",
+    "Hostname": "Nachpruefung-Hostname",
+    "Domaene": "Nachpruefung-Domaene",
+    "Seriennummer": "Nachpruefung-Seriennummer",
+    "Passwort": "Nachpruefung-Geheimnis",
+    "Token": "Nachpruefung-Geheimnis",
+    "Schlüssel": "Nachpruefung-Geheimnis",
+    "Community": "Nachpruefung-Geheimnis"
+  },
+  "faelle": [
+    {
+      "id": "K01",
+      "quelle": "Paket A1 / TC75",
+      "eingabe": "{\"password\":\"part1\\\"SecretTail77\"}",
+      "ziele": [
+        {
+          "wert": "SecretTail77",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K02",
+      "quelle": "Paket A1 / TC76",
+      "eingabe": "{\"hostname\": \"\\u0073w-private01\", \"description\": \"Uplink zu \\u0073w-private01\"}",
+      "ziele": [
+        {
+          "wert": "sw-private01",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K03",
+      "quelle": "Paket A2 / TC77",
+      "eingabe": "password TestSecret77\nline password: TestSecret88\nAuthorization: Basic dXNlcjpUZXN0U2VjcmV0OTk=\nconfig secret=TestSecret66 api_key=TestSecret55\nFailed password for invalid user bob from 192.0.2.7 port 22",
+      "ziele": [
+        {
+          "wert": "TestSecret77",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "TestSecret88",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "dXNlcjpUZXN0U2VjcmV0OTk=",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "TestSecret66",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "TestSecret55",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "bob",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K04",
+      "quelle": "Paket A3 / TC78",
+      "eingabe": "Port      Native  Mode   Type    Enabled Status  Reason   Speed   Description\n------------------------------------------------------------------------------\n1/1/1     1       access 1GbT    yes     up               1000    Drucker api_key=Secret77\n\ninterface 1/1/2\n description Kamera api_key=Secret78",
+      "ziele": [
+        {
+          "wert": "Secret77",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Secret78",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K05",
+      "quelle": "Paket A7b / TC81",
+      "eingabe": "Port    Type                  Product  Serial            Part\n                              Number   Number            Number\n------------------------------------------------------------------\n1/1/49  SFP+DA3               J9283D   CN12AB3456        J9283-61301\n\nChassis Serial Nbr : TW12AB3456",
+      "ziele": [
+        {
+          "wert": "CN12AB3456",
+          "kategorie": "Seriennummer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "TW12AB3456",
+          "kategorie": "Seriennummer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K06",
+      "quelle": "Paket A7c / TC82",
+      "eingabe": "user alice group administrators password ciphertext AQBapXyZ12\nusername Alice secret Xxxx77\nsnmpv3 user nmsuser auth sha auth-pass plaintext Geheim1Auth priv aes priv-pass plaintext Geheim2Priv",
+      "ziele": [
+        {
+          "wert": "alice",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "nmsuser",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "AQBapXyZ12",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Xxxx77",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Geheim1Auth",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Geheim2Priv",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K07",
+      "quelle": "Paket B1 / TC83, TC84",
+      "eingabe": "password \"Alpha BetaSecret77\"\npassword 'Gamma DeltaSecret88'\nsnmp-server community 'Comm Unity55'",
+      "ziele": [
+        {
+          "wert": "BetaSecret77",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "DeltaSecret88",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Unity55",
+          "kategorie": "Community",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K08",
+      "quelle": "Paket B1 / TC85",
+      "eingabe": "{\"password\":123456789,\"secret\": -42.5e3}",
+      "ziele": [
+        {
+          "wert": "123456789",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "42.5e3",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K09",
+      "quelle": "Paket B1 / TC86",
+      "eingabe": "curl https://alice:Secret77@host.example.invalid/path und ftp://bob:Pa55word@files.example.invalid/",
+      "ziele": [
+        {
+          "wert": "Secret77",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Pa55word",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K10",
+      "quelle": "Paket B2 / TC87",
+      "eingabe": "hostname BUCHHALTUNG\nSerial Number: ABCDEFGH\nSystem Name: LAGER",
+      "ziele": [
+        {
+          "wert": "BUCHHALTUNG",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "ABCDEFGH",
+          "kategorie": "Seriennummer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "LAGER",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K11",
+      "quelle": "A2-Folge 1 / TC88",
+      "eingabe": "login failed for user bwagner from 198.51.100.4\n%SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: kmeier] [Source: 198.51.100.6]\nUser mmueller logged in via SSH",
+      "ziele": [
+        {
+          "wert": "bwagner",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "kmeier",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "mmueller",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K12",
+      "quelle": "A2-Folge 2: dateiübergreifend",
+      "dateien": [
+        {
+          "path": "a.log",
+          "text": "bwagner disconnected\n"
+        },
+        {
+          "path": "b.log",
+          "text": "login failed for user bwagner from 198.51.100.4\n"
+        }
+      ],
+      "ziele": [
+        {
+          "wert": "bwagner",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K13",
+      "quelle": "Punkt 6 / TC69",
+      "eingabe": "snmp-server host 192.0.2.9 version 2c GeheimComm7 udp-port 162",
+      "ziele": [
+        {
+          "wert": "GeheimComm7",
+          "kategorie": "Community",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K14",
+      "quelle": "Punkt 1 / TC59",
+      "eingabe": "System Name: XY1-SW01\nhostname xy1-dist04",
+      "ziele": [
+        {
+          "wert": "XY1-SW01",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "xy1-dist04",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K15",
+      "quelle": "Punkt 6 / TC63, TC72",
+      "eingabe": "ip ospf authentication-key 7 GeheimOspf1\nradius-server host 192.0.2.3 key 7 GeheimRadius10",
+      "ziele": [
+        {
+          "wert": "GeheimOspf1",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "GeheimRadius10",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        }
+      ]
+    }
+  ]
+}

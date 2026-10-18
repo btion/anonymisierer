@@ -1428,6 +1428,47 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 22. Leck-Katalog (tests/leck-katalog.json) und unabhängige Nachprüfung ---
+  console.log("--- 22. Leck-Katalog und unabhängige Nachprüfung ---");
+  {
+    const katalog = JSON.parse(fs.readFileSync(path.join(__dirname, "leck-katalog.json"), "utf8"));
+    assert(katalog.faelle.length >= 15, `Leck-Katalog: mindestens 15 Fälle (${katalog.faelle.length})`);
+    const hatNachpruefung = typeof core.nachpruefen === "function";
+    assert(hatNachpruefung, "Nachprüfung: core.nachpruefen vorhanden");
+    const kCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+    for (const k of katalog.faelle) {
+      const dateien = k.dateien || [{ path: k.id + ".txt", text: k.eingabe }];
+      const kState = new core.AnonState();
+      const lauf = core.reprocessFilesWithState(dateien, diskRules, {}, kState, { overrides: { netzerhaltend: true } });
+      const ausgabe = lauf.results.map(r => r.anonText).join("\n");
+      const tabelle = JSON.stringify(kState.toJSON());
+      const rohFunde = hatNachpruefung ? [].concat(...dateien.map(d => core.nachpruefen(d.text, d.path, kCfg))) : [];
+      for (const z of k.ziele) {
+        const kurz = `${k.id}/${z.kategorie}`;
+        assert(!ausgabe.includes(z.wert), `${kurz}: Zielwert steht nicht in der Ausgabe`);
+        if (z.art === "geheimnis") assert(!tabelle.includes(z.wert), `${kurz}: Geheimnis steht nicht in der Zuordnungstabelle`);
+        const soll = katalog.kategorien[z.kategorie];
+        assert(rohFunde.some(f => f.kategorie === soll && f.fund === z.wert),
+          `${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als ${soll}`);
+      }
+    }
+    // Rückwirkend und dateiübergreifend: mehrdeutige Benutzer nur im Feldkontext
+    const mState = new core.AnonState();
+    const mLauf = core.reprocessFilesWithState([
+      { path: "a.log", text: "show backup status\nbackup completed\n" },
+      { path: "b.log", text: "user backup group operators\n" }
+    ], diskRules, {}, mState, { overrides: { netzerhaltend: true } });
+    assert(mLauf.results[0].anonText === "show backup status\nbackup completed\n" && mLauf.results[1].anonText === "user USER-1 group operators\n",
+      `A2-Folge 2: gelernter Benutzer 'backup' nur im Feldkontext ersetzt (${JSON.stringify(mLauf.results.map(r => r.anonText))})`);
+    // Die Nachprüfung meldet auf den anonymisierten Beispielen keine Fehlalarme
+    if (hatNachpruefung) {
+      for (const f of fs.readdirSync(ERWARTET_DIR).filter(n => !n.startsWith("."))) {
+        const nf = core.nachpruefen(fs.readFileSync(path.join(ERWARTET_DIR, f), "utf8"), f, kCfg);
+        assert(nf.length === 0, `Nachprüfung: keine Fehlalarme in tests/erwartet/${f} (${JSON.stringify(nf.map(x => x.kategorie + ":" + x.zeile))})`);
+      }
+    }
+  }
+
   // --- 18. Gemeinsamer Kern & Aufteilung der Seiten (Freitext: tests/run-tests-text.js) ---
   console.log("--- 18. Prüfe gemeinsamen Kern (core/) und Aufteilung der Seiten ---");
   const einbetten = require(path.join(ROOT, "tools", "einbetten.js"));
