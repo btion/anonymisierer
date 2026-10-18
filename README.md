@@ -331,3 +331,10 @@ Der Ordner `tests\` enthält **61 synthetische Test- und Grenzfälle** (`tests\f
 
 - **Lizenz des Projekts (`anon.ps1`, `anonymisierer.html`, `anon-regeln.json`, `switch-sammler.ps1`):** noch offen.
 - **ZIP- und TAR/GZIP-Verarbeitung in `anonymisierer.html`:** Direkt eingebetteter Minimal-Codec auf Basis der standardisierten Browser-APIs (`DecompressionStream`, `DataView`, `Uint8Array`, `WebCrypto API`) ohne externe Fremdbibliotheken.
+
+### Inspiriert von
+Konzepte (kein Code) wurden übernommen aus:
+- [netconan](https://github.com/intentionet/netconan) (intentionet, Apache-2.0): Kategorien von Geheimnismustern, Maskenerkennung, reservierte Wörter.
+- [Presidio](https://github.com/data-privacy-stack/presidio) (ursprünglich Microsoft, MIT): Erkenner mit Grundwert, Prüfziffer-Validierung, Kontextwörter und getrennte Operatoren pro Kategorie für den Reiter „Text (Datenschutz)“.
+
+Details: [`docs/lese-auftrag-netconan-presidio.md`](./docs/lese-auftrag-netconan-presidio.md)
