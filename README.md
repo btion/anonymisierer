@@ -159,21 +159,23 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
 
 ## 5. Bedienung Variante B: Offline-Browser-App (`anonymisierer.html`)
 
-1. Öffnen Sie `web\anonymisierer.html` per Doppelklick in Microsoft Edge oder Google Chrome.
-2. **Reiter „2. Regeldatei (JSON)“:**
-   - Laden Sie vor dem Lauf Ihre lokale `anon-regeln.lokal.json` von der Festplatte.
-3. **Reiter „1. Anonymisieren & Prüfen“:**
-   - Ziehen Sie Dateien, Ordner oder `.zip`/`.tar.gz`-Archive in das Drag-&-Drop-Feld.
-   - Klicken Sie auf **„Anonymisieren & Prüfen“**.
-   - Prüfen Sie oben rechts das Banner (**„Keine Restfunde nach aktivem Regelwerk“** in Grün oder Restfunde in Rot) sowie darunter die Gegenüberstellung **Original vs. Anonymisiert**.
-   - Laden Sie mit **„Anonymisiertes ZIP herunterladen“** das Freigabe-ZIP herunter (enthält ausschließlich `anonym/...` mit anonymisierten Dateinamen, **ohne** `bericht.json`).
-   - **Freigabe nur bei „Keine Restfunde nach aktivem Regelwerk“:** Bei `RESTFUNDE VORHANDEN` sind ZIP-Download und „Anonymisiert kopieren“ gesperrt. Unter dem Prüfbericht erscheinen die Fundgruppen (gleiche Kategorie, gleicher Wert). Entscheiden Sie jede Gruppe: **„Immer ersetzen“** legt das Wort an der Fundstelle als eigenen Begriff mit Platzhalter an, **„Fehlalarm“** als Ausnahme (`ausnahmen.exakteWoerter`). Danach „Entscheidungen anwenden & neu anonymisieren“; freigegeben wird erst, wenn der neue Lauf „Keine Restfunde nach aktivem Regelwerk“ meldet. Speichern Sie die Entscheidungen anschließend als `anon-regeln.lokal.json`, damit `anon.ps1` sie ebenfalls nutzt.
-4. **Reiter „3. Zuordnungstabelle (verschlüsselt)“:**
-   - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt als `zuordnungstabelle.anontab` (Format `ANON-AES256-2`, PBKDF2-SHA256, auch in `anon.ps1` ladbar) herunterzuladen. Die Passwortfelder werden danach geleert.
-   - Ältere Browser-Tabellen im Format `ANON-WEBCRYPTO-AESGCM-1` bleiben hier ladbar; speichern Sie sie einmal neu, um sie in `anon.ps1` nutzen zu können.
-   - Zum Laden einer verschlüsselten Tabelle tragen Sie das Passwort **vor** dem Auswählen der Datei in das verdeckte Passwortfeld (`type="password"`) ein (es wird kein `prompt()`-Dialog verwendet, damit das Passwort nicht im Klartext auf dem Bildschirm erscheint).
-5. **Reiter „4. Rückübersetzen“:**
-   - Fügen Sie die Antwort der KI ein und klicken Sie auf **„Jetzt rückübersetzen“**. Alles bleibt ausschließlich im RAM des Browsers.
+Öffnen Sie `web\anonymisierer.html` per Doppelklick in Microsoft Edge oder Google Chrome. Oben gibt es nur drei Bereiche: **Anonymisieren · Rückübersetzen · Einstellungen**. Die Statuszeile zeigt jederzeit den Stand: „Noch nicht geprüft“ (neutral), „Verarbeitung läuft (Datei x von y)“, „N Fundgruppen brauchen eine Entscheidung“, „Ergebnis veraltet – erneut verarbeiten“, „Unvollständig – N Dateien nicht verarbeitet“ oder „Keine Restfunde nach aktivem Regelwerk – Vorschau prüfen“. Meldungen erscheinen an der betroffenen Stelle (kein `alert()`), Statusmeldungen werden Screenreadern angesagt.
+
+„Anonymisieren“ ist ein Ablauf in vier Schritten, die frei anspringbar sind:
+
+1. **Dateien auswählen:** Dateien, Ordner oder `.zip`/`.tar.gz` hineinziehen. Die Dateiliste zeigt je Datei Name, Typ und Status (bereit, verarbeitet, übersprungen, nicht unterstützt, Fehler), lässt Dateien entfernen und durchsuchen und fasst zusammen („24 geladen, 22 verarbeitet, 2 nicht unterstützt“). Nicht verarbeitete Dateien bleiben sichtbar. Wählen Sie **Neue Zuordnung** oder **Vorhandene Zuordnung laden** (Passwort zuerst eingeben, dann die Datei wählen; kein `prompt()`).
+2. **Verarbeiten:** Zusammenfassung der Dateien und der Einstellungen („Standardeinstellungen aktiv“ oder sichtbare Abweichungen, z. B. „Benutzernamen werden nicht ersetzt“), dann **„Anonymisieren und prüfen“**. Der Trockenlauf liegt unter „Erweitert“; er gibt nichts frei.
+3. **Ergebnis prüfen:** Jede Fundkarte nennt die Art in Klartext („Möglicher Benutzername“), Anzahl und Dateien, zeigt eine Kontextzeile mit markiertem Wert und die Fundorte. Ein Klick auf einen Fundort öffnet die Datei in der Vorschau, springt zur Zeile und markiert den Wert, auch hinter den ersten 200 KB (es wird ein Ausschnitt um die Stelle geladen). Entscheidungen:
+   - **Alle Vorkommen ersetzen:** Der Wert wird zur eigenen Ersetzung mit Platzhalter; Geheimnisse werden stattdessen zu `*****` (nie in der Zuordnung).
+   - **Unverändert lassen:** Der Wert bleibt sichtbar („Dieser Wert bleibt in den weiterzugebenden Dateien sichtbar.“) und gilt nur für seine Kategorie (`ausnahmen.freigegeben`), nicht als allgemeine Ausnahme. Geheimnisse, eigene Begriffe, interne Domains und SIDs lassen sich nicht freigeben.
+   - Umfang: **nur für diesen Auftrag** (Standard; endet mit „Dateien und Ergebnisse zurücksetzen“) oder **als dauerhafte Regel übernehmen** (landet in den Einstellungen und wird mit `anon-regeln.lokal.json` gespeichert; bis dahin warnen ein Hinweis und das Schließen des Fensters).
+   - Jede Entscheidung ist rückgängig zu machen; „Nächster offener Fund“ springt weiter. Danach **„Entscheidungen anwenden und neu verarbeiten“**.
+   - Die Vorschau markiert ersetzte Stellen, zeigt Zeilennummern und bietet „Nur geänderte Zeilen“, „Nächste Änderung“, Suche und synchrones Scrollen. Die Originalspalte ist standardmäßig ausgeblendet (Bildschirmfreigabe).
+4. **Herunterladen:** **Ergebnis-ZIP – zur Weitergabe** (nur `anonym/...`, ohne Bericht und Zuordnung), **Verschlüsselte Zuordnungstabelle – vertraulich aufbewahren** (Passwort mit mindestens 12 Zeichen, Format `ANON-AES256-2`, auch in `anon.ps1` ladbar; Hinweis, wenn sich die Zuordnung seit dem letzten Speichern geändert hat) und **Technischer Bericht (ohne Werte)** mit `bewusstFreigegeben`. Ein gesperrter Download nennt immer den Grund und den nächsten Schritt. Freigegeben wird nur nach einem Lauf mit „Keine Restfunde nach aktivem Regelwerk“; jede Änderung an Dateien, Einstellungen, Regeln oder Zuordnung macht das Ergebnis veraltet.
+
+**Rückübersetzen:** Antwort der KI einfügen; Platzhalter werden lokal wieder zu Originalwerten, z. B. `HOST-1` wieder zum ursprünglichen Gerätenamen.
+
+**Einstellungen:** Kategorien und Optionen, **Eigene Ersetzungen** (`festeZuordnung`), **Firmen und Standorte**, **Interne Domains**, **Nicht anonymisieren** (`ausnahmen.exakteWoerter`) und **Bewusst freigegebene Werte**; unter „Erweitert“ Regeldatei, eigene Gerätenamen-Muster, Strukturvorlage, Zuordnungstabelle ansehen/bearbeiten und Angaben zur Verschlüsselung. Ältere Browser-Tabellen (`ANON-WEBCRYPTO-AESGCM-1`) bleiben ladbar; einmal neu speichern, um sie in `anon.ps1` zu nutzen.
 
 ### 5b. Text-Anonymisierer (`text-anonymisierer.html`)
 

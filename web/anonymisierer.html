@@ -436,6 +436,7 @@
     .vz.ziel { background: rgba(253, 224, 71, 0.15); }
     .vz-nr { flex: 0 0 auto; min-width: 54px; padding: 0 8px; text-align: right; color: #64748b; user-select: none; border-right: 1px solid #1e293b; }
     .vz-text { padding: 0 8px; flex: 1; }
+    .diff-grid.einspaltig { grid-template-columns: 1fr; }
     .vorschau-werkzeuge { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; font-size: 13px; }
     .suche-feld { display: inline-flex; gap: 4px; }
     .suche-feld input { max-width: 220px; }
@@ -504,7 +505,6 @@
               <label><input type="radio" name="zuordnungWahl" id="zuordnungLaden" value="laden"> Vorhandene Zuordnung laden</label>
             </fieldset>
             <div id="zuordnungNeuBox">
-              <div class="small-muted" id="zuordnungInfo">Aktive Zuordnungen: 0</div>
               <div class="btn-row">
                 <button type="button" class="danger" id="btnResetTableState">Neue leere Zuordnung beginnen</button>
               </div>
@@ -5976,6 +5976,7 @@
       const suchwort = $("vorschauSuche").value.trim();
       const geaendert = new Set(vorschauGeaendert);
       $("originalSpalte").hidden = !zeigeOriginal;
+      $("vorschauGrid").classList.toggle("einspaltig", !zeigeOriginal);
       const fragA = document.createDocumentFragment();
       const fragO = document.createDocumentFragment();
       let gezeigt = 0;
@@ -6715,6 +6716,7 @@
     // ------------------------------------------------------------------
     // Verarbeiten und prüfen
     // ------------------------------------------------------------------
+    const STAT_TEXTE = { geheimnisseEntfernen: "Geheimnisse", ip: "IP-Adressen", mac: "MAC-Adressen", hostnamen: "Gerätenamen/Domains", benutzer: "Benutzernamen", seriennummern: "Seriennummern", freitext: "Freitext", eigeneBegriffe: "Eigene Ersetzungen" };
     async function executeRun(isProbe) {
       // Während eines Laufs und bis zum neuen Prüfergebnis ist nichts freigegeben
       const laufStand = releaseGuard.startRun();
@@ -6835,7 +6837,7 @@
         for (const [k, v] of runState.stats.entries()) {
           const pill = document.createElement("div");
           pill.className = "stat-pill";
-          pill.textContent = `${k}: ${v}`;
+          pill.textContent = `${STAT_TEXTE[k] || k}: ${v}`;
           statPills.appendChild(pill);
         }
 
@@ -6862,7 +6864,7 @@
           tbody.appendChild(tr);
         } else {
           banner.className = "audit-banner dirty";
-          banner.textContent = `Prüfergebnis: Restfunde vorhanden (${allFindings.length} Treffer in ${findingGroups.length} Fundgruppe(n)${frei}) – vor der Weitergabe entscheiden.`;
+          banner.textContent = `Prüfergebnis: Restfunde vorhanden (${allFindings.length} Treffer in ${findingGroups.length} ${findingGroups.length === 1 ? "Fundgruppe" : "Fundgruppen"}${frei}) – vor der Weitergabe entscheiden.`;
           const maxRows = 500;
           const displayCount = Math.min(allFindings.length, maxRows);
           for (let idx = 0; idx < displayCount; idx++) {
