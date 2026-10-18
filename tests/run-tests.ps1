@@ -937,6 +937,79 @@ foreach ($wert in @("xy7", "core03", "Uplink", "192", "Buchhaltung", "Qwertz77",
 Assert-True ($svText.Contains("description <FREITEXT>") -and $svText.Contains("snmp-server community *****") -and $svText.Contains("interface 9/9/99")) "-Strukturvorlage: Freitext, Geheimnis und Form wie erwartet"
 
 # ----------------------------------------------------------------------------
+# 10a. Multimengenvergleich für Funde (ordinal, Groß-/Kleinschreibung zählt, keine Deduplizierung)
+# Diagnosen enthalten nur Quelle, Kategorie, Zeile und Anzahl, nie Fundwerte.
+# ----------------------------------------------------------------------------
+Write-Host "=== 10a. Selbsttest des Multimengenvergleichs ===" -ForegroundColor Cyan
+# Fund-Zeile "quelle|zeile|kategorie|fund" zerlegen (fund ist der Rest und darf "|" enthalten)
+function ConvertTo-FundEintrag {
+    param([string]$Zeile)
+    $t = $Zeile.Split([char]'|')
+    $fund = if ($t.Length -gt 3) { [string]::Join("|", $t, 3, $t.Length - 3) } else { "" }
+    return [pscustomobject]@{ quelle = $t[0]; zeile = $t[1]; kategorie = $t[2]; fund = $fund }
+}
+function Get-FundZaehlung {
+    param($Liste)
+    $orte = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)
+    foreach ($f in $Liste) {
+        $ort = [string]$f.quelle + [char]0 + [string]$f.zeile + [char]0 + [string]$f.kategorie
+        if (-not $orte.ContainsKey($ort)) { $orte[$ort] = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::Ordinal) }
+        $werte = $orte[$ort]
+        $w = [string]$f.fund
+        if ($werte.ContainsKey($w)) { $werte[$w] = $werte[$w] + 1 } else { $werte[$w] = 1 }
+    }
+    return $orte
+}
+function Compare-FundMultimenge {
+    param($Soll, $Ist)
+    $a = Get-FundZaehlung $Soll
+    $b = Get-FundZaehlung $Ist
+    $alle = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+    foreach ($k in $a.Keys) { [void]$alle.Add($k) }
+    foreach ($k in $b.Keys) { [void]$alle.Add($k) }
+    $orte = New-Object 'System.Collections.Generic.List[string]' (,[string[]]@($alle))
+    $orte.Sort([System.StringComparer]::Ordinal)
+    $diag = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($ort in $orte) {
+        $teile = $ort.Split([char]0)
+        $wo = "$($teile[0]) $($teile[2]) Zeile $($teile[1])"
+        $sa = 0; $sb = 0
+        if ($a.ContainsKey($ort)) { foreach ($n in $a[$ort].Values) { $sa += $n } }
+        if ($b.ContainsKey($ort)) { foreach ($n in $b[$ort].Values) { $sb += $n } }
+        if (-not $b.ContainsKey($ort)) { $diag.Add("fehlend: $wo, Anzahl $sa"); continue }
+        if (-not $a.ContainsKey($ort)) { $diag.Add("zusätzlich: $wo, Anzahl $sb"); continue }
+        $gleich = $true
+        foreach ($w in (@($a[$ort].Keys) + @($b[$ort].Keys))) {
+            $na = 0; $nb = 0
+            if ($a[$ort].ContainsKey($w)) { $na = $a[$ort][$w] }
+            if ($b[$ort].ContainsKey($w)) { $nb = $b[$ort][$w] }
+            if ($na -ne $nb) { $gleich = $false; break }
+        }
+        if ($gleich) { continue }
+        if ($sa -ne $sb) { $diag.Add("abweichende Häufigkeit: $wo, Soll $sa, Ist $sb") }
+        else { $diag.Add("gleicher Fundort, abweichender Inhalt: $wo, Anzahl $sa") }
+    }
+    return $diag.ToArray()
+}
+$vgBasisZeilen = @("K1/a.txt|1|Nachpruefung-Benutzer|wertA", "K1/a.txt|1|Nachpruefung-Benutzer|wertA", "K1/a.txt|2|Nachpruefung-Geheimnis|wertB", "K2/b.txt|3|Nachpruefung-Hostname|wertC")
+function New-VgListe { param([string[]]$Zeilen) $l = New-Object 'System.Collections.Generic.List[object]'; foreach ($z in $Zeilen) { $l.Add((ConvertTo-FundEintrag $z)) }; return ,$l }
+$vgBasis = New-VgListe $vgBasisZeilen
+$vgUmgekehrt = New-VgListe $vgBasisZeilen; $vgUmgekehrt.Reverse()
+Assert-True (@(Compare-FundMultimenge $vgBasis $vgUmgekehrt).Count -eq 0) "Vergleich: gleiche Funde in anderer Reihenfolge bestehen"
+$vgFehlt = @(Compare-FundMultimenge $vgBasis (New-VgListe $vgBasisZeilen[0..2]))
+Assert-True ($vgFehlt.Count -eq 1 -and $vgFehlt[0].StartsWith("fehlend: K2/b.txt Nachpruefung-Hostname Zeile 3")) "Vergleich: fehlender Fund fällt durch ($($vgFehlt -join '; '))"
+$vgExtra = @(Compare-FundMultimenge $vgBasis (New-VgListe ($vgBasisZeilen + @("K3/c.txt|4|Nachpruefung-SID|wertD"))))
+Assert-True ($vgExtra.Count -eq 1 -and $vgExtra[0].StartsWith("zusätzlich: K3/c.txt Nachpruefung-SID Zeile 4")) "Vergleich: zusätzlicher Fund fällt durch ($($vgExtra -join '; '))"
+$vgHaeufig = @(Compare-FundMultimenge $vgBasis (New-VgListe $vgBasisZeilen[1..3]))
+Assert-True ($vgHaeufig.Count -eq 1 -and $vgHaeufig[0].StartsWith("abweichende Häufigkeit: K1/a.txt Nachpruefung-Benutzer Zeile 1, Soll 2, Ist 1")) "Vergleich: abweichende Häufigkeit fällt durch ($($vgHaeufig -join '; '))"
+$vgGeaendert = New-VgListe $vgBasisZeilen; $vgGeaendert[2].fund = "wertX"
+$vgInhalt = @(Compare-FundMultimenge $vgBasis $vgGeaendert)
+Assert-True ($vgInhalt.Count -eq 1 -and $vgInhalt[0].StartsWith("gleicher Fundort, abweichender Inhalt: K1/a.txt Nachpruefung-Geheimnis Zeile 2")) "Vergleich: geänderter Fundwert am gleichen Fundort fällt durch ($($vgInhalt -join '; '))"
+$vgGross = New-VgListe $vgBasisZeilen; $vgGross[3].fund = "WERTC"
+Assert-True (@(Compare-FundMultimenge $vgBasis $vgGross).Count -eq 1) "Vergleich: Groß-/Kleinschreibung des Fundwerts zählt (ordinal)"
+Assert-True (-not ((@($vgFehlt) + @($vgExtra) + @($vgHaeufig) + @($vgInhalt)) -join " ").ToLowerInvariant().Contains("wert")) "Vergleich: Diagnosen enthalten keine Fundwerte"
+
+# ----------------------------------------------------------------------------
 # 10. Leck-Katalog (tests\leck-katalog.json) und unabhängige Nachprüfung
 # ----------------------------------------------------------------------------
 Write-Host "=== 10. Leck-Katalog und unabhängige Nachprüfung ===" -ForegroundColor Cyan
@@ -991,9 +1064,13 @@ if ($hatNachpruefung) {
         foreach ($nf in [AnonTool.AnonEngine]::Nachpruefen([string]$q[1], [string]$q[0], $kCfg)) { $zeilenNach.Add("$($q[0])|$($nf.Zeile)|$($nf.Kategorie)|$($nf.Fund)") }
     }
     $sollNach = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "nachpruefung-erwartet.json"), [System.Text.Encoding]::UTF8)))
-    $gleich = ($sollNach.Count -eq $zeilenNach.Count)
-    if ($gleich) { for ($i = 0; $i -lt $sollNach.Count; $i++) { if (-not ([string]$sollNach[$i] -ceq $zeilenNach[$i])) { $gleich = $false; break } } }
-    Assert-True $gleich "Parität: Nachprüfung auf den Roheingaben entspricht tests\nachpruefung-erwartet.json ($($zeilenNach.Count) Funde)"
+    $sollListe = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($e in $sollNach) { $sollListe.Add((ConvertTo-FundEintrag ([string]$e))) }
+    $istListe = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($e in $zeilenNach) { $istListe.Add((ConvertTo-FundEintrag $e)) }
+    $diagNach = @(Compare-FundMultimenge $sollListe $istListe)
+    foreach ($d in $diagNach) { Write-Host "    [Parität Nachprüfung] $d" -ForegroundColor Yellow }
+    Assert-True ($diagNach.Count -eq 0) "Parität: Nachprüfung auf den Roheingaben entspricht tests\nachpruefung-erwartet.json (Soll $($sollListe.Count), Ist $($istListe.Count), Abweichungen $($diagNach.Count))"
 }
 $mState = New-Object AnonTool.AnonState
 $mAus = Invoke-KatalogLauf -Dateien @([pscustomobject]@{ text = "show backup status`nbackup completed`n" }, [pscustomobject]@{ text = "user backup group operators`n" }) -State $mState

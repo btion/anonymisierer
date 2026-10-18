@@ -1429,6 +1429,67 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // Fund-Zeile "quelle|zeile|kategorie|fund" zerlegen (fund ist der Rest und darf "|" enthalten)
+  function zerlegeFundZeile(z) {
+    const t = String(z).split("|");
+    return { quelle: t[0], zeile: t[1], kategorie: t[2], fund: t.slice(3).join("|") };
+  }
+  // Funde als Multimenge vergleichen (ordinal, Groß-/Kleinschreibung zählt, keine Deduplizierung).
+  // Diagnosen enthalten nur Quelle, Kategorie, Zeile und Anzahl, nie Fundwerte.
+  function vergleicheFundMultimengen(soll, ist) {
+    const sep = "\u0000";
+    const zaehle = (liste) => {
+      const orte = new Map();
+      for (const f of liste) {
+        const ort = [f.quelle, String(f.zeile), f.kategorie].join(sep);
+        if (!orte.has(ort)) orte.set(ort, new Map());
+        const werte = orte.get(ort);
+        werte.set(f.fund, (werte.get(f.fund) || 0) + 1);
+      }
+      return orte;
+    };
+    const a = zaehle(soll), b = zaehle(ist);
+    const summe = (m) => Array.from(m.values()).reduce((x, y) => x + y, 0);
+    const diagnosen = [];
+    const orte = Array.from(new Set([...a.keys(), ...b.keys()])).sort();
+    for (const ort of orte) {
+      const [quelle, zeile, kategorie] = ort.split(sep);
+      const wo = `${quelle} ${kategorie} Zeile ${zeile}`;
+      const ma = a.get(ort), mb = b.get(ort);
+      if (!mb) { diagnosen.push(`fehlend: ${wo}, Anzahl ${summe(ma)}`); continue; }
+      if (!ma) { diagnosen.push(`zusätzlich: ${wo}, Anzahl ${summe(mb)}`); continue; }
+      const werte = new Set([...ma.keys(), ...mb.keys()]);
+      let gleich = true;
+      for (const w of werte) if ((ma.get(w) || 0) !== (mb.get(w) || 0)) { gleich = false; break; }
+      if (gleich) continue;
+      const sa = summe(ma), sb = summe(mb);
+      if (sa !== sb) diagnosen.push(`abweichende Häufigkeit: ${wo}, Soll ${sa}, Ist ${sb}`);
+      else diagnosen.push(`gleicher Fundort, abweichender Inhalt: ${wo}, Anzahl ${sa}`);
+    }
+    return diagnosen;
+  }
+
+  // --- 22a. Selbsttest des Multimengenvergleichs ---
+  console.log("--- 22a. Selbsttest des Multimengenvergleichs ---");
+  {
+    const basis = ["K1/a.txt|1|Nachpruefung-Benutzer|wertA", "K1/a.txt|1|Nachpruefung-Benutzer|wertA", "K1/a.txt|2|Nachpruefung-Geheimnis|wertB", "K2/b.txt|3|Nachpruefung-Hostname|wertC"].map(zerlegeFundZeile);
+    const kopie = (l) => l.map(f => Object.assign({}, f));
+    assert(vergleicheFundMultimengen(basis, kopie(basis).reverse()).length === 0, "Vergleich: gleiche Funde in anderer Reihenfolge bestehen");
+    const fehlt = vergleicheFundMultimengen(basis, kopie(basis).filter(f => f.quelle !== "K2/b.txt"));
+    assert(fehlt.length === 1 && fehlt[0].startsWith("fehlend: K2/b.txt Nachpruefung-Hostname Zeile 3"), `Vergleich: fehlender Fund fällt durch (${fehlt.join("; ")})`);
+    const extra = vergleicheFundMultimengen(basis, kopie(basis).concat([zerlegeFundZeile("K3/c.txt|4|Nachpruefung-SID|wertD")]));
+    assert(extra.length === 1 && extra[0].startsWith("zusätzlich: K3/c.txt Nachpruefung-SID Zeile 4"), `Vergleich: zusätzlicher Fund fällt durch (${extra.join("; ")})`);
+    const haeufig = vergleicheFundMultimengen(basis, kopie(basis).slice(1));
+    assert(haeufig.length === 1 && haeufig[0].startsWith("abweichende Häufigkeit: K1/a.txt Nachpruefung-Benutzer Zeile 1, Soll 2, Ist 1"), `Vergleich: abweichende Häufigkeit fällt durch (${haeufig.join("; ")})`);
+    const geaendert = kopie(basis); geaendert[2].fund = "wertX";
+    const inhalt = vergleicheFundMultimengen(basis, geaendert);
+    assert(inhalt.length === 1 && inhalt[0].startsWith("gleicher Fundort, abweichender Inhalt: K1/a.txt Nachpruefung-Geheimnis Zeile 2"), `Vergleich: geänderter Fundwert am gleichen Fundort fällt durch (${inhalt.join("; ")})`);
+    const gross = kopie(basis); gross[3].fund = "WERTC";
+    assert(vergleicheFundMultimengen(basis, gross).length === 1, "Vergleich: Groß-/Kleinschreibung des Fundwerts zählt (ordinal)");
+    const alle = [].concat(fehlt, extra, haeufig, inhalt).join(" ");
+    assert(!/wert[A-DX]/i.test(alle), "Vergleich: Diagnosen enthalten keine Fundwerte");
+  }
+
   // --- 22. Leck-Katalog (tests/leck-katalog.json) und unabhängige Nachprüfung ---
   console.log("--- 22. Leck-Katalog und unabhängige Nachprüfung ---");
   {
@@ -1465,8 +1526,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       for (const [q, t] of quellen) for (const f of core.nachpruefen(t, q, kCfg)) zeilenNach.push(`${q}|${f.zeile}|${f.kategorie}|${f.fund}`);
       const sollPfad = path.join(__dirname, "nachpruefung-erwartet.json");
       if (AKTUALISIEREN) fs.writeFileSync(sollPfad, JSON.stringify(zeilenNach, null, 2) + "\n", "utf8");
-      const sollNach = fs.existsSync(sollPfad) ? JSON.parse(fs.readFileSync(sollPfad, "utf8")) : null;
-      assert(JSON.stringify(sollNach) === JSON.stringify(zeilenNach), `Nachprüfung: Funde auf den Roheingaben entsprechen tests/nachpruefung-erwartet.json (${zeilenNach.length})`);
+      const sollNach = fs.existsSync(sollPfad) ? JSON.parse(fs.readFileSync(sollPfad, "utf8")) : [];
+      const diagNach = vergleicheFundMultimengen(sollNach.map(zerlegeFundZeile), zeilenNach.map(zerlegeFundZeile));
+      for (const d of diagNach) console.error("    [Parität Nachprüfung] " + d);
+      assert(diagNach.length === 0, `Parität: Nachprüfung auf den Roheingaben entspricht tests/nachpruefung-erwartet.json (Soll ${sollNach.length}, Ist ${zeilenNach.length}, Abweichungen ${diagNach.length})`);
     }
     // Rückwirkend und dateiübergreifend: mehrdeutige Benutzer nur im Feldkontext
     const mState = new core.AnonState();
