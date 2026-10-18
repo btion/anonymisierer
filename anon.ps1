@@ -551,7 +551,7 @@ namespace AnonTool
         // IPv6 (Standard, komprimiert ::, fe80::, 2001:db8:: usw., keine einfachen Uhrzeiten wie 12:34:56)
         private static readonly Regex RxIpv6 = new Regex(@"(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])", RegexOptions.Compiled, RxTimeout);
 
-        // CLI-Prompt am Zeilenanfang (z.B. rz1-sw-core01# oder fw-edge01(config-if)#)
+        // CLI-Prompt am Zeilenanfang (z.B. dc1-sw-core01# oder fw-edge01(config-if)#)
         private static readonly Regex RxCliPrompt = new Regex(@"(?m)^([A-Za-z][A-Za-z0-9_-]{2,48})(\([A-Za-z0-9_-]+\))?([#>])[ \t]+", RegexOptions.Compiled, RxTimeout);
 
         // Schutz-Marker-Auflösung in einem einzigen Durchlauf pro Schachtelungsebene
@@ -1353,12 +1353,12 @@ namespace AnonTool
                     }, RegexOptions.IgnoreCase, RxTimeout);
                 }
 
-                // FQDNs und Subdomains auf Basis von interneDomains (z.B. srv01.intern.musterfirma.de)
+                // FQDNs und Subdomains auf Basis von interneDomains (z.B. srv01.intern.example.invalid)
                 var sortedDomains = cfg.InterneDomains.Where(d => !string.IsNullOrWhiteSpace(d)).OrderByDescending(d => d.Length).ToList();
                 foreach (string dom in sortedDomains)
                 {
                     string cleanDom = dom.Trim();
-                    // Erst FQDNs unterhalb dieser Domain (z.B. host.sub.domain.de)
+                    // Erst FQDNs unterhalb dieser Domain (z.B. host.sub.domain.example.net)
                     string fqdnPat = @"\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)\." + Regex.Escape(cleanDom) + @"\b";
                     text = Regex.Replace(text, fqdnPat, (Match m) =>
                     {

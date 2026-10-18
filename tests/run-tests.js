@@ -285,7 +285,7 @@ assert(rxDescProbe.test("description Test\r\nx"), "Befund 1 Gegenprobe: Multilin
 // Befund 2: Dateinamen/Pfade durch Engine schicken, Pfade in Prüfung aufnehmen, bericht.json nicht im Freigabe-ZIP
 const pathCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
 const pathState = new core.AnonState();
-const origRelPath = "Rechenzentrum-Nord/rz1-sw-core01/show-tech-acc-halle2-01_192.0.2.1.txt";
+const origRelPath = "Rechenzentrum-Nord/dc1-sw-core01/show-tech-acc-halle2-01_192.0.2.1.txt";
 const anonRelPath = core.processPath(origRelPath, pathCfg, pathState);
 assert(
   anonRelPath === "FIRMA-1/CORE-A/show-tech-HOST-1_NET-1.H1.txt",
@@ -493,10 +493,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   // Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte
   const boundCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
   const boundState = new core.AnonState();
-  const boundOut = core.processText("rz1-tor-01 und rz1-tor-010", boundCfg, boundState);
+  const boundOut = core.processText("dc1-tor-01 und dc1-tor-010", boundCfg, boundState);
   assert(
-    boundOut === "TOR-A und rz1-tor-010" && !boundOut.includes("TOR-A0"),
-    `Befund 8: 'rz1-tor-01' macht 'rz1-tor-010' nicht zu 'TOR-A0' (Ergebnis: ${boundOut})`
+    boundOut === "TOR-A und dc1-tor-010" && !boundOut.includes("TOR-A0"),
+    `Befund 8: 'dc1-tor-01' macht 'dc1-tor-010' nicht zu 'TOR-A0' (Ergebnis: ${boundOut})`
   );
 
   // Befund 9: Add-Type sauber nach $PSVersionTable.PSEdition verzweigt ohne stillen Catch-Fallback
@@ -527,10 +527,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   console.log("=== 6. Performance- & Stresstest: Großer Aruba AOS-CX Show-Tech (40.000+ Zeilen) ===");
   const showTechChunks = [
     "================================f=show tech====================================",
-    "hostname rz1-sw-core01",
+    "hostname dc1-sw-core01",
     "Version : FL.10.13.1020",
     "snmp-server system-location Rechenzentrum-Nord Halle 3",
-    "snmp-server system-contact Max Mustermann (netze@intern.musterfirma.de)",
+    "snmp-server system-contact Max Mustermann (netze@intern.example.invalid)",
     "user admin password ciphertext AQBapf92384719283749182374918273948172938471928374"
   ];
   for (let i = 1; i <= 5000; i++) {
@@ -546,7 +546,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       `    description Uplink_${i} zu dist-sw${(i % 30) + 1} (Musterfirma GmbH)`,
       `    ip address ${net}.${o4}/24`,
       `1/1/${(i % 48) + 1}  acc-sw${(i % 80) + 1}  00:1a:2b:3c:4d:${hex}  ${net}.254  Aruba JL658A  FL.10.13.1020`,
-      `2026-10-16T14:22:${(i % 59).toString().padStart(2, "0")}.123Z rz1-sw-core01 hpe-routing[${i}]: Event on sn link state up for ${net}.${o4}`
+      `2026-10-16T14:22:${(i % 59).toString().padStart(2, "0")}.123Z dc1-sw-core01 hpe-routing[${i}]: Event on sn link state up for ${net}.${o4}`
     );
   }
   const largeShowTech = showTechChunks.join("\r\n");
@@ -810,7 +810,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(!collisionRes.valid && collisionRes.errors.some(e => e.includes("echten Begriff")), "Eigene Begriffe Validierung: Platzhalter darf nicht mit einem echten Begriff übereinstimmen");
 
   // 16.3 Kopierfunktion in der Vorschau (> 200 KB Testfall, Bestätigung bei Original & unsauberem Prüfstatus)
-  const copyLargeOriginal = "hostname rz1-sw-core01\n" + "X".repeat(250 * 1024); // > 200 KB
+  const copyLargeOriginal = "hostname dc1-sw-core01\n" + "X".repeat(250 * 1024); // > 200 KB
   const copyLargeAnon = "hostname CORE-A\n" + "X".repeat(250 * 1024);
   const previewTextTruncated = core.formatPreviewText(copyLargeAnon);
   assert(previewTextTruncated.length < copyLargeAnon.length && previewTextTruncated.includes("VORSCHAU GEKÜRZT"), "Vorschau-Anzeige kürzt Texte > 200 KB im DOM");
@@ -945,7 +945,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   // 17.2 Platzhalter umbenennen (TEXT-x -> VLAN-GAESTE), Alias-Erhalt, Rückübersetzung mit BEIDEN Namen
   const editState = new core.AnonState();
   const editSampleText = [
-    "hostname rz1-sw-core01",
+    "hostname dc1-sw-core01",
     "vlan 100",
     "   name WAN_GUEST_192.0.2.0",
     "interface 1/1/1",
@@ -1432,7 +1432,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
 
   // XSS-Sicherheitstest für DOM-Erzeugung
   // Simulieren wir die DOM-Generierung: Spans und Text-Segmente werden als DOM-Knoten erzeugt
-  const maliciousInput = "<script>alert('pwn')</script><img src=x onerror=alert(1)> test@domain.de";
+  const maliciousInput = "<script>alert('pwn')</script><img src=x onerror=alert(1)> test@domain.example.net";
   const malSpans = textCore.analyzeText(maliciousInput);
   assert(malSpans.length > 0, "E-Mail in XSS-Text wird erkannt");
   // Überprüfe, dass bei reiner Textknoten-Verwendung keine Tags interpretiert werden
@@ -1445,7 +1445,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   }
   simulatedDomText += maliciousInput.slice(lastMIdx);
   assert(simulatedDomText.includes("<script>alert('pwn')</script>"), "Original-Code bleibt unverändert im Textknoten");
-  assert(simulatedDomText.includes("[SPAN:test@domain.de]"), "Span umfasst sicher das Token");
+  assert(simulatedDomText.includes("[SPAN:test@domain.example.net]"), "Span umfasst sicher das Token");
 
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);

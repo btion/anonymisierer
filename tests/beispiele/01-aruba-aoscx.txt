@@ -1,5 +1,5 @@
 ! ArubaOS-CX Show-Tech Auszug (Synthetische Testdaten)
-hostname rz1-sw-core01
+hostname dc1-sw-core01
 Version FL.10.13.1020
 Serial Number: CN93K2M019
 user admin group administrators password ciphertext AQBapf92384719283749182374918273948172938471928374
@@ -7,14 +7,14 @@ username netop role administrators password plaintext GeheimesPasswort123!
 radius-server host 192.0.2.50 key ciphertext 998877665544332211
 snmp-server community GeheimeCommunityRO
 snmp-server location Rechenzentrum-Nord Raum 2.04
-snmp-server contact Max Mustermann (noc@intern.musterfirma.de)
+snmp-server contact Max Mustermann (noc@intern.example.invalid)
 vlan 100
    name WAN_192.0.2.0-24
 interface Ethernet1/1/10
-   description Uplink zu rz2-sw-core02 (Musterfirma GmbH)
+   description Uplink zu dc2-sw-core02 (Musterfirma GmbH)
    ip address 192.0.2.1/24
    ipv6 address 2001:db8:abcd:10::1/64
 lldp neighbor-info 1/1/10
    Chassis ID : 00:1a:2b:3c:4d:5e
-   System Name : sw-access-04.intern.musterfirma.de
+   System Name : sw-access-04.intern.example.invalid
    System Description : ArubaOS-CX FL.10.13.1020

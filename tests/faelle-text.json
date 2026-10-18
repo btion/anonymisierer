@@ -4,7 +4,7 @@
     {
       "id": "rechnung_finanzen_rot",
       "beschreibung": "Rechnung mit offizieller Test-IBAN, Steuer-ID, Telefon, E-Mail und Datum",
-      "text": "Rechnung Nr. 2026-991\nBitte überweisen Sie den Betrag an DE89 3704 0044 0532 0130 00.\nSteuer-ID: 86095742719\nKontakt: buchhaltung@beispiel-firma.de oder Telefon 030 12345678.\nFällig zum 30.11.2026.",
+      "text": "Rechnung Nr. 2026-991\nBitte überweisen Sie den Betrag an DE89 3704 0044 0532 0130 00.\nSteuer-ID: 86095742719\nKontakt: buchhaltung@beispiel-firma.example.com oder Telefon 030 12345678.\nFällig zum 30.11.2026.",
       "erwarteRotKategorien": ["IBAN", "STEUER_ID", "EMAIL", "TELEFON"],
       "erwarteGelbKategorien": ["DATUM"]
     },
@@ -56,13 +56,13 @@
     {
       "id": "xss_sicherheit",
       "beschreibung": "XSS-Vektoren im Text müssen sicher bleiben und dürfen keine Scripts ausführen",
-      "text": "Sehr geehrter Herr <script>alert('xss')</script>,\nbitte melden Sie sich unter info@domain.de <img src=x onerror=alert(1)>.",
+      "text": "Sehr geehrter Herr <script>alert('xss')</script>,\nbitte melden Sie sich unter info@domain.example.net <img src=x onerror=alert(1)>.",
       "erwarteRotKategorien": ["EMAIL"]
     },
     {
       "id": "email_header_zitat_signatur",
       "beschreibung": "E-Mail mit RFC-Kopfzeilen, Message-ID, zitiertem Antwortblock und Signatur",
-      "text": "From: \"Max Mustermann\" <max@beispiel-firma.de>\nTo: Erika Musterfrau <erika@beispiel-firma.de>\nDate: 14.10.2024\nSubject: Terminabsprache Projektstatus\nMessage-ID: <20241014.abc1234@mail.beispiel-firma.de>\n\nHallo Erika,\n\n> Am 12.10.2024 um 10:00 Uhr schrieb Sabine Weber <sabine@extern-partner.de>:\n> Bitte senden Sie mir die Unterlagen zu.\n\nAnbei die Unterlagen.\n\n-- \nMusterfirma GmbH\nAmtsgericht Frankfurt HRB 123456\nTelefon: 069 12345678",
+      "text": "From: \"Max Mustermann\" <max@beispiel-firma.example.com>\nTo: Erika Musterfrau <erika@beispiel-firma.example.com>\nDate: 14.10.2024\nSubject: Terminabsprache Projektstatus\nMessage-ID: <20241014.abc1234@mail.beispiel-firma.example.com>\n\nHallo Erika,\n\n> Am 12.10.2024 um 10:00 Uhr schrieb Sabine Weber <sabine@partner.example.net>:\n> Bitte senden Sie mir die Unterlagen zu.\n\nAnbei die Unterlagen.\n\n-- \nMusterfirma GmbH\nAmtsgericht Frankfurt HRB 123456\nTelefon: 069 12345678",
       "erwarteRotKategorien": ["NAME", "EMAIL", "EMAIL_HEADER", "TELEFON"],
       "erwarteGelbKategorien": ["FIRMA", "REGISTER"]
     },

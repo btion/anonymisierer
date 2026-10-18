@@ -18,11 +18,11 @@
   },
   "eigeneBegriffe": {
     "festeZuordnung": {
-      "rz1-sw-core01": "CORE-A",
-      "rz2-sw-core02": "CORE-B",
-      "rz1-tor-01": "TOR-A",
+      "dc1-sw-core01": "CORE-A",
+      "dc2-sw-core02": "CORE-B",
+      "dc1-tor-01": "TOR-A",
       "fw-edge-01": "FW-EDGE-1",
-      "dc01.intern.musterfirma.de": "DC-1.DOMAIN-INTERN"
+      "dc01.intern.example.invalid": "DC-1.DOMAIN-INTERN"
     },
     "firmenUndStandorte": [
       "Musterfirma GmbH",
@@ -35,10 +35,10 @@
       "Hans Schmidt"
     ],
     "interneDomains": [
-      "intern.musterfirma.de",
+      "intern.example.invalid",
       "corp.musterwerke.local",
       "ad.firma.lan",
-      "musterfirma.de"
+      "example.invalid"
     ]
   },
   "ausnahmen": {

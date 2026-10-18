@@ -556,7 +556,7 @@
               <strong>3. interneDomains</strong>
               <button type="button" class="btn-sm" id="btnAddDomainRow">+ Zeile</button>
             </div>
-            <div class="small-muted" style="margin-bottom:6px;">Eine interne Domain pro Zeile (z. B. <code>intern.firma.de</code>).</div>
+            <div class="small-muted" style="margin-bottom:6px;">Eine interne Domain pro Zeile (z. B. <code>intern.example.com</code>).</div>
             <div id="interneDomainsRows" style="max-height:260px; overflow:auto;"></div>
           </div>
           <div>
@@ -904,11 +904,11 @@
     },
     "eigeneBegriffe": {
       "festeZuordnung": {
-        "rz1-sw-core01": "CORE-A",
-        "rz2-sw-core02": "CORE-B",
-        "rz1-tor-01": "TOR-A",
+        "dc1-sw-core01": "CORE-A",
+        "dc2-sw-core02": "CORE-B",
+        "dc1-tor-01": "TOR-A",
         "fw-edge-01": "FW-EDGE-1",
-        "dc01.intern.musterfirma.de": "DC-1.DOMAIN-INTERN"
+        "dc01.intern.example.invalid": "DC-1.DOMAIN-INTERN"
       },
       "firmenUndStandorte": [
         "Musterfirma GmbH",
@@ -921,10 +921,10 @@
         "Hans Schmidt"
       ],
       "interneDomains": [
-        "intern.musterfirma.de",
+        "intern.example.invalid",
         "corp.musterwerke.local",
         "ad.firma.lan",
-        "musterfirma.de"
+        "example.invalid"
       ]
     },
     "ausnahmen": {
@@ -5279,9 +5279,9 @@
         norm.firmenList.forEach(v => addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", v));
       }
       if (norm.domainsList.length === 0) {
-        addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "");
+        addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.example.com)", "");
       } else {
-        norm.domainsList.forEach(v => addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", v));
+        norm.domainsList.forEach(v => addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.example.com)", v));
       }
       if (norm.exakteList.length === 0) {
         addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", "");
@@ -5320,7 +5320,7 @@
       addSimpleTermRowUI("firmenUndStandorteRows", "firma-input", "Begriff (z. B. Musterklinik)", "")
     );
     document.getElementById("btnAddDomainRow").addEventListener("click", () =>
-      addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.firma.de)", "")
+      addSimpleTermRowUI("interneDomainsRows", "domain-input", "Domain (z. B. intern.example.com)", "")
     );
     document.getElementById("btnAddExaktRow").addEventListener("click", () =>
       addSimpleTermRowUI("exakteWoerterRows", "exakt-input", "Wert im Klartext lassen", "")
@@ -5565,22 +5565,22 @@
     document.getElementById("btnLoadDemo").addEventListener("click", () => {
       const enc = new TextEncoder();
       const demoAruba = [
-        "hostname rz1-sw-core01",
+        "hostname dc1-sw-core01",
         "Version FL.10.13.1020",
         "user admin password ciphertext AQBapf92384719283749182374918273948172938471928374",
         "username netadmin role administrators password plaintext GeheimesPasswort123!",
         "snmp-server community MySecretRO",
         "snmp-server location Rechenzentrum-Nord Raum 2.04",
-        "snmp-server contact Max Mustermann (netze@intern.musterfirma.de)",
+        "snmp-server contact Max Mustermann (netze@intern.example.invalid)",
         "interface 1/1/10",
-        "   description Uplink zu rz2-sw-core02 (Musterfirma GmbH)",
+        "   description Uplink zu dc2-sw-core02 (Musterfirma GmbH)",
         "   ip address 192.0.2.1/24",
         "   ipv6 address 2001:db8:abcd:10::1/64",
         "vlan 100",
         "   name WAN_192.0.2.0-24",
         "lldp neighbor-info 1/1/10",
         "   Chassis ID : 00:1a:2b:3c:4d:5e",
-        "   System Name : sw-access-04.intern.musterfirma.de",
+        "   System Name : sw-access-04.intern.example.invalid",
         "   System Description : ArubaOS-CX FL.10.13.1020",
         "Serial Number: CN93K2M019"
       ].join("\n");
@@ -5951,11 +5951,11 @@
     }
 
     const SAMPLE_TEXT = [
-      "From: \"Max Mustermann\" <max@musterfirma.de>",
-      "To: Erika Musterfrau <erika@musterfirma.de>",
+      "From: \"Max Mustermann\" <max@example.invalid>",
+      "To: Erika Musterfrau <erika@example.invalid>",
       "Date: 14.10.2024",
       "Subject: Abrechnung Fall F-2026-991",
-      "Message-ID: <20241014.abc1234@mail.musterfirma.de>",
+      "Message-ID: <20241014.abc1234@mail.example.invalid>",
       "",
       "Sehr geehrte Frau Dr. Sabine Weber,",
       "anbei erhalten Sie die Abrechnung für Herrn Markus Becker,",
@@ -5963,10 +5963,10 @@
       "KVNR: A123456780, BSNR: 123456789, LANR: 123456601.",
       "Diagnose: Gesichert ICD-10 J45.0, Behandlung nach OPS: 5-820.0 auf Station 4, Zimmer 12.",
       "Bitte überweisen Sie das Honorar an DE89 3704 0044 0532 0130 00 (Steuer-ID: 86095742719).",
-      "Rückfragen bitte an buchhaltung@muster-praxis.de oder telefonisch unter 030 12345678.",
+      "Rückfragen bitte an buchhaltung@muster-praxis.example.com oder telefonisch unter 030 12345678.",
       "Das Dienstfahrzeug mit dem Kennzeichen B-MW 1234 wurde auf dem Besucherparkplatz registriert.",
       "",
-      "> Am 12.10.2024 um 10:00 Uhr schrieb Klaus Meyer <klaus@extern.de>:",
+      "> Am 12.10.2024 um 10:00 Uhr schrieb Klaus Meyer <klaus@example.net>:",
       "> Bitte den Befund bis zum 25.10.2024 nachreichen.",
       "",
       "-- ",

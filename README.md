@@ -47,7 +47,7 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
    Starten Sie `anon.ps1` mit Ihrer lokalen Regeldatei `-LokaleRegeln .\anon-regeln.lokal.json` (oder laden Sie die lokale Regeldatei in `anonymisierer.html` unter „Eigene Begriffe“). `-Regeln` bleibt für das Basisregelwerk (`anon-regeln.json`, Standard im Skriptordner).
    - Alle Dateien werden in zwei Durchläufen verarbeitet: Ein Hostname, der erst in Datei 3 erkannt wird, wird so auch in Datei 1 ersetzt.
    - Dateien mit UTF-8-BOM sowie UTF-16 LE/BE BOM (z. B. Windows-Eventlogs) werden automatisch anhand des BOM erkannt und immer als UTF-8 ohne BOM ausgegeben.
-   - Auch alle Datei- und Ordnernamen im Ausgabepfad werden durch die Engine anonymisiert (z. B. `show-tech-rz1-sw-core01.txt` -> `show-tech-CORE-A.txt`).
+   - Auch alle Datei- und Ordnernamen im Ausgabepfad werden durch die Engine anonymisiert (z. B. `show-tech-dc1-sw-core01.txt` -> `show-tech-CORE-A.txt`).
    - Geheimnisse (Passwörter, Hashes, `ciphertext`, HPE Comware `password/key cipher|simple|hash`, MikroTik `private-key=`/`public-key=`, SNMP-Communities, PSKs, PEM-Blöcke) werden unwiderruflich durch `*****` entfernt.
    - Infrastrukturdaten (IPs mit netzerhaltendem Format `NET-1.H17/24`, MACs als `MAC-1`, Hostnamen als `HOST-1` bzw. feste Rollen wie `CORE-A` / `TOR-A`, VLAN-Namen und Beschreibungen als `TEXT-1`) werden über alle Dateien hinweg konsistent ersetzt.
    - Die Zuordnungstabelle wird **außerhalb** des Ausgabeordners unter `%LOCALAPPDATA%\Anon\Tabellen\` abgelegt (geschützt per Windows-ACL auf Ihren Benutzer sowie standardmäßig unter Windows mit DPAPI oder per `-MitPasswort` mit `ANON-AES256-2` verschlüsselt).
@@ -187,13 +187,13 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
 | `pruefung.erlaubtListe`, `.erlaubtMuster` | zusätzliche Ausnahmen im Prüfmodus |
 
 ### A. Eigene Begriffe, Rollen & Domains (`eigeneBegriffe`)
-Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Namensgrenzen `(?<![A-Za-z0-9-])...(?![A-Za-z0-9-])` gesucht, sodass z. B. `"rz1-tor-01"` niemals versehentlich den Anfang von `"rz1-tor-010"` zu `"TOR-A0"` verfälscht:
+Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Namensgrenzen `(?<![A-Za-z0-9-])...(?![A-Za-z0-9-])` gesucht, sodass z. B. `"dc1-tor-01"` niemals versehentlich den Anfang von `"dc1-tor-010"` zu `"TOR-A0"` verfälscht:
 ```json
 "eigeneBegriffe": {
   "festeZuordnung": {
-    "rz1-sw-core01": "CORE-A",
-    "rz2-sw-core02": "CORE-B",
-    "rz1-tor-01": "TOR-A"
+    "dc1-sw-core01": "CORE-A",
+    "dc2-sw-core02": "CORE-B",
+    "dc1-tor-01": "TOR-A"
   },
   "firmenUndStandorte": [
     "Musterfirma GmbH",
@@ -201,7 +201,7 @@ Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Nam
     "Max Mustermann"
   ],
   "interneDomains": [
-    "intern.musterfirma.de",
+    "intern.example.invalid",
     "ad.firma.lan"
   ]
 }

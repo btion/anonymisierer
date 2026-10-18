@@ -178,7 +178,7 @@
   {
     "id": "TC23",
     "name": "Dell Enterprise SONiC Redis-JSON-Dump bleibt valides JSON nach Anonymisierung",
-    "eingabe": "{\"DEVICE_METADATA\":{\"localhost\":{\"hostname\":\"leaf-sw01\",\"mac\":\"00:11:22:33:44:55\",\"serial\":\"SN99887766\"}},\"TACPLUS\":{\"global\":{\"passkey\":\"TopSecret123\"}},\"PORT\":{\"Ethernet1/1/10\":{\"description\":\"Uplink zu rz1-sw-core01\"}}}",
+    "eingabe": "{\"DEVICE_METADATA\":{\"localhost\":{\"hostname\":\"leaf-sw01\",\"mac\":\"00:11:22:33:44:55\",\"serial\":\"SN99887766\"}},\"TACPLUS\":{\"global\":{\"passkey\":\"TopSecret123\"}},\"PORT\":{\"Ethernet1/1/10\":{\"description\":\"Uplink zu dc1-sw-core01\"}}}",
     "erwartet": "{\"DEVICE_METADATA\":{\"localhost\":{\"hostname\":\"HOST-1\",\"mac\":\"MAC-1\",\"serial\":\"SERIAL-1\"}},\"TACPLUS\":{\"global\":{\"passkey\":\"*****\"}},\"PORT\":{\"Ethernet1/1/10\":{\"description\":\"TEXT-1\"}}}",
     "netzerhaltend": true,
     "sauber": true,
@@ -186,8 +186,8 @@
   },
   {
     "id": "TC24",
-    "name": "Feste Zuordnung aus anon-regeln.json (rz1-sw-core01 -> CORE-A)",
-    "eingabe": "neighbor rz1-sw-core01 connected to rz2-sw-core02 via fw-edge-01",
+    "name": "Feste Zuordnung aus anon-regeln.json (dc1-sw-core01 -> CORE-A)",
+    "eingabe": "neighbor dc1-sw-core01 connected to dc2-sw-core02 via fw-edge-01",
     "erwartet": "neighbor CORE-A connected to CORE-B via FW-EDGE-1",
     "netzerhaltend": true,
     "sauber": true
@@ -203,7 +203,7 @@
   {
     "id": "TC26",
     "name": "Interne Domains und FQDNs ersetzen",
-    "eingabe": "ntp server ntp01.intern.musterfirma.de domain-name intern.musterfirma.de",
+    "eingabe": "ntp server ntp01.intern.example.invalid domain-name intern.example.invalid",
     "erwartet": "ntp server HOST-1 domain-name DOMAIN-1",
     "netzerhaltend": true,
     "sauber": true
@@ -211,7 +211,7 @@
   {
     "id": "TC27",
     "name": "E-Mail-Adressen und URLs ersetzen",
-    "eingabe": "logging email noc@musterfirma.de webhook https://hooks.intern.musterfirma.de/alert/123",
+    "eingabe": "logging email noc@example.invalid webhook https://hooks.intern.example.invalid/alert/123",
     "erwartet": "logging email MAIL-1 webhook URL-1",
     "netzerhaltend": true,
     "sauber": true
@@ -291,7 +291,7 @@
   {
     "id": "TC37",
     "name": "Rückübersetzung stellt netzerhaltende IPs, MACs und feste Rollen exakt wieder her",
-    "eingabe": "Route auf rz1-sw-core01 über 192.0.2.1/24 (MAC 00:aa:bb:cc:dd:ee) zu 192.0.2.50",
+    "eingabe": "Route auf dc1-sw-core01 über 192.0.2.1/24 (MAC 00:aa:bb:cc:dd:ee) zu 192.0.2.50",
     "erwartet": "Route auf CORE-A über NET-1.H1/24 (MAC MAC-1) zu NET-1.H2",
     "netzerhaltend": true,
     "sauber": true,
@@ -369,7 +369,7 @@
   {
     "id": "TC46",
     "name": "Punkt 4: erlaubtMuster akzeptiert Rollen wie TOR-A, SW-1 und Netze wie NET-3/24 im Prüfmodus",
-    "eingabe": "uplink rz1-tor-01 route NET-3/24 via SW-ACCESS-1",
+    "eingabe": "uplink dc1-tor-01 route NET-3/24 via SW-ACCESS-1",
     "erwartet": "uplink TOR-A route NET-3/24 via HOST-1",
     "netzerhaltend": true,
     "sauber": true
@@ -384,9 +384,9 @@
   },
   {
     "id": "TC48",
-    "name": "Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte (rz1-tor-01 macht rz1-tor-010 nicht zu TOR-A0)",
-    "eingabe": "uplink rz1-tor-01 neighbor rz1-tor-010 site Rechenzentrum-Nord tag Rechenzentrum-Nord2",
-    "erwartet": "uplink TOR-A neighbor rz1-tor-010 site FIRMA-1 tag Rechenzentrum-Nord2",
+    "name": "Befund 8: Wort-/Namensgrenzen bei festeZuordnung und firmenUndStandorte (dc1-tor-01 macht dc1-tor-010 nicht zu TOR-A0)",
+    "eingabe": "uplink dc1-tor-01 neighbor dc1-tor-010 site Rechenzentrum-Nord tag Rechenzentrum-Nord2",
+    "erwartet": "uplink TOR-A neighbor dc1-tor-010 site FIRMA-1 tag Rechenzentrum-Nord2",
     "netzerhaltend": true,
     "sauber": true
   },
