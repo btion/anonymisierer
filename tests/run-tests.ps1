@@ -1133,6 +1133,16 @@ $frBerichtPfad = Join-Path (Join-Path $frDir "aus-b") "bericht.json"
 if (Test-Path -LiteralPath $frBerichtPfad) { $frBericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($frBerichtPfad, [System.Text.Encoding]::UTF8)) }
 Assert-True ($frCode -eq 0 -and $null -ne $frBericht -and [int]$frBericht.bewusstFreigegeben -ge 1) "Freigaben: anon.ps1 ohne Restfunde, Bericht zählt bewusstFreigegeben ($frCode)"
 
+# Entscheidung "Alle ersetzen" bei Geheimnissen erzeugt ein Muster im Dialekt der Regeldatei (gleich wie anonymisierer.html)
+$litCfg = New-TestConfig -RulesObj $rulesObj
+$litRule = New-Object AnonTool.SecretRule
+$litRule.Name = "Entscheidung: Geheimnis entfernen"
+$litRule.Pattern = "(?<![A-Za-z0-9])Geheim9z(?![A-Za-z0-9])"
+$litRule.Replacement = "*****"
+$litRule.Compiled = New-Object System.Text.RegularExpressions.Regex ($litRule.Pattern, [System.Text.RegularExpressions.RegexOptions]::Compiled, [TimeSpan]::FromSeconds(5))
+$litCfg.GeheimnisMuster.Add($litRule)
+Assert-Equal ([AnonTool.AnonEngine]::ProcessText("note Geheim9z here`n", $litCfg, (New-Object AnonTool.AnonState))) "note ***** here`n" "Entscheidung 'Alle ersetzen' bei Geheimnis: Wert wird zu ***** (Parität)"
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

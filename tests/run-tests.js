@@ -1607,6 +1607,90 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 24. Bedienlogik (rein, ohne DOM) ---
+  console.log("--- 24. Bedienlogik: Ablaufstatus, Fundgruppen, Entscheidungen, Vorschau, Dateiliste ---");
+  {
+    const st = core.berechneAblaufStatus;
+    assert(st({ dateien: 0 }).code === "KEINE_DATEIEN" && st({ dateien: 0 }).ton !== "ok", "Ablauf: ohne Dateien neutral, nicht grün");
+    assert(st({ dateien: 3 }).text === "Noch nicht geprüft" && st({ dateien: 3 }).ton === "neutral" && st({ dateien: 3 }).gesperrt, "Ablauf: 'Noch nicht geprüft' neutral und gesperrt");
+    assert(st({ dateien: 3, laeuft: true, fortschritt: { aktuell: 2, gesamt: 3 } }).text === "Verarbeitung läuft (Datei 2 von 3)", "Ablauf: 'Verarbeitung läuft (Datei x von y)'");
+    const offen = st({ dateien: 3, lauf: { offeneGruppen: 4, gruppen: 4 }, freigabe: false });
+    assert(offen.text === "4 Fundgruppen brauchen eine Entscheidung" && offen.gesperrt && offen.grund && offen.aktion, "Ablauf: offene Fundgruppen mit Grund und nächster Aktion");
+    assert(st({ dateien: 3, lauf: { offeneGruppen: 1, gruppen: 1 } }).text === "1 Fundgruppe braucht eine Entscheidung", "Ablauf: Einzahl bei einer Fundgruppe");
+    const sauber = st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0, freigegeben: 2 }, freigabe: true });
+    assert(sauber.code === "KEINE_RESTFUNDE" && !sauber.gesperrt && sauber.text.startsWith("Keine Restfunde nach aktivem Regelwerk – Vorschau prüfen") && sauber.text.includes("2 bewusst freigegeben"), `Ablauf: ohne Restfunde frei, freigegebene gezählt (${sauber.text})`);
+    assert(st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0 }, freigabe: true, veraltet: true }).code === "VERALTET", "Ablauf: Änderung nach dem Lauf -> 'Ergebnis veraltet'");
+    const unv = st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0, nichtVerarbeitet: 2 }, freigabe: true });
+    assert(unv.text.startsWith("Unvollständig – 2 Dateien nicht verarbeitet") && /fehlen im Ergebnis-ZIP/.test(unv.grund), "Ablauf: 'Unvollständig – N Dateien nicht verarbeitet'");
+    assert(st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0, isProbe: true }, freigabe: false }).gesperrt, "Ablauf: Trockenlauf gibt nicht frei");
+
+    // Fundgruppen: Rest- und Nachprüfungsfund desselben Benutzers ergeben eine Karte mit Fundorten
+    const fg = core.bildeFundgruppen([
+      { datei: "a.txt", zeile: 3, kategorie: "Rest-Benutzer", fund: "jdoe7", kontext: "user jdoe7 x" },
+      { datei: "a.txt", zeile: 3, kategorie: "Nachpruefung-Benutzer", fund: "jdoe7", kontext: "user jdoe7 x" },
+      { datei: "b.txt", zeile: 9, kategorie: "Nachpruefung-Benutzer", fund: "jdoe7", kontext: "for user jdoe7" },
+      { datei: "b.txt", zeile: 2, kategorie: "Nachpruefung-Geheimnis", fund: "Geheim9z", kontext: "password Geheim9z" },
+      { datei: "b.txt", zeile: 4, kategorie: "Sperrbegriff", fund: "Werk-Nord", kontext: "Werk-Nord-alt" }
+    ], null);
+    const gB = fg.find(g => g.art === "Benutzer");
+    assert(fg.length === 3 && gB && gB.anzahl === 3 && gB.orte.length === 2 && gB.dateien.length === 2 && gB.text === "Möglicher Benutzername", `Fundgruppen: eine Karte je Bedeutung und Wert, mit Fundorten (${fg.length})`);
+    assert(gB.kannErsetzen && gB.kannUnveraendert, "Fundgruppen: Benutzer kann ersetzt oder unverändert gelassen werden");
+    const gG = fg.find(g => g.art === "Geheimnis");
+    assert(gG.kannErsetzen && !gG.kannUnveraendert, "Fundgruppen: Geheimnis kann nicht unverändert bleiben");
+    const gS = fg.find(g => g.art === "Sperrbegriff");
+    assert(gS.kannErsetzen && !gS.kannUnveraendert && gS.woerter[0] === "Werk-Nord-alt", "Fundgruppen: Sperrbegriff nur ersetzbar, ganzes Wort an der Fundstelle");
+
+    // Entscheidungen: ersetzen -> Eigene Ersetzung, Geheimnis -> Muster mit *****, unverändert -> kategoriegebundene Freigabe
+    const eB = core.entscheidungsEintraege(gB, "unveraendert");
+    assert(eB.freigegeben.length === 1 && eB.freigegeben[0].kategorie === "Benutzer" && eB.freigegeben[0].wert === "jdoe7" && eB.festeZuordnung.length === 0, "Entscheidung 'Unverändert lassen': Freigabe nur für Kategorie Benutzer");
+    const eG = core.entscheidungsEintraege(gG, "ersetzen");
+    assert(eG.geheimnisMuster.length === 1 && eG.festeZuordnung.length === 0 && eG.geheimnisMuster[0].ersetzen === "*****", "Entscheidung 'Alle ersetzen' bei Geheimnis: Muster mit *****, keine Zuordnung (Geheimnis nie in der Tabelle)");
+    assert(core.entscheidungsEintraege(gG, "unveraendert").freigegeben.length === 0, "Entscheidung: Geheimnis lässt sich nicht freigeben");
+    const ctMit = core.fuegeEintraegeHinzu({}, core.entscheidungsEintraege(gB, "ersetzen"));
+    assert(ctMit.festeZuordnung.length === 1 && ctMit.festeZuordnung[0].original === "jdoe7", "Entscheidung 'Alle ersetzen': Eigene Ersetzung angelegt");
+    const ctZurueck = core.entferneEintraege(ctMit, core.entscheidungsEintraege(gB, "ersetzen"));
+    assert(ctZurueck.festeZuordnung.length === 0, "Entscheidung rückgängig: Eigene Ersetzung wieder entfernt");
+
+    // Geheimnis-Muster wirkt in beiden Engines gleich (Dialekt der Regeldatei)
+    const gRules = JSON.parse(JSON.stringify(diskRules));
+    gRules.geheimnisMuster.push(eG.geheimnisMuster[0]);
+    const gOut = core.processText("note Geheim9z here\n", core.buildEngineConfig(gRules, {}), new core.AnonState());
+    assert(gOut === "note ***** here\n", `Entscheidung 'Alle ersetzen' bei Geheimnis: Wert wird zu ***** (${JSON.stringify(gOut)})`);
+    assert(!forbiddenEscape.test(eG.geheimnisMuster[0].suche), "Entscheidung: erzeugtes Muster nutzt den Regex-Dialekt der Regeldatei (kein \\w, \\d, \\b)");
+
+    // Auftragsebene: wirkt nur im Lauf, dauerhafte Begriffe bleiben unverändert
+    const auftrag = [{ eintraege: eB }];
+    const lb = core.baueLaufBegriffe({}, auftrag);
+    assert(lb.muster["ausnahmen.freigegeben"].length === 1 && core.baueLaufBegriffe({}, []).muster["ausnahmen.freigegeben"] === undefined, "Auftragsebene: Freigabe nur im Lauf mit Auftragsentscheidungen");
+    const lauf = core.reprocessFilesWithState([{ path: "a.txt", text: '<Data Name="TargetUserName">jdoe7</Data>\n' }], diskRules, lb, new core.AnonState(), {});
+    assert(lauf.ok && lauf.findings.length === 0 && lauf.freigegeben > 0, "Auftragsebene: Lauf mit Freigabe ohne Restfunde, Freigaben gezählt");
+    const laufOhne = core.reprocessFilesWithState([{ path: "a.txt", text: '<Data Name="TargetUserName">jdoe7</Data>\n' }], diskRules, {}, new core.AnonState(), {});
+    assert(laufOhne.findings.length > 0, "Auftragsebene: ohne Auftragsentscheidung wird der Wert wieder gemeldet");
+
+    // Vorschau-Ausschnitt auch hinter 200 KB
+    const gross = Array.from({ length: 30000 }, (_, i) => "filler line number " + i).join("\n");
+    assert(gross.length > core.MAX_PREVIEW_CHARS, "Vorschau: Testdatei größer als 200 KB");
+    const fen = core.vorschauFenster(gross, 29000);
+    assert(fen.start <= 29000 && fen.ende >= 29000 && fen.zeilen.join("\n").length <= core.MAX_PREVIEW_CHARS && fen.gekuerzt && fen.zeilen[29000 - fen.start] === "filler line number 28999", `Vorschau: Ausschnitt um Zeile 29000 (${fen.start}-${fen.ende})`);
+    const anfang = core.vorschauFenster(gross, 0);
+    assert(anfang.start === 1 && anfang.ende > 1, "Vorschau: ohne Zielzeile ab Zeile 1");
+    assert(JSON.stringify(core.geaenderteZeilen("a\nb\nc", "a\nX\nc")) === "[2]", "Vorschau: geänderte Zeilen");
+    assert(JSON.stringify(core.ersetzteStellen("ip NET-1.H2 pw *****")) === "[[3,11],[15,20]]", "Vorschau: ersetzte Stellen (Platzhalter und *****)");
+
+    // Dateiliste und Abweichungen vom Standard
+    assert(core.dateiAnfangsStatus("x.evtx", true) === "nicht unterstützt" && core.dateiAnfangsStatus("x.dat", true) === "übersprungen" && core.dateiAnfangsStatus("x.log", false) === "bereit", "Dateiliste: Anfangsstatus");
+    assert(core.dateiZusammenfassung([{ status: "verarbeitet" }, { status: "verarbeitet" }, { status: "nicht unterstützt" }]) === "3 geladen, 2 verarbeitet, 1 nicht unterstützt", "Dateiliste: Zusammenfassung");
+    assert(core.einstellungsAbweichungen({ kategorien: new Set(["ip", "mac"]) }).includes("Benutzernamen werden nicht ersetzt"), "Einstellungen: Abweichung 'Benutzernamen werden nicht ersetzt' sichtbar");
+    assert(core.einstellungsAbweichungen({ kategorien: undefined, netzerhaltend: true, ipPrivPub: true }).length === 0, "Einstellungen: Standard ohne Abweichungen");
+
+    // Oberfläche: keine alert()-Dialoge, Statusmeldungen über aria-live, Originale standardmäßig verdeckt
+    const uiTeil = htmlContent.slice(htmlContent.indexOf("// 5. BROWSER-UI STEUERUNG"));
+    assert(!/\balert\s*\(/.test(htmlContent), "Oberfläche: keine alert()-Dialoge");
+    assert(/id="ablaufStatus"[^>]*aria-live="polite"/.test(htmlContent), "Oberfläche: Statuszeile mit aria-live");
+    assert(/<input type="checkbox" id="optOriginalAnzeigen">/.test(htmlContent), "Oberfläche: Originalspalte standardmäßig ausgeblendet");
+    assert(!/\.innerHTML\s*=\s*[^"'`;]*\b(?:fund|kontext|original|wert)\b/i.test(uiTeil), "Oberfläche: Werte nie über innerHTML");
+  }
+
   // --- 18. Gemeinsamer Kern & Aufteilung der Seiten (Freitext: tests/run-tests-text.js) ---
   console.log("--- 18. Prüfe gemeinsamen Kern (core/) und Aufteilung der Seiten ---");
   const einbetten = require(path.join(ROOT, "tools", "einbetten.js"));

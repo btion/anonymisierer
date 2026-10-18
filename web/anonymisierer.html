@@ -5193,6 +5193,283 @@
   
 
   // ============================================================================
+  // 4b. BEDIENLOGIK (rein, ohne DOM; von der Oberfläche und den Node-Tests genutzt)
+  // ============================================================================
+
+  // Verständliche Bezeichnungen der Fundkategorien
+  const FUND_KATEGORIE_TEXTE = {
+    "Rest-Benutzer": "Möglicher Benutzername",
+    "Nachpruefung-Benutzer": "Möglicher Benutzername",
+    "Rest-Hostname": "Möglicher Gerätename",
+    "Nachpruefung-Hostname": "Möglicher Gerätename",
+    "Pfad-Hostname": "Möglicher Gerätename im Dateinamen",
+    "Rest-Seriennummer": "Mögliche Seriennummer",
+    "Nachpruefung-Seriennummer": "Mögliche Seriennummer",
+    "Nachpruefung-Domaene": "Mögliche Domain",
+    "Interne-Domain": "Interne Domain",
+    "Pfad-Domain": "Interne Domain im Dateinamen",
+    "Rest-IPv4": "IP-Adresse",
+    "Pfad-IPv4": "IP-Adresse im Dateinamen",
+    "Rest-IPv6": "IPv6-Adresse",
+    "Rest-MAC": "MAC-Adresse",
+    "Rest-EMail": "E-Mail-Adresse",
+    "Rest-Freitext": "Freitext (Beschreibung, Standort)",
+    "Rest-Tabellenfeld": "Tabelleneintrag",
+    "Rest-Bekannt": "Bereits erkannter Wert an weiterer Stelle",
+    "Pfad-Bekannt": "Bereits erkannter Wert im Dateinamen",
+    "Sperrbegriff": "Eigener Begriff (soll immer ersetzt werden)",
+    "Pfad-Sperrbegriff": "Eigener Begriff im Dateinamen",
+    "Rest-Geheimnis": "Mögliches Passwort oder Schlüssel",
+    "Nachpruefung-Geheimnis": "Mögliches Passwort oder Schlüssel",
+    "Verdacht-Zugangsdaten": "Mögliche Zugangsdaten",
+    "Verdacht-Teilmaskierung": "Teilweise maskierter Wert",
+    "Nachpruefung-Teilmaskierung": "Teilweise maskierter Wert",
+    "Verdacht-Hash": "Möglicher Passwort-Hash",
+    "Verdacht-Geheimnis-Blob": "Möglicher Schlüssel oder Hash",
+    "Nachpruefung-SID": "Windows-Kennung (SID)",
+    "Ausgabepfad-Kollision": "Doppelter Ausgabepfad"
+  };
+  const GEHEIMNIS_FUNDKATEGORIEN = ["Rest-Geheimnis", "Nachpruefung-Geheimnis", "Verdacht-Zugangsdaten", "Verdacht-Teilmaskierung", "Nachpruefung-Teilmaskierung", "Verdacht-Hash", "Verdacht-Geheimnis-Blob"];
+  const FREIGABE_KATEGORIE_TEXTE = {
+    Benutzer: "Benutzername", Hostname: "Gerätename", Seriennummer: "Seriennummer", Domaene: "Domain", IPv4: "IP-Adresse",
+    IPv6: "IPv6-Adresse", MAC: "MAC-Adresse", EMail: "E-Mail-Adresse", URL: "URL", Freitext: "Freitext", Tabellenfeld: "Tabelleneintrag"
+  };
+
+  function fundKategorieText(kategorie) {
+    return FUND_KATEGORIE_TEXTE[kategorie] || String(kategorie || "");
+  }
+
+  function istGeheimnisFund(kategorie) {
+    return GEHEIMNIS_FUNDKATEGORIEN.indexOf(kategorie) >= 0;
+  }
+
+  // Fundgruppen für die Fundkarten: gleiche Bedeutung (z. B. Rest-Benutzer und Nachpruefung-Benutzer) und gleicher Wert
+  // ergeben eine Karte. Jede Gruppe kennt ihre Fundorte (Datei, Zeile) und welche Entscheidungen möglich sind.
+  function bildeFundgruppen(findings, state) {
+    const map = new Map();
+    for (const f of (findings || [])) {
+      const fund = String(f.fund == null ? "" : f.fund).trim();
+      const freigabe = freigabeKategorie(f.kategorie, fund, state);
+      const geheimnis = istGeheimnisFund(f.kategorie);
+      const art = freigabe || (geheimnis ? "Geheimnis" : f.kategorie);
+      const key = art + "|" + fund.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          schluessel: key, art, text: geheimnis ? "Mögliches Passwort oder Schlüssel" : (freigabe ? fundKategorieText(f.kategorie).replace(/ im Dateinamen$/, "") : fundKategorieText(f.kategorie)),
+          kategorien: [], fund, werte: [], woerter: [], orte: [], dateien: [], anzahl: 0,
+          freigabeKategorie: freigabe, geheimnis, kontext: String(f.kontext || ""), kontextWert: fund
+        });
+      }
+      const g = map.get(key);
+      g.anzahl++;
+      if (g.kategorien.indexOf(f.kategorie) < 0) g.kategorien.push(f.kategorie);
+      if (g.werte.indexOf(fund) < 0) g.werte.push(fund);
+      if (g.dateien.indexOf(f.datei) < 0) g.dateien.push(f.datei);
+      if (!g.orte.some(o => o.datei === f.datei && o.zeile === f.zeile)) g.orte.push({ datei: f.datei, zeile: f.zeile });
+      // "Alle ersetzen" gilt für das ganze Wort an der Fundstelle (z. B. "edge7-alt" statt "edge7")
+      let wort = fund;
+      const ctx = String(f.kontext || "");
+      const pos = /\s/.test(fund) ? -1 : ctx.toLowerCase().indexOf(fund.toLowerCase());
+      if (pos >= 0) wort = surroundingToken(ctx, pos, fund.length);
+      if (wort && !g.woerter.some(w => w.toLowerCase() === wort.toLowerCase())) g.woerter.push(wort);
+    }
+    const gruppen = Array.from(map.values());
+    for (const g of gruppen) {
+      // Ersetzen ist möglich, wenn ein Wert vorhanden ist; Doppelte Ausgabepfade lassen sich nur durch Umbenennen lösen
+      g.kannErsetzen = g.fund.length > 0 && g.kategorien.indexOf("Ausgabepfad-Kollision") < 0;
+      g.kannUnveraendert = Boolean(g.freigabeKategorie);
+    }
+    return gruppen;
+  }
+
+  // Regulärer Ausdruck für einen festen Wert (Dialekt aus anon-regeln.json: kein \w, \d, \b)
+  function literalMuster(wert) {
+    const esc = String(wert).replace(/[.*+?^${}()|[\]\\\/#\s-]/g, (c) => (/\s/.test(c) ? "[ \\t]" : "\\" + c));
+    return "(?<![A-Za-z0-9])" + esc + "(?![A-Za-z0-9])";
+  }
+
+  // Einträge, die eine Entscheidung in den eigenen Begriffen bzw. lokalen Mustern erzeugt
+  function entscheidungsEintraege(gruppe, aktion) {
+    const ergebnis = { festeZuordnung: [], geheimnisMuster: [], freigegeben: [] };
+    if (!gruppe) return ergebnis;
+    if (aktion === "ersetzen" && gruppe.kannErsetzen) {
+      if (gruppe.geheimnis) {
+        for (const w of gruppe.werte) ergebnis.geheimnisMuster.push({ name: "Entscheidung: Geheimnis entfernen", suche: literalMuster(w), ersetzen: "*****" });
+      } else {
+        for (const w of (gruppe.woerter.length > 0 ? gruppe.woerter : gruppe.werte)) ergebnis.festeZuordnung.push({ original: w, placeholder: "" });
+      }
+    } else if (aktion === "unveraendert" && gruppe.kannUnveraendert) {
+      for (const w of gruppe.werte) ergebnis.freigegeben.push({ kategorie: gruppe.freigabeKategorie, wert: w });
+    }
+    return ergebnis;
+  }
+
+  // Einträge in eigene Begriffe übernehmen (ohne Duplikate); liefert neue eigene Begriffe
+  function fuegeEintraegeHinzu(customTerms, eintraege) {
+    const ct = cloneCustomTerms(customTerms || {});
+    const vorhanden = new Set(ct.festeZuordnung.map(r => String(r.original || "").trim().toLowerCase()));
+    for (const r of eintraege.festeZuordnung) {
+      if (!vorhanden.has(r.original.toLowerCase())) { ct.festeZuordnung.push({ original: r.original, placeholder: r.placeholder || "" }); vorhanden.add(r.original.toLowerCase()); }
+    }
+    if (eintraege.geheimnisMuster.length > 0) {
+      const liste = Array.isArray(ct.muster.geheimnisMuster) ? ct.muster.geheimnisMuster : [];
+      for (const g of eintraege.geheimnisMuster) if (!liste.some(x => x && x.suche === g.suche)) liste.push(g);
+      ct.muster.geheimnisMuster = liste;
+    }
+    if (eintraege.freigegeben.length > 0) {
+      const liste = Array.isArray(ct.muster["ausnahmen.freigegeben"]) ? ct.muster["ausnahmen.freigegeben"] : [];
+      for (const e of eintraege.freigegeben) if (!liste.some(x => x && x.kategorie === e.kategorie && x.wert === e.wert)) liste.push(e);
+      ct.muster["ausnahmen.freigegeben"] = liste;
+    }
+    return ct;
+  }
+
+  // Einträge wieder entfernen (Rückgängig einer dauerhaften Entscheidung)
+  function entferneEintraege(customTerms, eintraege) {
+    const ct = cloneCustomTerms(customTerms || {});
+    const feste = new Set(eintraege.festeZuordnung.map(r => r.original.toLowerCase()));
+    ct.festeZuordnung = ct.festeZuordnung.filter(r => !feste.has(String(r.original || "").trim().toLowerCase()));
+    if (Array.isArray(ct.muster.geheimnisMuster)) {
+      const such = new Set(eintraege.geheimnisMuster.map(g => g.suche));
+      ct.muster.geheimnisMuster = ct.muster.geheimnisMuster.filter(x => !(x && such.has(x.suche)));
+      if (ct.muster.geheimnisMuster.length === 0) delete ct.muster.geheimnisMuster;
+    }
+    if (Array.isArray(ct.muster["ausnahmen.freigegeben"])) {
+      ct.muster["ausnahmen.freigegeben"] = ct.muster["ausnahmen.freigegeben"].filter(x => !(x && eintraege.freigegeben.some(e => e.kategorie === x.kategorie && e.wert === x.wert)));
+      if (ct.muster["ausnahmen.freigegeben"].length === 0) delete ct.muster["ausnahmen.freigegeben"];
+    }
+    return ct;
+  }
+
+  // Eigene Begriffe für einen Lauf: dauerhafte Begriffe plus Entscheidungen "nur dieser Auftrag"
+  function baueLaufBegriffe(customTerms, auftragsEntscheidungen) {
+    let ct = cloneCustomTerms(customTerms || {});
+    for (const e of (auftragsEntscheidungen || [])) ct = fuegeEintraegeHinzu(ct, e.eintraege);
+    return ct;
+  }
+
+  // Zustand des Ablaufs (Statuszeile und Exportsperre). Nie grün, solange nicht geprüft wurde.
+  // z: { dateien, laeuft, fortschritt: {aktuell, gesamt}, lauf: null | { isProbe, offeneGruppen, gruppen, nichtVerarbeitet,
+  //      freigegeben, fehler }, veraltet, freigabe }
+  function berechneAblaufStatus(z) {
+    const s = z || {};
+    const lauf = s.lauf || null;
+    const nv = lauf ? (lauf.nichtVerarbeitet || 0) : 0;
+    const frei = lauf && lauf.freigegeben > 0 ? ` (${lauf.freigegeben} bewusst freigegeben)` : "";
+    if (s.laeuft) {
+      const f = s.fortschritt || {};
+      return { code: "LAEUFT", ton: "info", text: f.gesamt ? `Verarbeitung läuft (Datei ${f.aktuell} von ${f.gesamt})` : "Verarbeitung läuft", gesperrt: true, grund: "Die Verarbeitung läuft noch.", aktion: "Bitte warten." };
+    }
+    if (!s.dateien) return { code: "KEINE_DATEIEN", ton: "neutral", text: "Noch keine Dateien ausgewählt", gesperrt: true, grund: "Es sind keine Dateien geladen.", aktion: "In Schritt 1 Dateien auswählen." };
+    if (!lauf) return { code: "NICHT_GEPRUEFT", ton: "neutral", text: "Noch nicht geprüft", gesperrt: true, grund: "Die Dateien wurden noch nicht verarbeitet.", aktion: "In Schritt 2 „Anonymisieren und prüfen“ wählen." };
+    if (s.veraltet) return { code: "VERALTET", ton: "warn", text: "Ergebnis veraltet – erneut verarbeiten", gesperrt: true, grund: "Seit der letzten Verarbeitung wurden Dateien, Einstellungen, Entscheidungen oder die Zuordnung geändert.", aktion: "In Schritt 2 erneut „Anonymisieren und prüfen“ wählen." };
+    if (lauf.fehler) return { code: "FEHLER", ton: "fehler", text: "Export gesperrt – " + lauf.fehler, gesperrt: true, grund: lauf.fehler, aktion: "Ursache beheben und erneut verarbeiten." };
+    if (lauf.offeneGruppen > 0) return { code: "OFFENE_FUNDE", ton: "warn", text: `${lauf.offeneGruppen} Fundgruppe${lauf.offeneGruppen === 1 ? " braucht" : "n brauchen"} eine Entscheidung`, gesperrt: true, grund: "Es gibt Restfunde ohne Entscheidung.", aktion: "In Schritt 3 jede Fundgruppe entscheiden und danach erneut verarbeiten." };
+    if (lauf.gruppen > 0) return { code: "VERALTET", ton: "warn", text: "Ergebnis veraltet – erneut verarbeiten", gesperrt: true, grund: "Die Entscheidungen sind noch nicht angewendet.", aktion: "„Entscheidungen anwenden und neu verarbeiten“ wählen." };
+    if (lauf.isProbe) return { code: "TROCKENLAUF", ton: "info", text: "Trockenlauf ohne Restfunde – für den Export normal verarbeiten", gesperrt: true, grund: "Ein Trockenlauf gibt nichts zur Weitergabe frei.", aktion: "In Schritt 2 „Anonymisieren und prüfen“ wählen." };
+    if (!s.freigabe) return { code: "VERALTET", ton: "warn", text: "Ergebnis veraltet – erneut verarbeiten", gesperrt: true, grund: "Das Ergebnis passt nicht mehr zum aktuellen Stand.", aktion: "In Schritt 2 erneut „Anonymisieren und prüfen“ wählen." };
+    if (nv > 0) return { code: "UNVOLLSTAENDIG", ton: "warn", text: `Unvollständig – ${nv} Datei${nv === 1 ? "" : "en"} nicht verarbeitet${frei}`, gesperrt: false, grund: `${nv} Datei${nv === 1 ? " fehlt" : "en fehlen"} im Ergebnis-ZIP (siehe Dateiliste).`, aktion: "Vorschau prüfen; fehlende Dateien bei Bedarf gesondert behandeln." };
+    return { code: "KEINE_RESTFUNDE", ton: "ok", text: "Keine Restfunde nach aktivem Regelwerk – Vorschau prüfen" + frei, gesperrt: false, grund: "", aktion: "Vorschau sichten, dann in Schritt 4 herunterladen." };
+  }
+
+  // Dateiliste: Typ und Status je Datei, Zusammenfassung "24 geladen, 22 verarbeitet, 2 nicht unterstützt"
+  const NICHT_UNTERSTUETZTE_ENDUNGEN = [".evtx", ".pcap", ".pcapng", ".7z", ".rar", ".exe", ".dll", ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".docx", ".xlsx", ".pptx", ".bin", ".img", ".iso"];
+  function dateiTyp(pfad) {
+    const m = /\.([A-Za-z0-9]+)$/.exec(String(pfad || ""));
+    const e = m ? m[1].toLowerCase() : "";
+    if (e === "json") return "JSON";
+    if (e === "xml") return "XML";
+    if (e === "log") return "Log";
+    if (e === "csv") return "CSV";
+    if (e === "cfg" || e === "conf" || e === "config") return "Konfiguration";
+    if (e === "txt" || e === "") return "Text";
+    return e.toUpperCase();
+  }
+  function dateiAnfangsStatus(pfad, binaer) {
+    if (!binaer) return "bereit";
+    const low = String(pfad || "").toLowerCase();
+    return NICHT_UNTERSTUETZTE_ENDUNGEN.some(e => low.endsWith(e)) ? "nicht unterstützt" : "übersprungen";
+  }
+  function dateiZusammenfassung(eintraege) {
+    const liste = eintraege || [];
+    const zaehle = (st) => liste.filter(e => e.status === st).length;
+    const teile = [`${liste.length} geladen`];
+    for (const [st, text] of [["verarbeitet", "verarbeitet"], ["bereit", "bereit"], ["übersprungen", "übersprungen"], ["nicht unterstützt", "nicht unterstützt"], ["Fehler", "mit Fehler"]]) {
+      const n = zaehle(st);
+      if (n > 0) teile.push(`${n} ${text}`);
+    }
+    return teile.join(", ");
+  }
+
+  // Standardeinstellungen und sichtbare Abweichungen
+  const STANDARD_KATEGORIEN = ["geheimnisseEntfernen", "ip", "mac", "hostnamen", "benutzer", "seriennummern", "freitext", "eigeneBegriffe"];
+  const KATEGORIE_AUS_TEXTE = {
+    geheimnisseEntfernen: "Geheimnisse (Passwörter, Schlüssel) werden NICHT entfernt",
+    ip: "IP-Adressen werden nicht ersetzt",
+    mac: "MAC-Adressen werden nicht ersetzt",
+    hostnamen: "Gerätenamen und Domains werden nicht ersetzt",
+    benutzer: "Benutzernamen werden nicht ersetzt",
+    seriennummern: "Seriennummern werden nicht ersetzt",
+    freitext: "Freitext und Banner werden nicht ersetzt",
+    eigeneBegriffe: "Eigene Ersetzungen werden nicht angewendet"
+  };
+  function einstellungsAbweichungen(e) {
+    const o = e || {};
+    const aktiv = o.kategorien instanceof Set ? o.kategorien : new Set(o.kategorien || STANDARD_KATEGORIEN);
+    const liste = [];
+    for (const k of STANDARD_KATEGORIEN) if (!aktiv.has(k)) liste.push(KATEGORIE_AUS_TEXTE[k]);
+    if (o.netzerhaltend === false) liste.push("IP-Adressen ohne Netzbezug (IP-n statt NET-n.Hn)");
+    if (o.ipPrivPub === false) liste.push("Private und öffentliche IP-Adressen werden nicht unterschieden");
+    if (o.regelnGeaendert) liste.push("Regeldatei weicht vom Standard ab");
+    if (o.eigeneErsetzungen > 0) liste.push(`${o.eigeneErsetzungen} eigene Ersetzung${o.eigeneErsetzungen === 1 ? "" : "en"} aktiv`);
+    if (o.freigaben > 0) liste.push(`${o.freigaben} bewusst freigegebene${o.freigaben === 1 ? "r Wert" : " Werte"}`);
+    if (o.auftragsEntscheidungen > 0) liste.push(`${o.auftragsEntscheidungen} Entscheidung${o.auftragsEntscheidungen === 1 ? "" : "en"} nur für diesen Auftrag`);
+    return liste;
+  }
+
+  // Vorschau-Ausschnitt um eine Zielzeile (1-basiert), höchstens maxZeichen; auch weit hinter den ersten 200 KB
+  function vorschauFenster(text, zielZeile, maxZeichen) {
+    const zeilen = String(text == null ? "" : text).split(/\r?\n/);
+    const grenze = maxZeichen || MAX_PREVIEW_CHARS;
+    const ziel = Math.min(Math.max(1, zielZeile || 1), zeilen.length);
+    let von = ziel - 1, bis = ziel - 1;
+    let laenge = zeilen[ziel - 1].length + 1;
+    let wechsel = 0;
+    while (von > 0 || bis < zeilen.length - 1) {
+      const nachOben = (wechsel++ % 2 === 0 && von > 0) || bis >= zeilen.length - 1;
+      const idx = nachOben ? von - 1 : bis + 1;
+      const l = zeilen[idx].length + 1;
+      if (laenge + l > grenze) break;
+      laenge += l;
+      if (nachOben) von = idx; else bis = idx;
+    }
+    // Ohne Zielzeile (Anfang der Datei) wird nur nach unten erweitert
+    if (!zielZeile || zielZeile <= 1) {
+      von = 0; bis = 0; laenge = zeilen[0].length + 1;
+      while (bis < zeilen.length - 1 && laenge + zeilen[bis + 1].length + 1 <= grenze) { bis++; laenge += zeilen[bis].length + 1; }
+    }
+    return { start: von + 1, ende: bis + 1, zeilen: zeilen.slice(von, bis + 1), gesamtZeilen: zeilen.length, gekuerzt: von > 0 || bis < zeilen.length - 1 };
+  }
+
+  // Zeilennummern (1-basiert), deren Inhalt sich zwischen Original und Ausgabe unterscheidet
+  function geaenderteZeilen(original, anonym) {
+    const a = String(original == null ? "" : original).split(/\r?\n/);
+    const b = String(anonym == null ? "" : anonym).split(/\r?\n/);
+    const res = [];
+    const n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) if (a[i] !== b[i]) res.push(i + 1);
+    return res;
+  }
+
+  // Ersetzte Stellen in einer Ausgabezeile (Platzhalter und *****) als Bereiche [start, ende)
+  function ersetzteStellen(zeile) {
+    const res = [];
+    const rx = new RegExp(RxPlaceholder.source + "|\\*{5}", "g");
+    for (const m of String(zeile || "").matchAll(rx)) res.push([m.index, m.index + m[0].length]);
+    return res;
+  }
+
+  // ============================================================================
   // 5. BROWSER-UI STEUERUNG (Wird nur im Browser ausgeführt, Node-kompatibel)
   // ============================================================================
   if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -6354,6 +6631,22 @@
       findTableFields,
       collectKnownTextTokens,
       registerTextMappingInState,
+      fundKategorieText,
+      istGeheimnisFund,
+      bildeFundgruppen,
+      literalMuster,
+      entscheidungsEintraege,
+      fuegeEintraegeHinzu,
+      entferneEintraege,
+      baueLaufBegriffe,
+      berechneAblaufStatus,
+      dateiTyp,
+      dateiAnfangsStatus,
+      dateiZusammenfassung,
+      einstellungsAbweichungen,
+      vorschauFenster,
+      geaenderteZeilen,
+      ersetzteStellen,
       REMOVE_CONFIRM_HINT
     };
   }
