@@ -44,8 +44,11 @@ jobs:
       - name: Testsuite
         shell: powershell
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1 *>&1 | Tee-Object -Variable ausgabe
+          $code = $LASTEXITCODE
+          # Fehlerzeilen als Annotation ausgeben (lesbar über die Checks-API, ohne Log-Download)
+          $ausgabe | ForEach-Object { "$_" } | Where-Object { $_ -match 'FEHLER|Exception|TESTERGEBNIS' } | Select-Object -First 40 | ForEach-Object { Write-Host ("::error::" + ($_ -replace '[\r\n]', ' ')) }
+          if ($code -ne 0) { exit $code }
 
   windows-pwsh7:
     name: PowerShell 7 (Windows)
