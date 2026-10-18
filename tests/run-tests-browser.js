@@ -1,5 +1,7 @@
-// Browser-Test (headless Chrome/Chromium) für web/anonymisierer.html: führt die echten UI-Handler aus
-// und prüft, dass jede relevante Änderung die Exportfreigabe ungültig macht.
+// Browser-Test (headless Chrome/Chromium) für web/anonymisierer.html: führt die echten UI-Handler aus.
+// 1. Jede relevante Änderung macht die Exportfreigabe ungültig.
+// 2. Abnahmeaufgaben der Bedienoberfläche: a) erstmaliger Export, b) Verdachtsfall nachbearbeiten,
+//    c) Fortsetzen mit vorhandener Zuordnung, dazu Zustandswechsel, Auftrags-/Dauerebene und Meldungen.
 //
 //   node tests/run-tests-browser.js        ohne Browser: "NICHT AUSGEFÜHRT" (Exit-Code 0)
 //   BROWSER_PFLICHT=1 node tests/run-tests-browser.js   ohne Browser: Exit-Code 1 (für die CI)
@@ -29,8 +31,17 @@ function findeBrowser() {
   return null;
 }
 
+// Warten ohne virtuelle Zeit zu verbrauchen: Mit --virtual-time-budget springt die virtuelle Zeit weiter, während
+// echtes Einlesen von Dateien (File.arrayBuffer/text) noch läuft. Daher meist Task-Yield (MessageChannel), nur
+// gelegentlich 1 ms Timer, damit die Timer der Seite weiterlaufen.
+const WARTE_HILFE = `
+const __yield = () => new Promise(r => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
+async function bis(fn) { for (let i = 0; i < 400000; i++) { if (fn()) return true; if (i % 10 === 9) await new Promise(r => setTimeout(r, 1)); else await __yield(); } return fn(); }
+`;
+
 // Testskript, das in eine Kopie der Seite eingefügt wird (nutzt nur die vorhandenen Bedienelemente)
 const PROBE = `<script>
+${WARTE_HILFE}
 window.__fehler = [];
 window.addEventListener("error", e => window.__fehler.push(String(e.message)));
 window.alert = () => {};
@@ -47,13 +58,13 @@ const datei = async (name, inhalt) => {
   inp.files = dt.files;
   inp.dispatchEvent(new Event("change"));
   // Einlesen ist asynchron: warten, bis die Seite die Dateien als bereit meldet
-  for (let i = 0; i < 200 && !/bereit/.test(info.textContent); i++) await warte(50);
+  await bis(() => /bereit/.test(info.textContent));
 };
 async function lauf() {
   const banner = document.getElementById("auditBanner");
   banner.textContent = "";
   document.getElementById("btnRunAnon").click();
-  for (let i = 0; i < 200 && !/Prüfergebnis/.test(banner.textContent); i++) await warte(50);
+  await bis(() => /Prüfergebnis/.test(banner.textContent));
   await warte(50);
 }
 window.addEventListener("load", async () => {
@@ -88,6 +99,223 @@ window.addEventListener("load", async () => {
 </script>
 </body>`;
 
+// Abnahmeaufgaben a-c, Zustandswechsel, Auftrags- und Dauerebene, Meldungen ohne alert() (nur erfundene Werte)
+const PROBE_ABLAUF = `<script>
+${WARTE_HILFE}
+window.__fehler = [];
+window.__alerts = 0;
+window.addEventListener("error", e => window.__fehler.push(String(e.message)));
+window.alert = () => { window.__alerts++; };
+window.confirm = () => true;
+const blobs = [];
+const origUrl = URL.createObjectURL.bind(URL);
+URL.createObjectURL = (b) => { blobs.push(b); return origUrl(b); };
+const warte = (ms) => new Promise(r => setTimeout(r, ms));
+const $ = (id) => document.getElementById(id);
+const pruefungen = [];
+const pruefe = (name, ok, detail) => pruefungen.push({ name, ok: Boolean(ok), detail: detail === undefined ? "" : String(detail) });
+const code = () => $("ablaufStatus").dataset.code;
+const zip = () => !$("btnDownloadZip").disabled;
+async function dateien(liste) {
+  const info = $("fileCountInfo");
+  info.textContent = "";
+  const dt = new DataTransfer();
+  for (const [name, inhalt] of liste) dt.items.add(new File([inhalt], name, { type: "text/plain" }));
+  const inp = $("inputFiles");
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event("change"));
+  await bis(() => /bereit/.test(info.textContent));
+}
+async function lauf(knopf) {
+  const banner = $("auditBanner");
+  banner.textContent = "";
+  $(knopf || "btnRunAnon").click();
+  await bis(() => /Prüfergebnis/.test(banner.textContent));
+  await warte(50);
+}
+function karte(wert) { return Array.from(document.querySelectorAll(".fundkarte")).find(k => k.querySelector(".fk-kontext") && k.querySelector(".fk-kontext").textContent.indexOf(wert) >= 0); }
+function anonText() { return Array.from(document.querySelectorAll("#previewAnon .vz-text")).map(t => t.textContent).join("\\n"); }
+function zuruecksetzen() { $("btnClearAll").click(); }
+const LECK = '<Data Name="TargetUserName">jdoe7</Data>\\nhostname brw-host01\\n';
+
+window.addEventListener("load", async () => {
+  try {
+    // a) Erstmaliger Export: laden, verarbeiten, Funde entscheiden, Download erst danach
+    pruefe("a: vor dem Laden neutral, nicht grün", code() === "KEINE_DATEIEN" && !$("ablaufStatus").classList.contains("ok"), code());
+    await dateien([["a.log", LECK]]);
+    pruefe("a: nach dem Laden 'Noch nicht geprüft'", code() === "NICHT_GEPRUEFT" && $("ablaufStatus").textContent === "Noch nicht geprüft", code());
+    pruefe("a: Dateiliste zeigt Datei mit Status bereit", /1 geladen, 1 bereit/.test($("dateiZusammenfassung").textContent), $("dateiZusammenfassung").textContent);
+    await lauf();
+    const kA = karte("jdoe7");
+    pruefe("a: Fundkarte 'Möglicher Benutzername' mit Kontext und Fundort", kA && /Möglicher Benutzername/.test(kA.textContent) && kA.querySelector("mark.markiert-fund") && kA.querySelector(".fund-ort"), kA ? kA.textContent.slice(0, 80) : "keine Karte");
+    pruefe("a: offene Fundgruppe sperrt den Download mit Grund", code() === "OFFENE_FUNDE" && !zip() && /Gesperrt: .+Nächster Schritt/.test($("releaseLockInfo").textContent), $("releaseLockInfo").textContent);
+    pruefe("a: Schritt 3 ist nach dem Lauf aktiv", $("schritt-3").classList.contains("active"));
+    kA.querySelector('button[data-aktion="unveraendert"]').click();
+    await warte(50);
+    const kA2 = karte("jdoe7");
+    pruefe("a: 'Unverändert lassen' zeigt sofort den Warnhinweis", kA2 && /Dieser Wert bleibt in den weiterzugebenden Dateien sichtbar\\./.test(kA2.textContent));
+    pruefe("a: nach der Entscheidung 'veraltet', Download weiter gesperrt", code() === "VERALTET" && !zip(), code());
+    $("btnApplyFindingDecisions").click();
+    await bis(() => code() === "KEINE_RESTFUNDE");
+    pruefe("a: nach dem Neu-Verarbeiten frei, freigegebener Wert gezählt", code() === "KEINE_RESTFUNDE" && zip() && /bewusst freigegeben/.test($("auditBanner").textContent), $("auditBanner").textContent);
+    $("btnDownloadReport").click();
+    await warte(100);
+    const bericht = JSON.parse(await blobs[blobs.length - 1].text());
+    pruefe("a: technischer Bericht zählt bewusst freigegebene Werte, ohne Werte", bericht.bewusstFreigegeben === 1 && JSON.stringify(bericht).indexOf("jdoe7") < 0 && bericht.pruefergebnis === "KEINE_RESTFUNDE", JSON.stringify(bericht.bewusstFreigegeben));
+    $("btnDownloadZip").click();
+    await warte(100);
+    pruefe("a: Ergebnis-ZIP wird erzeugt", blobs.length >= 2 && blobs[blobs.length - 1].type === "application/zip");
+
+    // Zustandswechsel: Datei hinzufügen, Datei entfernen, Einstellung ändern -> veraltet
+    await dateien([["b.log", "uptime 3 days\\n"]]);
+    pruefe("Zustand: Datei hinzugefügt -> 'Ergebnis veraltet'", code() === "VERALTET" && !zip() && $("ablaufStatus").textContent === "Ergebnis veraltet – erneut verarbeiten", code());
+    await lauf();
+    pruefe("Zustand: erneut verarbeitet -> frei", code() === "KEINE_RESTFUNDE" && zip(), code());
+    const entf = Array.from(document.querySelectorAll("#dateiListeBody button")).pop();
+    entf.click();
+    await warte(50);
+    pruefe("Zustand: Datei entfernt -> 'Ergebnis veraltet'", code() === "VERALTET" && !zip(), code());
+    await lauf();
+    const cb = document.querySelector('.cat-toggle[value="benutzer"]');
+    cb.checked = false; cb.dispatchEvent(new Event("change"));
+    await warte(50);
+    pruefe("Zustand: Einstellung geändert -> 'Ergebnis veraltet'", code() === "VERALTET" && !zip(), code());
+    pruefe("Einstellungen: Abweichung immer sichtbar", /Benutzernamen werden nicht ersetzt/.test($("einstellungsZusammenfassung").textContent), $("einstellungsZusammenfassung").textContent);
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+    await warte(50);
+    pruefe("Einstellungen: Standard wieder 'Standardeinstellungen aktiv'", /Standardeinstellungen aktiv/.test($("einstellungsZusammenfassung").textContent) && !/Benutzernamen werden nicht ersetzt/.test($("einstellungsZusammenfassung").textContent));
+
+    // "nur dieser Auftrag" wirkt nach dem Zurücksetzen nicht mehr
+    zuruecksetzen();
+    await warte(50);
+    pruefe("Zurücksetzen: Status wieder neutral", code() === "KEINE_DATEIEN", code());
+    await dateien([["a.log", LECK]]);
+    await lauf();
+    pruefe("Auftrag: nach dem Zurücksetzen wird der Wert wieder gemeldet", code() === "OFFENE_FUNDE" && Boolean(karte("jdoe7")), code());
+    await dateien([["c.log", "uptime 3 days\\n"]]);
+    pruefe("Zustand: Datei hinzugefügt bei offenen Funden -> 'Ergebnis veraltet' statt alter Fundgruppen", code() === "VERALTET", code());
+    Array.from(document.querySelectorAll("#dateiListeBody button")).pop().click();
+    await lauf();
+    pruefe("Zustand: nach erneutem Verarbeiten wieder offene Fundgruppe", code() === "OFFENE_FUNDE" && Boolean(karte("jdoe7")), code());
+
+    // Rückgängig und dauerhafte Regel
+    karte("jdoe7").querySelector('button[data-aktion="ersetzen"]').click();
+    await warte(50);
+    pruefe("Rückgängig: Entscheidung steht in der Liste", /Alle Vorkommen ersetzen/.test($("entscheidungsListe").textContent));
+    karte("jdoe7").querySelector('button[data-aktion="rueckgaengig"]').click();
+    await warte(50);
+    pruefe("Rückgängig: Karte wieder offen", code() === "OFFENE_FUNDE" && karte("jdoe7").querySelector('button[data-aktion="unveraendert"]') && /Noch keine Entscheidungen/.test($("entscheidungsListe").textContent));
+    const kD = karte("jdoe7");
+    const radioD = kD.querySelector('input[value="dauerhaft"]');
+    radioD.checked = true; radioD.dispatchEvent(new Event("change"));
+    pruefe("Dauerhaft: Hinweis 'Regeldatei speichern' bei Auswahl", Array.from(kD.querySelectorAll(".fk-warnung")).some(w => !w.hidden && /Regeldatei speichern, sonst geht die Regel beim Schließen verloren/.test(w.textContent)));
+    kD.querySelector('button[data-aktion="unveraendert"]').click();
+    await warte(50);
+    pruefe("Dauerhaft: Freigabe in den Einstellungen sichtbar", /Benutzername: jdoe7/.test($("freigabenListe").textContent) && !$("dauerhaftHinweis").hidden && !$("lokalUngespeichert").hidden, $("freigabenListe").textContent);
+    $("btnApplyFindingDecisions").click();
+    await bis(() => code() === "KEINE_RESTFUNDE");
+    pruefe("Dauerhaft: nach Neu-Verarbeiten frei", code() === "KEINE_RESTFUNDE", code());
+    zuruecksetzen();
+    await dateien([["a.log", LECK]]);
+    await lauf();
+    pruefe("Dauerhaft: wirkt auch nach dem Zurücksetzen", code() === "KEINE_RESTFUNDE", code());
+    $("btnDownloadLocalTerms").click();
+    await warte(100);
+    const lokal = JSON.parse(await blobs[blobs.length - 1].text());
+    pruefe("Dauerhaft: anon-regeln.lokal.json enthält die kategoriegebundene Freigabe", lokal.ausnahmen && lokal.ausnahmen.freigegeben && lokal.ausnahmen.freigegeben[0].kategorie === "Benutzer" && lokal.ausnahmen.freigegeben[0].wert === "jdoe7");
+    pruefe("Dauerhaft: nach dem Speichern kein Hinweis mehr", $("lokalUngespeichert").hidden && $("dauerhaftHinweis").hidden);
+    $("freigabenListe").querySelector("button").click();
+    await warte(50);
+
+    // b) Verdachtsfall nachbearbeiten: Fund anklicken -> Stelle (hinter 200 KB) -> alle ersetzen -> neu verarbeiten -> Fund weg
+    zuruecksetzen();
+    const filler = [];
+    for (let i = 0; i < 25000; i++) filler.push("interface 1/1/1 speed auto");
+    filler.push('<Data Name="TargetUserName">kmeier8</Data>');
+    await dateien([["gross.log", filler.join("\\n") + "\\n"]]);
+    await lauf();
+    const kB = karte("kmeier8");
+    pruefe("b: Fund in großer Datei erkannt", Boolean(kB) && code() === "OFFENE_FUNDE", code());
+    kB.querySelector(".fund-ort").click();
+    await warte(100);
+    const zielZeile = document.querySelector('#previewAnon .vz[data-zeile="25001"]');
+    pruefe("b: Klick springt zur Zeile 25001 (außerhalb der ersten 200 KB)", zielZeile && zielZeile.classList.contains("ziel"), $("vorschauInfo").textContent);
+    pruefe("b: Wert an der Fundstelle markiert", zielZeile && zielZeile.querySelector("mark.markiert-fund") && zielZeile.querySelector("mark.markiert-fund").textContent === "kmeier8");
+    pruefe("b: Vorschau zeigt nur einen Ausschnitt", /Ausschnitt/.test($("vorschauInfo").textContent) && document.querySelectorAll("#previewAnon .vz").length < 25001, $("vorschauInfo").textContent);
+    pruefe("b: Originalspalte standardmäßig verdeckt (nicht im DOM)", $("originalSpalte").hidden && $("previewOriginal").textContent === "");
+    karte("kmeier8").querySelector('button[data-aktion="ersetzen"]').click();
+    await warte(50);
+    $("btnApplyFindingDecisions").click();
+    await bis(() => code() === "KEINE_RESTFUNDE");
+    pruefe("b: nach 'Alle ersetzen' und Neu-Verarbeiten ist der Fund weg", !karte("kmeier8") && code() === "KEINE_RESTFUNDE" && zip(), code());
+    $("btnNaechsteAenderung").click();
+    await warte(100);
+    pruefe("b: 'Nächste Änderung' springt zur ersetzten Stelle", /SW-EIGEN-1/.test(document.querySelector("#previewAnon .vz.ziel") ? document.querySelector("#previewAnon .vz.ziel").textContent : ""), document.querySelector("#previewAnon .vz.ziel") ? document.querySelector("#previewAnon .vz.ziel").dataset.zeile : "-");
+    $("optNurGeaendert").checked = true; $("optNurGeaendert").dispatchEvent(new Event("change"));
+    await warte(50);
+    pruefe("b: 'Nur geänderte Zeilen' blendet unveränderte Zeilen aus", document.querySelectorAll("#previewAnon .vz").length === 1, document.querySelectorAll("#previewAnon .vz").length);
+    $("optNurGeaendert").checked = false; $("optNurGeaendert").dispatchEvent(new Event("change"));
+    $("vorschauSuche").value = "SW-EIGEN";
+    $("btnVorschauSuche").click();
+    await warte(50);
+    pruefe("b: Suche in der Datei markiert Treffer", document.querySelectorAll("#previewAnon mark.treffer").length >= 1);
+    $("vorschauSuche").value = "";
+    $("optOriginalAnzeigen").checked = true; $("optOriginalAnzeigen").dispatchEvent(new Event("change"));
+    await warte(50);
+    pruefe("b: Originalspalte nur nach Einschalten sichtbar", !$("originalSpalte").hidden && document.querySelectorAll("#previewOriginal .vz").length > 0);
+    $("optOriginalAnzeigen").checked = false; $("optOriginalAnzeigen").dispatchEvent(new Event("change"));
+
+    // c) Fortsetzen mit vorhandener Zuordnung: Tabelle laden -> neue Datei -> gleiche Werte, gleiche Platzhalter
+    zuruecksetzen();
+    const tabState = new AnonState();
+    const tabCfg = buildEngineConfig(DEFAULT_RULES, { netzerhaltend: true });
+    processText("hostname brw-host01\\ninterface vlan 5\\n ip address 192.0.2.10/24\\n", tabCfg, tabState);
+    const tabJson = JSON.stringify(tabState.toJSON());
+    $("zuordnungLaden").checked = true; $("zuordnungLaden").dispatchEvent(new Event("change"));
+    pruefe("c: 'Vorhandene Zuordnung laden' zeigt Passwort und Dateiauswahl", !$("zuordnungLadenBox").hidden && $("zuordnungNeuBox").hidden);
+    const dtT = new DataTransfer();
+    dtT.items.add(new File([tabJson], "zuordnung.json", { type: "application/json" }));
+    $("inputTableFile").files = dtT.files;
+    $("inputTableFile").dispatchEvent(new Event("change"));
+    await bis(() => /geladen/.test($("tableLoadStatus").textContent));
+    pruefe("c: Zuordnungstabelle geladen", /Zuordnungstabelle geladen \\(/.test($("tableLoadStatus").textContent), $("tableLoadStatus").textContent);
+    await dateien([["neu.cfg", "hostname brw-host01\\ninterface vlan 5\\n ip address 192.0.2.10/24\\n ip address 192.0.2.77/24\\n"]]);
+    await lauf();
+    const ausgabe = anonText();
+    const zurueck = deanonymizeText(ausgabe, tabState);
+    pruefe("c: gleiche Werte bekommen die Platzhalter der geladenen Zuordnung", ausgabe.indexOf("brw-host01") < 0 && /hostname brw-host01/.test(zurueck) && /ip address 192\\.0\\.2\\.10\\/24/.test(zurueck), ausgabe.split("\\n")[0]);
+    pruefe("c: neuer Wert bekommt einen neuen Platzhalter", ausgabe.indexOf("192.0.2.77") < 0 && zurueck.indexOf("192.0.2.77") < 0);
+    pruefe("c: Hinweis 'Zuordnung seit dem letzten Speichern geändert'", !$("tabelleGeaendertHinweis").hidden);
+
+    // Meldungen an der betroffenen Stelle statt alert()
+    $("tableSavePass").value = "kurz";
+    $("tableSavePassConfirm").value = "kurz";
+    $("btnExportEncryptedTable").click();
+    await warte(50);
+    pruefe("Meldung: zu kurzes Passwort am Passwortfeld", $("tableSavePassMeldung").textContent.length > 0 && $("tableSavePass").getAttribute("aria-invalid") === "true");
+    zuruecksetzen();
+    $("btnRunAnon").click();
+    await warte(50);
+    pruefe("Meldung: ohne Dateien Hinweis in Schritt 2", /keine Dateien geladen/i.test($("laufMeldung").textContent) && $("schritt-2").classList.contains("active"), $("laufMeldung").textContent);
+    const fo = document.querySelector("#festeZuordnungRows .feste-orig-input");
+    const fp = document.querySelector("#festeZuordnungRows .feste-ph-input");
+    fo.value = "brw-x1"; fp.value = "kleinbuchstaben"; fo.dispatchEvent(new Event("input"));
+    await warte(50);
+    pruefe("Meldung: fehlerhafte Zeile bei eigenen Ersetzungen markiert", fp.getAttribute("aria-invalid") === "true" || fo.getAttribute("aria-invalid") === "true", $("customTermsValidationMsg").textContent);
+    fo.value = ""; fp.value = ""; fo.dispatchEvent(new Event("input"));
+    pruefe("Navigation: Hauptnavigation mit drei Bereichen", document.querySelectorAll("nav.tabs button").length === 3);
+    pruefe("Navigation: vier frei anspringbare Schritte", document.querySelectorAll("nav.schritte button").length === 4);
+    document.querySelector('nav.schritte button[data-schritt="4"]').click();
+    pruefe("Navigation: Schritt 4 direkt anspringbar", $("schritt-4").classList.contains("active") && document.querySelector('nav.schritte button[data-schritt="4"]').getAttribute("aria-current") === "step");
+  } catch (e) { window.__fehler.push("Probe: " + e.message + " " + (e.stack || "").split("\\n")[1]); }
+  const out = document.createElement("pre");
+  out.id = "__probe";
+  out.textContent = JSON.stringify({ fehler: window.__fehler, alerts: window.__alerts, pruefungen });
+  document.body.appendChild(out);
+});
+</script>
+</body>`;
+
 let passed = 0;
 let failed = 0;
 function assert(cond, msg) {
@@ -101,17 +329,28 @@ if (!browser) {
   process.exit(process.env.BROWSER_PFLICHT === "1" ? 1 : 0);
 }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "anon-browser-"));
-try {
-  const seite = path.join(tmp, "seite.html");
-  fs.writeFileSync(seite, fs.readFileSync(HTML_PATH, "utf8").replace("</body>", PROBE), "utf8");
-  const r = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-    `--user-data-dir=${path.join(tmp, "profil")}`, "--virtual-time-budget=60000", "--dump-dom",
-    "file://" + seite.replace(/\\/g, "/")], { encoding: "utf8", timeout: 120000 });
-  const m = /<pre id="__probe">([\s\S]*?)<\/pre>/.exec(r.stdout || "");
-  assert(Boolean(m), "Browser-Test: Ergebnis des Testskripts gefunden");
-  if (m) {
-    const daten = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+// Führt ein Testskript in einer Kopie der Seite aus und liefert das Ergebnisobjekt (oder null)
+function probeAusfuehren(skript, budgetMs) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "anon-browser-"));
+  try {
+    const seite = path.join(tmp, "seite.html");
+    fs.writeFileSync(seite, fs.readFileSync(HTML_PATH, "utf8").replace("</body>", skript), "utf8");
+    const r = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
+      `--user-data-dir=${path.join(tmp, "profil")}`, `--virtual-time-budget=${budgetMs || 60000}`, "--dump-dom",
+      "file://" + seite.replace(/\\/g, "/")], { encoding: "utf8", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
+    const m = /<pre id="__probe">([\s\S]*?)<\/pre>/.exec(r.stdout || "");
+    if (!m) return null;
+    return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// 1. Exportfreigabe: jede relevante Änderung macht das Ergebnis ungültig
+{
+  const daten = probeAusfuehren(PROBE, 60000);
+  assert(Boolean(daten), "Browser-Test: Ergebnis des Testskripts gefunden");
+  if (daten) {
     assert(daten.fehler.length === 0, `Browser-Test: keine JavaScript-Fehler (${daten.fehler.join(" | ")})`);
     for (const st of daten.schritte) {
       const erwartet = st.name === "lauf";
@@ -120,8 +359,18 @@ try {
     }
     assert(daten.schritte.length === 13, `Browser-Test: alle 13 Schritte ausgeführt (${daten.schritte.length})`);
   }
-} finally {
-  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// 2. Abnahmeaufgaben der Bedienoberfläche (a, b, c) und Zustandswechsel
+{
+  const daten = probeAusfuehren(PROBE_ABLAUF, 180000);
+  assert(Boolean(daten), "Ablauf-Test: Ergebnis des Testskripts gefunden");
+  if (daten) {
+    assert(daten.fehler.length === 0, `Ablauf-Test: keine JavaScript-Fehler (${daten.fehler.join(" | ")})`);
+    assert(daten.alerts === 0, `Ablauf-Test: keine alert()-Dialoge (${daten.alerts})`);
+    for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
+    assert(daten.pruefungen.length >= 40, `Ablauf-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
+  }
 }
 
 console.log(`\n========================================`);
