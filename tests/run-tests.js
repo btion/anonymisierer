@@ -915,8 +915,10 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(!core.isReleaseAllowed([], true, lauf3.results), "Freigabe: Trockenlauf gibt nie frei");
 
     const exportHandler = htmlContent.slice(htmlContent.indexOf("function updateReleaseUI()"), htmlContent.indexOf('getElementById("btnDownloadReport").addEventListener'));
-    assert(exportHandler.includes('getElementById("btnDownloadZip").disabled = !releaseAllowed') && exportHandler.includes('getElementById("btnCopyAnon").disabled = !releaseAllowed') && exportHandler.includes("if (!releaseAllowed)"),
-      "UI: ZIP-Download und 'Anonymisiert kopieren' hängen an releaseAllowed (nur bei ohne Restfunde)");
+    const exportFreiFn = htmlContent.slice(htmlContent.indexOf("function exportFrei()"), htmlContent.indexOf("function exportFrei()") + 120);
+    assert(exportHandler.includes("const frei = releaseAllowed && !st.gesperrt;") && exportHandler.includes('getElementById("btnDownloadZip").disabled = !frei') && exportHandler.includes('getElementById("btnCopyAnon").disabled = !frei') &&
+      exportHandler.includes("if (!exportFrei())") && exportFreiFn.includes("return releaseAllowed && !ablaufStatusJetzt().gesperrt;"),
+      "UI: ZIP-Download und 'Anonymisiert kopieren' hängen an releaseAllowed und am Ablaufstatus (nur ohne Restfunde und vollständig)");
   }
 
   // 16.4 Vorschau der Zuordnungstabelle: Originale standardmäßig nicht im DOM, erst nach Umschalten sichtbar, Suche/Filter/Sortierung, Tab-Wechsel verdeckt wieder
@@ -1572,6 +1574,22 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       const geheim = core.auditTextDetail("password Geheim77x\n", "f.txt", mitFreigabe([{ kategorie: "Geheimnis", wert: "Geheim77x" }]));
       assert(geheim.freigegeben === 0 && geheim.funde.length > 0, "Freigaben: Geheimnisse sind nicht freigebbar");
     }
+    // Verdachtsfunde (Heuristik ohne eindeutiges Schlüsselwort) sind als "Verdacht" freigebbar, sicher erkannte Geheimnisse nicht
+    if (hatDetail) {
+      const blob = "9f8e7d6c5b4a39281706f5e4d3c2b1a0";
+      const blobText = "ArubaOS-CX build id " + blob + "\n";
+      const vOhne = core.auditTextDetail(blobText, "b.txt", core.buildEngineConfig(diskRules, {}));
+      assert(vOhne.funde.some(f => f.kategorie === "Verdacht-Geheimnis-Blob"), `Verdacht: Build-ID wird als Verdacht-Geheimnis-Blob gemeldet (${vOhne.funde.map(f => f.kategorie).join(",")})`);
+      const vMit = core.auditTextDetail(blobText, "b.txt", mitFreigabe([{ kategorie: "Verdacht", wert: blob }]));
+      assert(vMit.funde.length === 0 && vMit.freigegeben === 1, `Verdacht: freigegebene Build-ID ist kein Restfund und wird gezählt (${vMit.funde.length}/${vMit.freigegeben})`);
+      const sicher = [["Rest-Geheimnis", "password Abc12345"], ["Verdacht-Zugangsdaten", "password Abc12345"], ["Verdacht-Zugangsdaten", "secret Abc12345"], ["Verdacht-Hash", "$6$abcdefghij$klmnopqrstuv"], ["Verdacht-Teilmaskierung", "*****x"]];
+      for (const [k, w] of sicher) assert(core.freigabeKategorie(k, w) === null, `Sicher erkanntes Geheimnis ${k} ist nicht freigebbar`);
+      const verdacht = [["Verdacht-Geheimnis-Blob", blob], ["Verdacht-Zugangsdaten", "token Abc12345"], ["Verdacht-Zugangsdaten", "pwd Abc12345"], ["Nachpruefung-Geheimnis", "Abc12345"], ["Nachpruefung-Teilmaskierung", "ab*****"]];
+      for (const [k, w] of verdacht) assert(core.freigabeKategorie(k, w) === "Verdacht", `Verdachtsfund ${k} (${w.split(" ")[0]}) ist als Verdacht freigebbar`);
+      assert(core.freigabeKategorie("Nachpruefung-SID", "S-1-5-21-1-2-3-500") === "SID", "Nachprüfung SID ist freigebbar (Kategorie SID)");
+      assert(core.freigabeKategorie("Nachpruefung-Beschreibung", "Uplink-Weber") === "Freitext", "Nachprüfung Beschreibung ist als Freitext freigebbar");
+      assert(core.pruefeFreigabeEintrag({ kategorie: "Verdacht", wert: blob }) === null && core.pruefeFreigabeEintrag({ kategorie: "Geheimnis", wert: blob }) !== null, "Freigabe-Kategorie Verdacht gültig, Geheimnis weiter ungültig");
+    }
     const ungueltig = core.validateAndMergeEigeneBegriffe(diskRules, { muster: { "ausnahmen.freigegeben": [{ kategorie: "Geheimnis", wert: "x1" }, { kategorie: "Benutzer", wert: "" }] } });
     assert(!ungueltig.valid && ungueltig.errors.length === 2, `Freigaben: ungültige Einträge werden abgelehnt (${ungueltig.errors.length})`);
     assert(ungueltig.errors.every(e => !e.includes("x1")), "Freigaben: Fehlermeldungen enthalten keine Werte");
@@ -1621,7 +1639,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(sauber.code === "KEINE_RESTFUNDE" && !sauber.gesperrt && sauber.text.startsWith("Keine Restfunde nach aktivem Regelwerk – Vorschau prüfen") && sauber.text.includes("2 bewusst freigegeben"), `Ablauf: ohne Restfunde frei, freigegebene gezählt (${sauber.text})`);
     assert(st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0 }, freigabe: true, veraltet: true }).code === "VERALTET", "Ablauf: Änderung nach dem Lauf -> 'Ergebnis veraltet'");
     const unv = st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0, nichtVerarbeitet: 2 }, freigabe: true });
-    assert(unv.text.startsWith("Unvollständig – 2 Dateien nicht verarbeitet") && /fehlen im Ergebnis-ZIP/.test(unv.grund), "Ablauf: 'Unvollständig – N Dateien nicht verarbeitet'");
+    assert(unv.text.startsWith("Unvollständig – 2 Dateien nicht verarbeitet") && /fehlen im Ergebnis/.test(unv.grund) && unv.gesperrt && /entfernen/.test(unv.aktion), "Ablauf: 'Unvollständig – N Dateien nicht verarbeitet' sperrt den Download");
     assert(st({ dateien: 3, lauf: { offeneGruppen: 0, gruppen: 0, isProbe: true }, freigabe: false }).gesperrt, "Ablauf: Trockenlauf gibt nicht frei");
 
     // Fundgruppen: Rest- und Nachprüfungsfund desselben Benutzers ergeben eine Karte mit Fundorten
@@ -1629,16 +1647,30 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       { datei: "a.txt", zeile: 3, kategorie: "Rest-Benutzer", fund: "jdoe7", kontext: "user jdoe7 x" },
       { datei: "a.txt", zeile: 3, kategorie: "Nachpruefung-Benutzer", fund: "jdoe7", kontext: "user jdoe7 x" },
       { datei: "b.txt", zeile: 9, kategorie: "Nachpruefung-Benutzer", fund: "jdoe7", kontext: "for user jdoe7" },
-      { datei: "b.txt", zeile: 2, kategorie: "Nachpruefung-Geheimnis", fund: "Geheim9z", kontext: "password Geheim9z" },
-      { datei: "b.txt", zeile: 4, kategorie: "Sperrbegriff", fund: "Werk-Nord", kontext: "Werk-Nord-alt" }
+      { datei: "b.txt", zeile: 2, kategorie: "Rest-Geheimnis", fund: "Geheim9z", kontext: "password Geheim9z" },
+      { datei: "b.txt", zeile: 4, kategorie: "Sperrbegriff", fund: "Werk-Nord", kontext: "Werk-Nord-alt" },
+      { datei: "c.txt", zeile: 1, kategorie: "Verdacht-Geheimnis-Blob", fund: "9f8e7d6c5b4a39281706f5e4d3c2b1a0", kontext: "ArubaOS-CX build id 9f8e7d6c5b4a39281706f5e4d3c2b1a0" },
+      { datei: "c.txt", zeile: 2, kategorie: "Nachpruefung-Geheimnis", fund: "9f8e7d6c5b4a39281706f5e4d3c2b1a0", kontext: "key 9f8e7d6c5b4a39281706f5e4d3c2b1a0" }
     ], null);
     const gB = fg.find(g => g.art === "Benutzer");
-    assert(fg.length === 3 && gB && gB.anzahl === 3 && gB.orte.length === 2 && gB.dateien.length === 2 && gB.text === "Möglicher Benutzername", `Fundgruppen: eine Karte je Bedeutung und Wert, mit Fundorten (${fg.length})`);
+    assert(fg.length === 4 && gB && gB.anzahl === 3 && gB.orte.length === 2 && gB.dateien.length === 2 && gB.text === "Möglicher Benutzername", `Fundgruppen: eine Karte je Bedeutung und Wert, mit Fundorten (${fg.length})`);
     assert(gB.kannErsetzen && gB.kannUnveraendert, "Fundgruppen: Benutzer kann ersetzt oder unverändert gelassen werden");
     const gG = fg.find(g => g.art === "Geheimnis");
-    assert(gG.kannErsetzen && !gG.kannUnveraendert, "Fundgruppen: Geheimnis kann nicht unverändert bleiben");
+    assert(gG.kannErsetzen && !gG.kannUnveraendert && gG.sicheresGeheimnis, "Fundgruppen: sicher erkanntes Geheimnis kann nicht unverändert bleiben");
+    assert(JSON.stringify(gG.aktionen) === '["ersetzen","datei-entfernen"]' && core.aktionText(gG, "ersetzen") === "Alle Vorkommen ersetzen (*****)", `Fundgruppen: sicheres Geheimnis nur maskieren oder Datei entfernen (${gG.aktionen})`);
+    const gV = fg.find(g => g.art === "Verdacht");
+    assert(gV && gV.anzahl === 2 && gV.verdacht && !gV.sicheresGeheimnis && gV.kannUnveraendert, "Fundgruppen: Build-ID (Hex-Blob und Nachprüfung) ist ein Verdachtsfund");
+    assert(JSON.stringify(gV.aktionen) === '["unveraendert","maskieren"]' && gV.bestaetigung === "Ich habe geprüft: kein Geheimnis" && core.aktionText(gV, "maskieren") === "Als Geheimnis maskieren (*****)", `Fundgruppen: Verdacht freigeben (mit Bestätigung) oder maskieren (${gV.aktionen})`);
+    const eV = core.entscheidungsEintraege(gV, "unveraendert");
+    assert(eV.freigegeben.length === 1 && eV.freigegeben[0].kategorie === "Verdacht", "Entscheidung 'Unverändert lassen' bei Verdacht: Freigabe in Kategorie Verdacht");
+    const eM = core.entscheidungsEintraege(gV, "maskieren");
+    assert(eM.geheimnisMuster.length === 1 && eM.geheimnisMuster[0].ersetzen === "*****" && eM.festeZuordnung.length === 0, "Entscheidung 'Als Geheimnis maskieren': Muster mit *****, keine Zuordnung");
+    assert(fg.every(g => g.aktionen.length >= 2), `Fundgruppen: jede Gruppe hat mindestens zwei Aktionen (${fg.map(g => g.art + ":" + g.aktionen.length).join(",")})`);
+    const vLauf = core.reprocessFilesWithState([{ path: "b.txt", text: "ArubaOS-CX build id 9f8e7d6c5b4a39281706f5e4d3c2b1a0\n" }], diskRules, core.fuegeEintraegeHinzu({}, eV), new core.AnonState(), {});
+    assert(vLauf.ok && vLauf.findings.length === 0 && vLauf.freigegeben === 1, `Verdacht freigegeben: Lauf ohne Restfunde, Freigabe gezählt (${vLauf.findings.length}/${vLauf.freigegeben})`);
     const gS = fg.find(g => g.art === "Sperrbegriff");
     assert(gS.kannErsetzen && !gS.kannUnveraendert && gS.woerter[0] === "Werk-Nord-alt", "Fundgruppen: Sperrbegriff nur ersetzbar, ganzes Wort an der Fundstelle");
+    assert(JSON.stringify(gS.aktionen) === '["ersetzen","datei-entfernen"]', "Fundgruppen: Sperrbegriff ersetzen oder Datei entfernen");
 
     // Entscheidungen: ersetzen -> Eigene Ersetzung, Geheimnis -> Muster mit *****, unverändert -> kategoriegebundene Freigabe
     const eB = core.entscheidungsEintraege(gB, "unveraendert");
@@ -1682,6 +1714,23 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(core.dateiZusammenfassung([{ status: "verarbeitet" }, { status: "verarbeitet" }, { status: "nicht unterstützt" }]) === "3 geladen, 2 verarbeitet, 1 nicht unterstützt", "Dateiliste: Zusammenfassung");
     assert(core.einstellungsAbweichungen({ kategorien: new Set(["ip", "mac"]) }).includes("Benutzernamen werden nicht ersetzt"), "Einstellungen: Abweichung 'Benutzernamen werden nicht ersetzt' sichtbar");
     assert(core.einstellungsAbweichungen({ kategorien: undefined, netzerhaltend: true, ipPrivPub: true }).length === 0, "Einstellungen: Standard ohne Abweichungen");
+
+    // Ersetzungsliste: Anzahl je Platzhalter, erste Stelle, Originale verdeckt
+    const ergebnisse = [{ path: "a.txt", anonText: "hostname HOST-1\nip NET-1.H2/24 via NET-1.H1\nHOST-1 HOST-10\n" }, { path: "b.txt", anonText: "peer HOST-2 HOST-1\n1000 2000\n" }];
+    const anz = core.zaehlePlatzhalter(ergebnisse);
+    assert(anz.get("HOST-1") === 3 && anz.get("HOST-10") === 1 && anz.get("NET-1.H2") === 1 && anz.get("HOST-2") === 1 && !anz.has("1000"), `Ersetzungen: Anzahl je Platzhalter (${JSON.stringify(Array.from(anz))})`);
+    const erst = core.erstesVorkommen(ergebnisse, "HOST-2");
+    assert(erst && erst.index === 1 && erst.zeile === 1 && core.erstesVorkommen(ergebnisse, "NET-1") === null && core.erstesVorkommen(ergebnisse, "HOST-1").zeile === 1, "Ersetzungen: erste Stelle eines Platzhalters (NET-1 nicht in NET-1.H2)");
+    const zeilenHtml = core.renderMappingTableRowsHtml([{ category: "HOST", placeholder: "HOST-1", original: "sw-geheim01" }], { showOriginals: false, anzahl: anz });
+    assert(!zeilenHtml.includes("sw-geheim01") && zeilenHtml.includes('class="map-anzahl-cell">3 <button') && zeilenHtml.includes('map-jump-btn" data-ph="HOST-1"'), "Ersetzungen: Original verdeckt, Anzahl mit 'Zur Stelle'");
+    assert(core.renderMappingTableRowsHtml([], { anzahl: anz }).includes('colspan="5"') && core.renderMappingTableRowsHtml([], {}).includes('colspan="4"'), "Ersetzungen: Spaltenzahl mit und ohne Anzahl");
+    // Einzelne Datei: anonymisierter Name, gleicher Inhalt wie im ZIP
+    const ein = core.einzelDateiEintrag({ path: "HOST-1/show-tech.txt", anonText: "hostname HOST-1\n" });
+    const zipEin = core.buildReleaseZipEntries([{ path: "HOST-1/show-tech.txt", anonText: "hostname HOST-1\n" }])[0];
+    assert(ein.name === "show-tech.txt" && ein.mime === "text/plain" && Buffer.from(ein.data).equals(Buffer.from(zipEin.data)), "Einzeldatei: anonymisierter Dateiname, Inhalt wie im ZIP");
+    assert(core.einzelDateiEintrag({ path: "x/HOST-2.json", anonText: "{}" }).mime === "application/json", "Einzeldatei: Dateityp bleibt erhalten");
+    // Dateiliste: Namen verdeckt
+    assert(core.dateiAnzeigeName({ id: 3, path: "kunde-geheim/sw01.txt" }, false) === "Datei 3" && core.dateiAnzeigeName({ id: 3, path: "kunde-geheim/sw01.txt", anonPath: "FIRMA-1/HOST-1.txt" }, false) === "FIRMA-1/HOST-1.txt" && core.dateiAnzeigeName({ id: 3, path: "kunde-geheim/sw01.txt" }, true) === "kunde-geheim/sw01.txt", "Dateiliste: Namen verdeckt, Original nur auf Wunsch");
 
     // Oberfläche: keine alert()-Dialoge, Statusmeldungen über aria-live, Originale standardmäßig verdeckt
     const uiTeil = htmlContent.slice(htmlContent.indexOf("// 5. BROWSER-UI STEUERUNG"));

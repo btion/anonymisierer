@@ -2,6 +2,8 @@
 // 1. Jede relevante Änderung macht die Exportfreigabe ungültig.
 // 2. Abnahmeaufgaben der Bedienoberfläche: a) erstmaliger Export, b) Verdachtsfall nachbearbeiten,
 //    c) Fortsetzen mit vorhandener Zuordnung, dazu Zustandswechsel, Auftrags-/Dauerebene und Meldungen.
+// 3. Korrekturen nach Praxistest: a) Verdachtsfund freigeben, b) Ersetzungsliste, c) Einzeldatei-Download,
+//    d) Description in "show interface brief", dazu Sperre bei unvollständigem Lauf, verdeckte Dateinamen, Layout.
 //
 //   node tests/run-tests-browser.js        ohne Browser: "NICHT AUSGEFÜHRT" (Exit-Code 0)
 //   BROWSER_PFLICHT=1 node tests/run-tests-browser.js   ohne Browser: Exit-Code 1 (für die CI)
@@ -316,6 +318,152 @@ window.addEventListener("load", async () => {
 </script>
 </body>`;
 
+const PROBE_KORREKTUR = `<script>
+${WARTE_HILFE}
+window.__fehler = [];
+window.__alerts = 0;
+window.addEventListener("error", e => window.__fehler.push(String(e.message)));
+window.alert = () => { window.__alerts++; };
+window.confirm = () => true;
+const blobs = [];
+const namen = [];
+const origUrl = URL.createObjectURL.bind(URL);
+URL.createObjectURL = (b) => { blobs.push(b); return origUrl(b); };
+const origKlick = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () { if (this.download) namen.push(this.download); return origKlick.call(this); };
+const warte = (ms) => new Promise(r => setTimeout(r, ms));
+const $ = (id) => document.getElementById(id);
+const pruefungen = [];
+const pruefe = (name, ok, detail) => pruefungen.push({ name, ok: Boolean(ok), detail: detail === undefined ? "" : String(detail) });
+const code = () => $("ablaufStatus").dataset.code;
+const zip = () => !$("btnDownloadZip").disabled;
+async function dateien(liste) {
+  const info = $("fileCountInfo");
+  info.textContent = "";
+  const dt = new DataTransfer();
+  for (const [name, inhalt] of liste) dt.items.add(new File([inhalt], name, { type: "application/octet-stream" }));
+  const inp = $("inputFiles");
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event("change"));
+  await bis(() => /bereit/.test(info.textContent));
+}
+async function lauf() {
+  const banner = $("auditBanner");
+  banner.textContent = "";
+  $("btnRunAnon").click();
+  await bis(() => /Prüfergebnis/.test(banner.textContent));
+  await warte(50);
+}
+function karten() { return Array.from(document.querySelectorAll(".fundkarte")); }
+function karte(wert) { return karten().find(k => k.querySelector(".fk-kontext") && k.querySelector(".fk-kontext").textContent.indexOf(wert) >= 0); }
+function anonText() { return Array.from(document.querySelectorAll("#previewAnon .vz-text")).map(t => t.textContent).join("\\n"); }
+function zuruecksetzen() { $("btnClearAll").click(); }
+const BUILD = "9f8e7d6c5b4a39281706f5e4d3c2b1a0";
+const SEP = "-".repeat(90);
+const BRIEF = [SEP, "Port      Native  Type           Status  Reason                  Speed   Description", SEP,
+  "1/1/1     1       1GbT           up                              1000    Uplink-Weber",
+  "1/1/2     1       1GbT           up                              1000    Drucker-Etage2-Weber", ""].join("\\n");
+
+window.addEventListener("load", async () => {
+  try {
+    // a) Verdachtsfund (Build-ID) ist keine Sackgasse: Bestätigung -> Unverändert lassen -> Download frei
+    await dateien([["brw-sw07.txt", "ArubaOS-CX build id " + BUILD + "\\nhostname brw-sw07\\n"]]);
+    pruefe("Dateiliste: vor dem Verarbeiten verdeckt ('Datei n'), kein Originalname", /^Datei [0-9]+$/.test(document.querySelector("#dateiListeBody td").textContent) && $("dateiListeBody").textContent.indexOf("brw-sw07") < 0, document.querySelector("#dateiListeBody td").textContent);
+    $("btnDateinamenOriginale").click();
+    pruefe("Dateiliste: Original nur nach 'Originale anzeigen'", document.querySelector("#dateiListeBody td").textContent === "brw-sw07.txt");
+    $("btnDateinamenOriginale").click();
+    await lauf();
+    const kV = karte(BUILD);
+    pruefe("a: Build-ID als Verdacht gemeldet", kV && /Verdacht auf Passwort oder Schlüssel/.test(kV.textContent) && code() === "OFFENE_FUNDE", kV ? kV.querySelector(".fk-titel").textContent : "keine Karte");
+    pruefe("a: jede Fundgruppe hat mindestens zwei Aktionen", karten().length > 0 && karten().every(k => k.querySelectorAll("button[data-aktion]").length >= 2), karten().map(k => k.querySelectorAll("button[data-aktion]").length).join(","));
+    const bU = kV.querySelector('button[data-aktion="unveraendert"]');
+    pruefe("a: Verdacht bietet 'Unverändert lassen' und 'Als Geheimnis maskieren'", bU && kV.querySelector('button[data-aktion="maskieren"]') && /Als Geheimnis maskieren \\(\\*\\*\\*\\*\\*\\)/.test(kV.textContent));
+    pruefe("a: 'Unverändert lassen' erst nach Bestätigung 'Ich habe geprüft: kein Geheimnis'", bU.disabled && /Ich habe geprüft: kein Geheimnis/.test(kV.textContent));
+    const best = kV.querySelector("input[data-bestaetigung]");
+    best.checked = true; best.dispatchEvent(new Event("change"));
+    pruefe("a: nach Bestätigung freigebbar", !bU.disabled);
+    bU.click();
+    await warte(50);
+    karte("brw-sw07") && karte("brw-sw07").querySelector('button[data-aktion="ersetzen"]').click();
+    await warte(50);
+    pruefe("Layout: Getroffene Entscheidungen aufgeklappt, sobald vorhanden", $("entscheidungenDetails").open && $("entscheidungenAnzahl").textContent !== "0", $("entscheidungenAnzahl").textContent);
+    $("btnApplyFindingDecisions").click();
+    await bis(() => code() === "KEINE_RESTFUNDE");
+    pruefe("a: nach Neu-Verarbeiten Download frei, Freigabe gezählt", code() === "KEINE_RESTFUNDE" && zip() && /1 bewusst freigegeben/.test($("auditBanner").textContent), $("auditBanner").textContent);
+    pruefe("Layout: leerer Bereich 'Alle Einzelfunde' eingeklappt", !$("einzelfundeDetails").open && $("einzelfundeAnzahl").textContent === "0", $("einzelfundeAnzahl").textContent);
+    pruefe("Dateiliste: nach dem Verarbeiten anonymisierter Name", document.querySelector("#dateiListeBody td").textContent === "HOST-1.txt", document.querySelector("#dateiListeBody td").textContent);
+
+    // c) Einzeldatei: Hauptknopf bei nur einer Datei, Vorschau-Knopf, Inhalt anonymisiert
+    pruefe("c: bei nur einer Datei ist der Einzel-Download der Hauptknopf", !$("btnDownloadEinzelHaupt").hidden && !$("btnDownloadEinzelHaupt").disabled && $("btnDownloadEinzelHaupt").classList.contains("success") && !$("btnDownloadZip").classList.contains("success"));
+    $("btnDownloadEinzeln").click();
+    await warte(100);
+    const inhalt = await blobs[blobs.length - 1].text();
+    pruefe("c: 'Diese Datei herunterladen' liefert den anonymisierten Inhalt", inhalt.indexOf("brw-sw07") < 0 && inhalt.indexOf(BUILD) >= 0 && /hostname HOST-1/.test(inhalt), inhalt.split("\\n")[1]);
+    pruefe("c: anonymisierter Dateiname mit ursprünglichem Dateityp", namen[namen.length - 1] === "HOST-1.txt", namen[namen.length - 1]);
+
+    // b) Ersetzungsliste: Einträge mit Anzahl, Originale verdeckt, Sprung zur Stelle
+    $("reiterErsetzungen").click();
+    await warte(50);
+    const zeile = Array.from(document.querySelectorAll("#mappingPreviewTableBody tr")).find(tr => tr.dataset.ph === "HOST-1");
+    pruefe("b: Ersetzungsliste zeigt HOST-1 mit Anzahl", !$("tablePreviewCard").hidden && zeile && /^1\\b/.test(zeile.querySelector(".map-anzahl-cell").textContent), zeile ? zeile.textContent : "keine Zeile");
+    pruefe("b: Originale standardmäßig verdeckt (nicht im DOM)", $("mappingPreviewTableBody").textContent.indexOf("brw-sw07") < 0);
+    zeile.querySelector(".map-jump-btn").click();
+    await warte(100);
+    const ziel = document.querySelector("#previewAnon .vz.ziel");
+    pruefe("b: 'Zur Stelle' springt zur ersten Stelle in der Vorschau", ziel && ziel.dataset.zeile === "2" && ziel.querySelector("mark.markiert-fund") && ziel.querySelector("mark.markiert-fund").textContent === "HOST-1", ziel ? ziel.dataset.zeile : "-");
+    $("btnShowTableOriginals").click();
+    await warte(50);
+    pruefe("b: 'Originale anzeigen' zeigt Original und Bearbeiten", $("mappingPreviewTableBody").textContent.indexOf("brw-sw07") >= 0 && document.querySelector("#mappingPreviewTableBody .map-rename-btn") && document.querySelector("#mappingPreviewTableBody .map-remove-btn"));
+    document.querySelector('nav.schritte button[data-schritt="4"]').click();
+    pruefe("b: beim Verlassen von Schritt 3 wieder verdeckt", $("mappingPreviewTableBody").textContent.indexOf("brw-sw07") < 0);
+    document.querySelector('nav.schritte button[data-schritt="3"]').click();
+    $("reiterFunde").click();
+    $("optVorschauUnten").checked = true; $("optVorschauUnten").dispatchEvent(new Event("change"));
+    pruefe("Layout: Vorschau umschaltbar unter die Funde", $("pruefGrid").classList.contains("untereinander"));
+    $("optVorschauUnten").checked = false; $("optVorschauUnten").dispatchEvent(new Event("change"));
+
+    // d) Description in "show interface brief" (ohne Spalten Mode/Enabled) wird ersetzt
+    zuruecksetzen();
+    await dateien([["brief.txt", BRIEF]]);
+    await lauf();
+    const aus = anonText();
+    pruefe("d: Description in show interface brief ersetzt", aus.indexOf("Weber") < 0 && /1000    TEXT-1/.test(aus) && code() === "KEINE_RESTFUNDE", aus.split("\\n")[3]);
+
+    // Sicher erkanntes Geheimnis: nur maskieren oder Datei entfernen (keine Sackgasse)
+    zuruecksetzen();
+    const cb = document.querySelector('.cat-toggle[value="geheimnisseEntfernen"]');
+    cb.checked = false; cb.dispatchEvent(new Event("change"));
+    await dateien([["cfg.txt", "hostname HOST-9\\n password plain Klartext77\\n"]]);
+    await lauf();
+    const kG = karten().find(k => /sicher erkannt/.test(k.textContent));
+    pruefe("Geheimnis: sicher erkannt ohne 'Unverändert lassen', mit Maskieren und Datei entfernen", kG && !kG.querySelector('button[data-aktion="unveraendert"]') && kG.querySelector('button[data-aktion="ersetzen"]') && kG.querySelector('button[data-aktion="datei-entfernen"]'), kG ? Array.from(kG.querySelectorAll("button[data-aktion]")).map(b => b.dataset.aktion).join(",") : "keine Karte");
+    kG.querySelector('button[data-aktion="datei-entfernen"]').click();
+    await warte(50);
+    pruefe("Geheimnis: 'Datei aus dem Auftrag entfernen' entfernt die Datei", /0 geladen/.test($("dateiZusammenfassung").textContent) && code() === "KEINE_DATEIEN", code());
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+
+    // Unvollständiger Lauf sperrt den Download (ZIP und Einzeldateien)
+    zuruecksetzen();
+    const pcap = new Uint8Array(64); pcap.set([0xd4, 0xc3, 0xb2, 0xa1, 2, 0, 4, 0]);
+    await dateien([["a.txt", "uptime 3 days\\n"], ["b.txt", "uptime 4 days\\n"], ["mitschnitt.pcap", pcap]]);
+    await lauf();
+    pruefe("Unvollständig: Download gesperrt", code() === "UNVOLLSTAENDIG" && !zip() && $("btnDownloadEinzeln").disabled && document.querySelectorAll(".einzel-download-btn").length === 2 && Array.from(document.querySelectorAll(".einzel-download-btn")).every(b => b.disabled), code());
+    pruefe("Unvollständig: Grund und nächster Schritt angezeigt", /Gesperrt: .*nicht verarbeitet.*Nächster Schritt: .*entfernen/.test($("releaseLockInfo").textContent), $("releaseLockInfo").textContent);
+    Array.from(document.querySelectorAll("#dateiListeBody button")).pop().click();
+    await lauf();
+    pruefe("Unvollständig: nach Entfernen und Neu-Verarbeiten frei, Liste mit Einzel-Downloads", code() === "KEINE_RESTFUNDE" && zip() && $("btnDownloadEinzelHaupt").hidden && document.querySelectorAll(".einzel-download-btn").length === 2 && Array.from(document.querySelectorAll(".einzel-download-btn")).every(b => !b.disabled), code());
+    document.querySelectorAll(".einzel-download-btn")[1].click();
+    await warte(100);
+    pruefe("c: Einzel-Download aus der Liste in Schritt 4", (await blobs[blobs.length - 1].text()) === "uptime 4 days\\n");
+  } catch (e) { window.__fehler.push("Probe: " + e.message + " " + (e.stack || "").split("\\n")[1]); }
+  const out = document.createElement("pre");
+  out.id = "__probe";
+  out.textContent = JSON.stringify({ fehler: window.__fehler, alerts: window.__alerts, pruefungen });
+  document.body.appendChild(out);
+});
+</script>
+</body>`;
+
 let passed = 0;
 let failed = 0;
 function assert(cond, msg) {
@@ -370,6 +518,18 @@ function probeAusfuehren(skript, budgetMs) {
     assert(daten.alerts === 0, `Ablauf-Test: keine alert()-Dialoge (${daten.alerts})`);
     for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
     assert(daten.pruefungen.length >= 40, `Ablauf-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
+  }
+}
+
+// 3. Korrekturen nach Praxistest
+{
+  const daten = probeAusfuehren(PROBE_KORREKTUR, 120000);
+  assert(Boolean(daten), "Korrektur-Test: Ergebnis des Testskripts gefunden");
+  if (daten) {
+    assert(daten.fehler.length === 0, `Korrektur-Test: keine JavaScript-Fehler (${daten.fehler.join(" | ")})`);
+    assert(daten.alerts === 0, `Korrektur-Test: keine alert()-Dialoge (${daten.alerts})`);
+    for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
+    assert(daten.pruefungen.length >= 27, `Korrektur-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
   }
 }
 

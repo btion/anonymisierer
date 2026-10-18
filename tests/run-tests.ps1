@@ -1113,6 +1113,23 @@ if ($hatDetail) {
     $gCfg.Freigegeben.Add("Geheimnis" + [char]0 + "Geheim77x") | Out-Null
     $g = [AnonTool.AnonEngine]::AuditTextDetail("password Geheim77x`n", "f.txt", $gCfg, $null)
     Assert-True ($g.Freigegeben -eq 0 -and $g.Funde.Count -gt 0) "Freigaben: Geheimnisse sind nicht freigebbar"
+    # Verdachtsfunde (Heuristik ohne eindeutiges Schlüsselwort) sind als "Verdacht" freigebbar, sicher erkannte Geheimnisse nicht
+    $blob = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+    $blobText = "ArubaOS-CX build id $blob`n"
+    $vOhne = [AnonTool.AnonEngine]::AuditTextDetail($blobText, "b.txt", (New-TestConfig -RulesObj $rulesObj), $null)
+    Assert-True (@($vOhne.Funde | Where-Object { $_.Kategorie -eq "Verdacht-Geheimnis-Blob" }).Count -gt 0) "Verdacht: Build-ID wird als Verdacht-Geheimnis-Blob gemeldet"
+    $vCfg = New-TestConfig -RulesObj $rulesObj
+    $vCfg.Freigegeben.Add("Verdacht" + [char]0 + $blob) | Out-Null
+    $vMit = [AnonTool.AnonEngine]::AuditTextDetail($blobText, "b.txt", $vCfg, $null)
+    Assert-True ($vMit.Funde.Count -eq 0 -and $vMit.Freigegeben -eq 1) "Verdacht: freigegebene Build-ID ist kein Restfund und wird gezählt ($($vMit.Funde.Count)/$($vMit.Freigegeben))"
+    foreach ($kw in @(@("Rest-Geheimnis", "password Abc12345"), @("Verdacht-Zugangsdaten", "password Abc12345"), @("Verdacht-Zugangsdaten", "secret Abc12345"), @("Verdacht-Hash", '$6$abcdefghij$klmnopqrstuv'), @("Verdacht-Teilmaskierung", "*****x"))) {
+        Assert-True ($null -eq [AnonTool.AnonEngine]::FreigabeKategorie($kw[0], $kw[1], $null)) "Sicher erkanntes Geheimnis $($kw[0]) ist nicht freigebbar"
+    }
+    foreach ($kw in @(@("Verdacht-Geheimnis-Blob", $blob), @("Verdacht-Zugangsdaten", "token Abc12345"), @("Verdacht-Zugangsdaten", "pwd Abc12345"), @("Nachpruefung-Geheimnis", "Abc12345"), @("Nachpruefung-Teilmaskierung", "ab*****"))) {
+        Assert-Equal ([AnonTool.AnonEngine]::FreigabeKategorie($kw[0], $kw[1], $null)) "Verdacht" "Verdachtsfund $($kw[0]) ist als Verdacht freigebbar"
+    }
+    Assert-Equal ([AnonTool.AnonEngine]::FreigabeKategorie("Nachpruefung-SID", "S-1-5-21-1-2-3-500", $null)) "SID" "Nachprüfung SID ist freigebbar (Kategorie SID)"
+    Assert-Equal ([AnonTool.AnonEngine]::FreigabeKategorie("Nachpruefung-Beschreibung", "Uplink-Weber", $null)) "Freitext" "Nachprüfung Beschreibung ist als Freitext freigebbar"
 }
 # Ungültige Freigaben in anon-regeln.lokal.json brechen ab, Meldung ohne Werte
 $frDir = Join-Path $tempRunRoot "freigabe"

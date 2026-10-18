@@ -415,7 +415,14 @@
     .status-badge.verarbeitet { border-color: var(--success); color: #86efac; }
     .status-badge.bereit { border-color: var(--primary); color: #bae6fd; }
     .status-badge.fehler, .status-badge.nicht-unterstuetzt, .status-badge.uebersprungen { border-color: var(--warning); color: #fde68a; }
-    .pruef-grid { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 16px; }
+    .pruef-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+    .pruef-grid.untereinander { grid-template-columns: minmax(0, 1fr); }
+    .layout-wahl { display: flex; justify-content: flex-end; font-size: 13px; margin: 0 0 8px; }
+    .unter-reiter { display: flex; gap: 4px; margin-bottom: -1px; }
+    .unter-reiter button { border-radius: 6px 6px 0 0; border-bottom: none; }
+    .unter-reiter button[aria-selected="true"] { background: var(--panel); color: var(--text); font-weight: 700; border-color: var(--primary); }
+    .fk-bestaetigung { display: block; margin: 6px 0 2px; font-size: 13px; }
+    details.card > summary { cursor: pointer; font-weight: 700; }
     @media (max-width: 1100px) { .pruef-grid { grid-template-columns: 1fr; } }
     .fundkarten { max-height: 560px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
     .fundkarte { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #0f172a; }
@@ -525,9 +532,13 @@
         <div class="card">
           <div class="karten-kopf">
             <h2 style="margin:0; border:none; padding:0;">Dateiliste</h2>
-            <input type="search" id="dateiSuche" placeholder="Dateien durchsuchen" aria-label="Dateien durchsuchen" style="max-width:320px;">
+            <div class="btn-row" style="margin:0;">
+              <button type="button" class="btn-sm" id="btnDateinamenOriginale" aria-pressed="false">Originale anzeigen</button>
+              <input type="search" id="dateiSuche" placeholder="Dateien durchsuchen" aria-label="Dateien durchsuchen" style="max-width:320px;">
+            </div>
           </div>
           <div id="dateiZusammenfassung" class="small-muted" style="margin:8px 0;">0 geladen</div>
+          <div class="small-muted" style="margin-bottom:6px;">Dateinamen sind verdeckt: angezeigt wird der anonymisierte Name (vor dem Verarbeiten „Datei n“). Originalnamen nur über „Originale anzeigen“ (nicht bei Bildschirmfreigabe).</div>
           <div style="max-height:320px; overflow:auto;">
             <table class="report-table" id="dateiTabelle">
               <thead><tr><th scope="col">Name</th><th scope="col">Typ</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th></tr></thead>
@@ -575,9 +586,16 @@
           <div id="statPills" class="stat-pills"></div>
           <div id="skippedInfo" class="small-muted" style="margin-bottom:8px;"></div>
         </div>
-        <div class="pruef-grid">
+        <div class="layout-wahl">
+          <label><input type="checkbox" id="optVorschauUnten"> Vorschau unter den Funden anzeigen</label>
+        </div>
+        <div class="pruef-grid" id="pruefGrid">
           <div>
-            <div class="card" id="fundgruppenBox">
+            <div class="unter-reiter" role="tablist" aria-label="Prüfbereich">
+              <button type="button" role="tab" id="reiterFunde" aria-selected="true" aria-controls="fundgruppenBox" data-reiter="fundgruppenBox">Funde <span id="reiterFundeAnzahl"></span></button>
+              <button type="button" role="tab" id="reiterErsetzungen" aria-selected="false" aria-controls="tablePreviewCard" data-reiter="tablePreviewCard">Ersetzungen <span id="reiterErsetzungenAnzahl"></span></button>
+            </div>
+            <div class="card" id="fundgruppenBox" role="tabpanel" aria-labelledby="reiterFunde">
               <div class="karten-kopf">
                 <h2 style="margin:0; border:none; padding:0;">Funde</h2>
                 <button type="button" id="btnNaechsterFund" disabled>Nächster offener Fund</button>
@@ -588,14 +606,15 @@
                 <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden und neu verarbeiten</button>
                 <span id="fundgruppenStatus" class="small-muted" role="status" aria-live="polite"></span>
               </div>
+              <div id="fundMeldung" class="meldung" role="alert"></div>
               <div id="dauerhaftHinweis" class="warn-banner" hidden>Dauerhafte Regeln sind noch nicht gespeichert: Regeldatei speichern, sonst geht die Regel beim Schließen verloren. <button type="button" class="btn-sm" data-gehe-tab="tab-einstellungen">Zu den Einstellungen</button></div>
             </div>
-            <div class="card">
-              <h2>Getroffene Entscheidungen</h2>
-              <div id="entscheidungsListe"><div class="small-muted">Noch keine Entscheidungen.</div></div>
-            </div>
-            <details class="card">
-              <summary>Alle Einzelfunde</summary>
+            <details class="card" id="entscheidungenDetails">
+              <summary>Getroffene Entscheidungen (<span id="entscheidungenAnzahl">0</span>)</summary>
+              <div id="entscheidungsListe" style="margin-top:8px;"><div class="small-muted">Noch keine Entscheidungen.</div></div>
+            </details>
+            <details class="card" id="einzelfundeDetails">
+              <summary>Alle Einzelfunde (<span id="einzelfundeAnzahl">0</span>)</summary>
               <div style="max-height:240px; overflow:auto; margin-top:8px;">
                 <table class="report-table" id="auditTable">
                   <thead><tr><th scope="col">Datei</th><th scope="col">Zeile</th><th scope="col">Kategorie</th><th scope="col">Gefundener Wert</th></tr></thead>
@@ -603,15 +622,67 @@
                 </table>
               </div>
             </details>
+            <div class="card" id="tablePreviewCard" hidden role="tabpanel" aria-labelledby="reiterErsetzungen">
+              <h2 style="margin:0 0 8px; border:none; padding:0;">Ersetzungen</h2>
+              <div class="small-muted" style="margin-bottom:8px;">Alle Ersetzungen der Zuordnung: Kategorie, Platzhalter, Original (verdeckt) und Anzahl in der Ausgabe. „Zur Stelle“ zeigt das erste Vorkommen in der Vorschau. Bearbeiten (Umbenennen, Entfernen, Hinzufügen) ist nur bei „Originale anzeigen“ möglich. Das Original eines Eintrags ist nicht änderbar – stattdessen entfernen und neu hinzufügen.</div>
+              <div id="tablePendingBanner" class="warn-banner" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
+                <span>Änderungen noch nicht angewendet</span>
+                <button type="button" class="primary btn-sm" id="btnReapplyAnon">Neu verarbeiten</button>
+              </div>
+              <div id="tableEditStatus" class="small-muted" role="status" aria-live="polite" style="margin-bottom:8px;"></div>
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
+                  <button type="button" id="btnHideTableOriginals" style="display:none;">wieder verdecken</button>
+                  <span class="small-muted" style="color:#fde68a;">Hinweis: Nicht bei Bildschirmfreigabe verwenden</span>
+                </div>
+                <div style="min-width:280px; flex:1; max-width:420px;">
+                  <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original..." aria-label="Zuordnungstabelle durchsuchen">
+                </div>
+              </div>
+              <div id="tableAddEntryBar" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                <strong>Eintrag hinzufügen:</strong>
+                <input type="text" id="tableAddOriginal" placeholder="Original (Pflicht)" aria-label="Original" style="max-width:240px;">
+                <input type="text" id="tableAddPlaceholder" placeholder="Platzhalter (optional)" aria-label="Platzhalter" style="max-width:180px;">
+                <select id="tableAddCategory" aria-label="Kategorie" style="max-width:200px;">
+                  <option value="FESTE_ZUORDNUNG">Eigene Ersetzung</option>
+                  <option value="FIRMA">Firma / Standort</option>
+                  <option value="DOMAIN">Interne Domain</option>
+                </select>
+                <button type="button" class="btn-sm" id="btnTableAddEntry">Hinzufügen</button>
+              </div>
+              <div id="tableCategoryCounts" class="stat-pills"></div>
+              <div style="max-height:380px; overflow:auto;">
+                <table class="report-table" id="mappingPreviewTable">
+                  <thead>
+                    <tr>
+                      <th class="sortable-th" data-sort="category" scope="col" tabindex="0">Kategorie &#8597;</th>
+                      <th class="sortable-th" data-sort="placeholder" scope="col" tabindex="0">Platzhalter &#8597;</th>
+                      <th class="sortable-th" data-sort="original" scope="col" tabindex="0">Original &#8597;</th>
+                      <th class="sortable-th" data-sort="anzahl" scope="col" tabindex="0">Anzahl &#8597;</th>
+                      <th scope="col">Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mappingPreviewTableBody">
+                    <tr><td colspan="5" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
 
           <div class="card" id="vorschauKarte">
             <div class="karten-kopf">
               <h2 style="margin:0; border:none; padding:0;">Vorschau</h2>
-              <select id="previewFileSelect" aria-label="Datei für die Vorschau" style="max-width:360px;">
-                <option value="">-- Datei auswählen --</option>
-              </select>
+              <div class="btn-row" style="margin:0;">
+                <select id="previewFileSelect" aria-label="Datei für die Vorschau" style="max-width:360px;">
+                  <option value="">-- Datei auswählen --</option>
+                </select>
+                <button type="button" class="btn-sm" id="btnDownloadEinzeln" disabled>Diese Datei herunterladen</button>
+              </div>
             </div>
+            <div id="vorschauMeldung" class="meldung" role="alert"></div>
             <div class="vorschau-werkzeuge">
               <label><input type="checkbox" id="optOriginalAnzeigen"> Original anzeigen <span class="small-muted" style="color:#fde68a;">(Nicht bei Bildschirmfreigabe verwenden)</span></label>
               <label><input type="checkbox" id="optNurGeaendert"> Nur geänderte Zeilen</label>
@@ -652,10 +723,22 @@
           <h2>Herunterladen</h2>
           <div id="releaseLockInfo" class="sperr-info" role="status" aria-live="polite">Noch nicht geprüft.</div>
           <div class="export-item">
-            <div class="export-titel">Ergebnis-ZIP – zur Weitergabe</div>
-            <div class="small-muted">Enthält nur die anonymisierten Dateien. Die Zuordnungstabelle und der Bericht sind nie im ZIP.</div>
+            <div class="export-titel">Anonymisierte Dateien – zur Weitergabe</div>
+            <div class="small-muted">Nur die anonymisierten Dateien mit anonymisierten Namen. Die Zuordnungstabelle und der Bericht sind nie dabei. Gleiche Sperrregeln für ZIP und einzelne Dateien.</div>
             <div id="exportUnvollstaendig" class="warn-text"></div>
-            <div class="btn-row"><button type="button" class="success" id="btnDownloadZip" disabled>Ergebnis-ZIP herunterladen</button></div>
+            <div class="btn-row">
+              <button type="button" class="success" id="btnDownloadEinzelHaupt" data-index="0" hidden disabled>Datei herunterladen</button>
+              <button type="button" class="success" id="btnDownloadZip" disabled>Ergebnis-ZIP herunterladen</button>
+            </div>
+            <details id="einzelDownloadDetails" style="margin-top:8px;">
+              <summary>Einzelne Dateien herunterladen (<span id="einzelDownloadAnzahl">0</span>)</summary>
+              <div style="max-height:260px; overflow:auto; margin-top:6px;">
+                <table class="report-table" id="einzelDownloadTabelle">
+                  <thead><tr><th scope="col">Anonymisierter Name</th><th scope="col">Größe</th><th scope="col"><span class="sr-only">Aktion</span></th></tr></thead>
+                  <tbody id="einzelDownloadListe"><tr><td colspan="3" class="small-muted">Noch keine verarbeiteten Dateien.</td></tr></tbody>
+                </table>
+              </div>
+            </details>
           </div>
           <div class="export-item">
             <div class="export-titel">Verschlüsselte Zuordnungstabelle – vertraulich aufbewahren</div>
@@ -828,51 +911,9 @@
           <textarea id="strukturVorschau" rows="8" readonly style="margin-top:8px; display:none;" aria-label="Strukturvorlage"></textarea>
         </div>
 
-        <div class="unterkarte" id="tablePreviewCard">
+        <div class="unterkarte">
           <h3>Zuordnungstabelle ansehen und bearbeiten</h3>
-          <div class="small-muted" style="margin-bottom:8px;">Bearbeiten (Umbenennen, Entfernen, Hinzufügen) ist nur bei „Originale anzeigen“ möglich. Das Original eines Eintrags ist nicht änderbar – stattdessen entfernen und neu hinzufügen.</div>
-          <div id="tablePendingBanner" class="warn-banner" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
-            <span>Änderungen noch nicht angewendet</span>
-            <button type="button" class="primary btn-sm" id="btnReapplyAnon">Neu verarbeiten</button>
-          </div>
-          <div id="tableEditStatus" class="small-muted" role="status" aria-live="polite" style="margin-bottom:8px;"></div>
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
-            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <button type="button" id="btnShowTableOriginals">Originale anzeigen</button>
-              <button type="button" id="btnHideTableOriginals" style="display:none;">wieder verdecken</button>
-              <span class="small-muted" style="color:#fde68a;">Hinweis: Nicht bei Bildschirmfreigabe verwenden</span>
-            </div>
-            <div style="min-width:280px; flex:1; max-width:420px;">
-              <input type="text" id="tablePreviewSearch" placeholder="Suche nach Platzhalter oder Original..." aria-label="Zuordnungstabelle durchsuchen">
-            </div>
-          </div>
-          <div id="tableAddEntryBar" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-            <strong>Eintrag hinzufügen:</strong>
-            <input type="text" id="tableAddOriginal" placeholder="Original (Pflicht)" aria-label="Original" style="max-width:240px;">
-            <input type="text" id="tableAddPlaceholder" placeholder="Platzhalter (optional)" aria-label="Platzhalter" style="max-width:180px;">
-            <select id="tableAddCategory" aria-label="Kategorie" style="max-width:200px;">
-              <option value="FESTE_ZUORDNUNG">Eigene Ersetzung</option>
-              <option value="FIRMA">Firma / Standort</option>
-              <option value="DOMAIN">Interne Domain</option>
-            </select>
-            <button type="button" class="btn-sm" id="btnTableAddEntry">Hinzufügen</button>
-          </div>
-          <div id="tableCategoryCounts" class="stat-pills"></div>
-          <div style="max-height:380px; overflow:auto;">
-            <table class="report-table" id="mappingPreviewTable">
-              <thead>
-                <tr>
-                  <th class="sortable-th" data-sort="category" scope="col" tabindex="0">Kategorie &#8597;</th>
-                  <th class="sortable-th" data-sort="placeholder" scope="col" tabindex="0">Platzhalter &#8597;</th>
-                  <th class="sortable-th" data-sort="original" scope="col" tabindex="0">Original &#8597;</th>
-                  <th scope="col">Aktion</th>
-                </tr>
-              </thead>
-              <tbody id="mappingPreviewTableBody">
-                <tr><td colspan="4" class="small-muted">Noch keine Zuordnungen vorhanden.</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <div class="small-muted">Die Zuordnung (Platzhalter, Originale, Anzahl) wird in Schritt 3 unter „Ersetzungen“ angezeigt und bearbeitet. <button type="button" class="link-btn" id="btnZuErsetzungen">Zu den Ersetzungen</button></div>
         </div>
 
         <div class="unterkarte">
@@ -3673,9 +3714,13 @@
   // --------------------------------------------------------------------------
   // Kategoriegebundene Freigaben (ausnahmen.freigegeben: [{ kategorie, wert }]): ein bewusst
   // unverändert gelassener Wert gilt nur für seine Kategorie, nicht als allgemeine Ausnahme.
-  // Geheimnisse, Sperrbegriffe, interne Domains und SIDs sind nicht freigebbar. Identisch zu anon.ps1.
+  // Sicher erkannte Geheimnisse (Geheimnismuster, Zugangsdaten mit eindeutigem Schlüsselwort, Passwort-Hash,
+  // Teilmaskierung), Sperrbegriffe und interne Domains sind nicht freigebbar. Verdachtsfunde (langer Hex-/Base64-Wert,
+  // "token"/"pwd", alle Heuristiken der Nachprüfung) sind als "Verdacht" freigebbar. Identisch zu anon.ps1.
   // --------------------------------------------------------------------------
-  const FREIGABE_KATEGORIEN = ["Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld"];
+  const FREIGABE_KATEGORIEN = ["Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld", "Verdacht", "SID"];
+  // Mehrdeutige Zugangsdaten-Schlüsselwörter ("token bucket", Befehl "pwd"): Fund ist nur ein Verdacht
+  const RxVerdachtSchluesselwort = /^(?:token|pwd)(?![A-Za-z0-9_-])/i;
   const FREIGABE_BEKANNT_PRAEFIXE = [["host|", "Hostname"], ["user|", "Benutzer"], ["serial|", "Seriennummer"], ["mail|", "EMail"], ["url|", "URL"], ["domain|", "Domaene"]];
 
   // null = gültig, sonst Fehlertext ohne den Wert
@@ -3699,6 +3744,10 @@
       case "Rest-EMail": return "EMail";
       case "Rest-Freitext": return "Freitext";
       case "Rest-Tabellenfeld": return "Tabellenfeld";
+      case "Nachpruefung-Beschreibung": return "Freitext";
+      case "Nachpruefung-SID": return "SID";
+      case "Verdacht-Geheimnis-Blob": case "Nachpruefung-Geheimnis": case "Nachpruefung-Teilmaskierung": return "Verdacht";
+      case "Verdacht-Zugangsdaten": return RxVerdachtSchluesselwort.test(String(fund == null ? "" : fund).trim()) ? "Verdacht" : null;
       case "Rest-Bekannt": case "Pfad-Bekannt": {
         if (!state) return null;
         const low = String(fund == null ? "" : fund).trim().toLowerCase();
@@ -5190,11 +5239,13 @@
     return filtered;
   }
 
+  // options.anzahl (optional): Map Platzhalter -> Vorkommen in der Ausgabe; ergibt Spalte "Anzahl" mit "Zur Stelle"
   function renderMappingTableRowsHtml(entries, options) {
     const showOriginals = Boolean(options && options.showOriginals);
     const editable = Boolean(options && options.editable) && showOriginals;
+    const anzahl = options && options.anzahl instanceof Map ? options.anzahl : null;
     if (!Array.isArray(entries) || entries.length === 0) {
-      return `<tr><td colspan="4" class="small-muted">Keine Einträge vorhanden.</td></tr>`;
+      return `<tr><td colspan="${anzahl ? 5 : 4}" class="small-muted">Keine Einträge vorhanden.</td></tr>`;
     }
     return entries.map(item => {
       const catCell = escapeHtml(item.category);
@@ -5211,7 +5262,12 @@
       } else if (editable) {
         actionCell = `<span class="small-muted">Netz (nicht editierbar)</span>`;
       }
-      return `<tr data-ph="${phCell}"><td>${catCell}</td><td class="map-ph-cell"><code>${phCell}</code></td><td>${origCell}</td><td class="map-action-cell">${actionCell}</td></tr>`;
+      let anzahlCell = "";
+      if (anzahl) {
+        const n = anzahl.get(item.placeholder) || 0;
+        anzahlCell = `<td class="map-anzahl-cell">${n}${n > 0 ? ` <button type="button" class="btn-sm map-jump-btn" data-ph="${phCell}">Zur Stelle</button>` : ""}</td>`;
+      }
+      return `<tr data-ph="${phCell}"><td>${catCell}</td><td class="map-ph-cell"><code>${phCell}</code></td><td>${origCell}</td>${anzahlCell}<td class="map-action-cell">${actionCell}</td></tr>`;
     }).join("");
   }
 
@@ -5435,6 +5491,38 @@
     return { ok: true, errors: [], results, findings: findingsAll, freigegeben, skipped, cfg, mergedRules: mergeRes.mergedRules };
   }
 
+  // Vorkommen der Platzhalter in den anonymisierten Ausgaben (für die Ersetzungsliste); Tokens mit Großbuchstabe
+  const RxPlatzhalterToken = /(?<![A-Za-z0-9_-])[A-Z0-9][A-Z0-9-]*(?:\.H[0-9]+)?(?![A-Za-z0-9_])/g;
+  function zaehlePlatzhalter(results) {
+    const anzahl = new Map();
+    for (const r of (results || [])) {
+      for (const m of String(r.anonText || "").matchAll(RxPlatzhalterToken)) {
+        if (!/[A-Z]/.test(m[0])) continue;
+        anzahl.set(m[0], (anzahl.get(m[0]) || 0) + 1);
+      }
+    }
+    return anzahl;
+  }
+
+  // Erste Stelle eines Platzhalters: { index, zeile } oder null
+  function erstesVorkommen(results, platzhalter) {
+    const rx = new RegExp("(?<![A-Za-z0-9_-])" + escapeRegExp(platzhalter) + "(?![A-Za-z0-9_]|\\.H[0-9])");
+    for (let i = 0; i < (results || []).length; i++) {
+      const zeilen = String(results[i].anonText || "").split(/\r?\n/);
+      for (let z = 0; z < zeilen.length; z++) if (rx.test(zeilen[z])) return { index: i, zeile: z + 1 };
+    }
+    return null;
+  }
+
+  // Einzelne anonymisierte Datei: anonymisierter Dateiname, Inhalt wie im ZIP (UTF-8)
+  function einzelDateiEintrag(result) {
+    const pfad = String((result && result.path) || "").replace(/^\/+/, "");
+    const name = pfad.split("/").pop() || "anonym.txt";
+    const endung = (/\.([A-Za-z0-9]+)$/.exec(name) || ["", ""])[1].toLowerCase();
+    const mime = endung === "json" ? "application/json" : (endung === "xml" ? "application/xml" : (endung === "csv" ? "text/csv" : "text/plain"));
+    return { name, mime, data: new TextEncoder().encode(String((result && result.anonText) || "")) };
+  }
+
   function buildReleaseZipEntries(processedResults) {
     const kollisionen = findPathCollisions((processedResults || []).map(r => r.path));
     if (kollisionen.length > 0) throw new Error(kollisionen[0] + ". Es wird kein ZIP erzeugt.");
@@ -5510,8 +5598,10 @@
       const art = freigabe || (geheimnis ? "Geheimnis" : f.kategorie);
       const key = art + "|" + fund.toLowerCase();
       if (!map.has(key)) {
+        const text = freigabe === "Verdacht" ? "Verdacht auf Passwort oder Schlüssel (" + fundKategorieText(f.kategorie) + ")"
+          : (geheimnis ? "Passwort oder Schlüssel (sicher erkannt)" : (freigabe ? fundKategorieText(f.kategorie).replace(/ im Dateinamen$/, "") : fundKategorieText(f.kategorie)));
         map.set(key, {
-          schluessel: key, art, text: geheimnis ? "Mögliches Passwort oder Schlüssel" : (freigabe ? fundKategorieText(f.kategorie).replace(/ im Dateinamen$/, "") : fundKategorieText(f.kategorie)),
+          schluessel: key, art, text,
           kategorien: [], fund, werte: [], woerter: [], orte: [], dateien: [], anzahl: 0,
           freigabeKategorie: freigabe, geheimnis, kontext: String(f.kontext || ""), kontextWert: fund
         });
@@ -5534,8 +5624,32 @@
       // Ersetzen ist möglich, wenn ein Wert vorhanden ist; Doppelte Ausgabepfade lassen sich nur durch Umbenennen lösen
       g.kannErsetzen = g.fund.length > 0 && g.kategorien.indexOf("Ausgabepfad-Kollision") < 0;
       g.kannUnveraendert = Boolean(g.freigabeKategorie);
+      // Sicher erkannte Geheimnisse nur maskieren; Verdachtsfunde nach Bestätigung freigeben oder maskieren.
+      // Jede Fundgruppe hat mindestens zwei Aktionen (nie eine Sackgasse); letzte Möglichkeit: Datei entfernen.
+      g.verdacht = g.freigabeKategorie === "Verdacht";
+      g.sicheresGeheimnis = g.geheimnis && !g.verdacht;
+      const aktionen = [];
+      if (g.verdacht) {
+        aktionen.push("unveraendert");
+        if (g.kannErsetzen) aktionen.push("maskieren");
+      } else {
+        if (g.kannErsetzen) aktionen.push("ersetzen");
+        if (g.kannUnveraendert && !g.sicheresGeheimnis) aktionen.push("unveraendert");
+      }
+      if (aktionen.length < 2 && g.dateien.length > 0) aktionen.push("datei-entfernen");
+      g.aktionen = aktionen;
+      g.bestaetigung = g.verdacht ? "Ich habe geprüft: kein Geheimnis" : "";
     }
     return gruppen;
+  }
+
+  const AKTION_TEXTE = {
+    ersetzen: "Alle Vorkommen ersetzen", maskieren: "Als Geheimnis maskieren (*****)", unveraendert: "Unverändert lassen",
+    "datei-entfernen": "Datei aus dem Auftrag entfernen"
+  };
+  function aktionText(gruppe, aktion) {
+    if (aktion === "ersetzen" && gruppe && gruppe.geheimnis) return "Alle Vorkommen ersetzen (*****)";
+    return AKTION_TEXTE[aktion] || aktion;
   }
 
   // Regulärer Ausdruck für einen festen Wert (Dialekt aus anon-regeln.json: kein \w, \d, \b)
@@ -5548,8 +5662,8 @@
   function entscheidungsEintraege(gruppe, aktion) {
     const ergebnis = { festeZuordnung: [], geheimnisMuster: [], freigegeben: [] };
     if (!gruppe) return ergebnis;
-    if (aktion === "ersetzen" && gruppe.kannErsetzen) {
-      if (gruppe.geheimnis) {
+    if ((aktion === "ersetzen" || aktion === "maskieren") && gruppe.kannErsetzen) {
+      if (gruppe.geheimnis || aktion === "maskieren") {
         for (const w of gruppe.werte) ergebnis.geheimnisMuster.push({ name: "Entscheidung: Geheimnis entfernen", suche: literalMuster(w), ersetzen: "*****" });
       } else {
         for (const w of (gruppe.woerter.length > 0 ? gruppe.woerter : gruppe.werte)) ergebnis.festeZuordnung.push({ original: w, placeholder: "" });
@@ -5624,7 +5738,7 @@
     if (lauf.gruppen > 0) return { code: "VERALTET", ton: "warn", text: "Ergebnis veraltet – erneut verarbeiten", gesperrt: true, grund: "Die Entscheidungen sind noch nicht angewendet.", aktion: "„Entscheidungen anwenden und neu verarbeiten“ wählen." };
     if (lauf.isProbe) return { code: "TROCKENLAUF", ton: "info", text: "Trockenlauf ohne Restfunde – für den Export normal verarbeiten", gesperrt: true, grund: "Ein Trockenlauf gibt nichts zur Weitergabe frei.", aktion: "In Schritt 2 „Anonymisieren und prüfen“ wählen." };
     if (!s.freigabe) return { code: "VERALTET", ton: "warn", text: "Ergebnis veraltet – erneut verarbeiten", gesperrt: true, grund: "Das Ergebnis passt nicht mehr zum aktuellen Stand.", aktion: "In Schritt 2 erneut „Anonymisieren und prüfen“ wählen." };
-    if (nv > 0) return { code: "UNVOLLSTAENDIG", ton: "warn", text: `Unvollständig – ${nv} Datei${nv === 1 ? "" : "en"} nicht verarbeitet${frei}`, gesperrt: false, grund: `${nv} Datei${nv === 1 ? " fehlt" : "en fehlen"} im Ergebnis-ZIP (siehe Dateiliste).`, aktion: "Vorschau prüfen; fehlende Dateien bei Bedarf gesondert behandeln." };
+    if (nv > 0) return { code: "UNVOLLSTAENDIG", ton: "warn", text: `Unvollständig – ${nv} Datei${nv === 1 ? "" : "en"} nicht verarbeitet${frei}`, gesperrt: true, grund: `${nv} Datei${nv === 1 ? " wurde" : "en wurden"} nicht verarbeitet und ${nv === 1 ? "fehlt" : "fehlen"} im Ergebnis (siehe Dateiliste).`, aktion: "Nicht verarbeitete Dateien in Schritt 1 entfernen und erneut verarbeiten." };
     return { code: "KEINE_RESTFUNDE", ton: "ok", text: "Keine Restfunde nach aktivem Regelwerk – Vorschau prüfen" + frei, gesperrt: false, grund: "", aktion: "Vorschau sichten, dann in Schritt 4 herunterladen." };
   }
 
@@ -5645,6 +5759,12 @@
     if (!binaer) return "bereit";
     const low = String(pfad || "").toLowerCase();
     return NICHT_UNTERSTUETZTE_ENDUNGEN.some(e => low.endsWith(e)) ? "nicht unterstützt" : "übersprungen";
+  }
+  // Angezeigter Dateiname: verdeckt (anonymisierter Name nach dem Verarbeiten, sonst "Datei n"), Original nur auf Wunsch
+  function dateiAnzeigeName(eintrag, originaleZeigen) {
+    const e = eintrag || {};
+    if (originaleZeigen) return String(e.path || "");
+    return e.anonPath ? String(e.anonPath) : "Datei " + e.id;
   }
   function dateiZusammenfassung(eintraege) {
     const liste = eintraege || [];
@@ -5765,6 +5885,8 @@
 
     // Zustand für Vorschau der Zuordnungstabelle
     let tablePreviewShowOriginals = false;
+    let platzhalterAnzahl = new Map(); // Vorkommen je Platzhalter im letzten Ergebnis (Ersetzungsliste)
+    let dateiOriginaleZeigen = false;  // Dateiliste: Originalnamen nur auf Wunsch
     let tablePreviewSortBy = "category";
     let tablePreviewSortDir = "asc";
     // Bearbeitungszustand der Zuordnungstabelle
@@ -5858,6 +5980,9 @@
       openInlineEdit = null;
 
       const { entries, categoryCounts } = extractMappingTableEntries(currentState);
+      for (const e of entries) e.anzahl = platzhalterAnzahl.get(e.placeholder) || 0;
+      const ra = $("reiterErsetzungenAnzahl");
+      if (ra) ra.textContent = `(${entries.length})`;
       countsEl.textContent = "";
       const cats = Object.keys(categoryCounts).sort();
       const pill = (text) => { const p = document.createElement("div"); p.className = "stat-pill"; p.textContent = text; countsEl.appendChild(p); };
@@ -5870,7 +5995,7 @@
         sortDir: tablePreviewSortDir
       });
       // Werte werden in renderMappingTableRowsHtml über escapeHtml eingesetzt; Originale nur bei "Originale anzeigen"
-      tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals, editable: tablePreviewShowOriginals });
+      tbody.innerHTML = renderMappingTableRowsHtml(filtered, { showOriginals: tablePreviewShowOriginals, editable: tablePreviewShowOriginals, anzahl: platzhalterAnzahl });
     }
 
     // Hauptnavigation (verdeckt beim Wechsel automatisch wieder die Originale in der Zuordnungstabelle)
@@ -5893,6 +6018,8 @@
 
     // Schritte des Ablaufs (frei anspringbar)
     function zeigeSchritt(n) {
+      if (aktuellerSchritt === 3 && n !== 3 && tablePreviewShowOriginals) maskTablePreviewOriginals();
+      if (n !== 1 && dateiOriginaleZeigen) $("btnDateinamenOriginale").click();
       aktuellerSchritt = n;
       document.querySelectorAll("nav.schritte button").forEach(b => {
         if (Number(b.dataset.schritt) === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
@@ -5901,6 +6028,22 @@
     }
     document.querySelectorAll("nav.schritte button").forEach(b => b.addEventListener("click", () => zeigeSchritt(Number(b.dataset.schritt))));
     document.querySelectorAll("[data-gehe-schritt]").forEach(b => b.addEventListener("click", () => zeigeSchritt(Number(b.dataset.geheSchritt))));
+
+    // Schritt 3: Reiter "Funde" | "Ersetzungen", Vorschau daneben oder darunter
+    function zeigeReiter(id) {
+      for (const b of document.querySelectorAll(".unter-reiter button")) {
+        const aktiv = b.dataset.reiter === id;
+        b.setAttribute("aria-selected", aktiv ? "true" : "false");
+        $(b.dataset.reiter).hidden = !aktiv;
+      }
+      if (id === "tablePreviewCard") renderTablePreviewUI();
+    }
+    document.querySelectorAll(".unter-reiter button").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.reiter !== "tablePreviewCard" && !discardInlineEditWithConfirm()) return;
+      zeigeReiter(b.dataset.reiter);
+    }));
+    $("btnZuErsetzungen").addEventListener("click", () => { zeigeTab("tab-anon"); zeigeSchritt(3); zeigeReiter("tablePreviewCard"); });
+    $("optVorschauUnten").addEventListener("change", () => $("pruefGrid").classList.toggle("untereinander", $("optVorschauUnten").checked));
 
     function updateTableStatusUI() {
       const text = `Aktuell aktive Zuordnungen: ${currentState.reverse.size}`;
@@ -5933,6 +6076,10 @@
         veraltet: ergebnisVeraltet,
         freigabe: releaseAllowed
       });
+    }
+    // Weitergabe (ZIP, Einzeldatei, Kopieren) nur bei freigegebenem und nicht gesperrtem Ablauf (z. B. nicht bei "Unvollständig")
+    function exportFrei() {
+      return releaseAllowed && !ablaufStatusJetzt().gesperrt;
     }
 
     function aktualisiereEinstellungsZusammenfassung() {
@@ -5984,9 +6131,13 @@
     }
 
     function updateReleaseUI() {
-      document.getElementById("btnDownloadZip").disabled = !releaseAllowed;
-      document.getElementById("btnCopyAnon").disabled = !releaseAllowed;
       const st = ablaufStatusJetzt();
+      const frei = releaseAllowed && !st.gesperrt;
+      document.getElementById("btnDownloadZip").disabled = !frei;
+      document.getElementById("btnCopyAnon").disabled = !frei;
+      $("btnDownloadEinzeln").disabled = !frei || !processedResults[vorschauIndex];
+      $("btnDownloadEinzelHaupt").disabled = !frei;
+      document.querySelectorAll(".einzel-download-btn").forEach(b => { b.disabled = !frei; });
       const status = $("ablaufStatus");
       if (status) {
         status.className = "ablauf-status " + st.ton;
@@ -5995,14 +6146,14 @@
       }
       const info = $("releaseLockInfo");
       if (info) {
-        info.className = "sperr-info " + (releaseAllowed ? "frei" : "gesperrt");
+        info.className = "sperr-info " + (frei ? "frei" : "gesperrt");
         info.dataset.code = st.code;
-        info.textContent = releaseAllowed
+        info.textContent = frei
           ? `Freigegeben: ${st.text}. Bitte trotzdem die Vorschau sichten.`
           : `Gesperrt: ${st.grund} Nächster Schritt: ${st.aktion}`;
       }
       const unv = $("exportUnvollstaendig");
-      if (unv) unv.textContent = releaseAllowed && laufErgebnis && laufErgebnis.nichtVerarbeitet > 0 ? `${laufErgebnis.nichtVerarbeitet} Datei(en) sind nicht im ZIP (nicht verarbeitet, siehe Dateiliste).` : "";
+      if (unv) unv.textContent = st.code === "UNVOLLSTAENDIG" ? `${laufErgebnis.nichtVerarbeitet} Datei(en) wurden nicht verarbeitet (siehe Dateiliste in Schritt 1).` : "";
       const tabHinweis = $("tabelleGeaendertHinweis");
       if (tabHinweis) tabHinweis.hidden = !unsavedTableChanges;
       const lok = $("lokalUngespeichert");
@@ -6014,7 +6165,7 @@
       const s2 = $("schrittInfo2"); if (s2) s2.textContent = laeuft ? "läuft" : (!laufErgebnis ? "noch nicht verarbeitet" : (ergebnisVeraltet ? "veraltet" : "verarbeitet"));
       const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
       const s3 = $("schrittInfo3"); if (s3) s3.textContent = !laufErgebnis ? "" : (findingGroups.length === 0 ? "keine offenen Funde" : `${offen} von ${findingGroups.length} offen`);
-      const s4 = $("schrittInfo4"); if (s4) s4.textContent = releaseAllowed ? "freigegeben" : "gesperrt";
+      const s4 = $("schrittInfo4"); if (s4) s4.textContent = frei ? "freigegeben" : "gesperrt";
       aktualisiereLaufZusammenfassung();
     }
 
@@ -6180,7 +6331,7 @@
       const sel = $("previewFileSelect");
       const idx = sel ? parseInt(sel.value, 10) : -1;
       const statusEl = $(mode === "original" ? "copyOriginalStatus" : "copyAnonStatus");
-      const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg), { freigegeben: releaseAllowed });
+      const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg), { freigegeben: exportFrei() });
       if (!prep.allowed) {
         if (statusEl && prep.reason === "NO_FILE") {
           statusEl.textContent = "Keine Datei geladen.";
@@ -6561,6 +6712,12 @@
 
     $("mappingPreviewTableBody").addEventListener("click", (ev) => {
       const target = ev.target;
+      if (target && target.classList && target.classList.contains("map-jump-btn")) {
+        const ph = target.dataset.ph;
+        const stelle = erstesVorkommen(processedResults, ph);
+        if (stelle) zeigeFundort(processedResults[stelle.index].path, stelle.zeile, ph);
+        return;
+      }
       if (!target || !target.classList || !tablePreviewShowOriginals) return;
       const ph = target.dataset ? target.dataset.ph : null;
       if (!ph) return;
@@ -6640,7 +6797,7 @@
       const such = $("dateiSuche").value.trim().toLowerCase();
       tbody.textContent = "";
       $("dateiZusammenfassung").textContent = dateiZusammenfassung(loadedInputFiles);
-      const liste = loadedInputFiles.filter(f => !such || f.path.toLowerCase().indexOf(such) >= 0);
+      const liste = loadedInputFiles.filter(f => !such || dateiAnzeigeName(f, dateiOriginaleZeigen).toLowerCase().indexOf(such) >= 0);
       if (liste.length === 0) {
         const tr = document.createElement("tr");
         const td = document.createElement("td"); td.colSpan = 4; td.className = "small-muted";
@@ -6651,7 +6808,7 @@
       const max = 2000;
       for (const f of liste.slice(0, max)) {
         const tr = document.createElement("tr");
-        const tdN = document.createElement("td"); tdN.textContent = f.path;
+        const tdN = document.createElement("td"); tdN.textContent = dateiAnzeigeName(f, dateiOriginaleZeigen);
         const tdT = document.createElement("td"); tdT.textContent = f.typ;
         const tdS = document.createElement("td");
         const badge = document.createElement("span"); badge.className = "status-badge " + statusKlasse(f.status); badge.textContent = f.status;
@@ -6690,6 +6847,12 @@
     }
 
     $("dateiSuche").addEventListener("input", renderDateiliste);
+    $("btnDateinamenOriginale").addEventListener("click", () => {
+      dateiOriginaleZeigen = !dateiOriginaleZeigen;
+      $("btnDateinamenOriginale").textContent = dateiOriginaleZeigen ? "Originale verdecken" : "Originale anzeigen";
+      $("btnDateinamenOriginale").setAttribute("aria-pressed", dateiOriginaleZeigen ? "true" : "false");
+      renderDateiliste();
+    });
 
     async function ingestFileList(fileList) {
       if (!fileList || fileList.length === 0) return;
@@ -6813,6 +6976,7 @@
       const laufStand = releaseGuard.startRun();
       releaseAllowed = false;
       zeigeMeldung("laufMeldung", "");
+      zeigeMeldung("fundMeldung", "");
       updateReleaseUI();
       if (loadedInputFiles.length === 0) {
         zeigeMeldung("laufMeldung", "Es sind keine Dateien geladen. Bitte zuerst in Schritt 1 Dateien auswählen oder „Beispieldaten laden“ wählen.");
@@ -6895,6 +7059,7 @@
 
           if (isBinaryBytes(item.bytes)) {
             const anonBinPath = processPath(item.path, cfg, runState);
+            item.anonPath = anonBinPath;
             skippedBinaryFiles.push(anonBinPath);
             continue;
           }
@@ -6905,6 +7070,7 @@
           const anonText = processText(origText, cfg, runState);
           item.status = "verarbeitet";
           item.meldung = "";
+          item.anonPath = anonRelPath;
           processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
         }
         // Prüfung mit allen im Lauf erkannten Werten
@@ -6944,6 +7110,8 @@
         const banner = $("auditBanner");
         const tbody = $("auditTableBody");
         tbody.textContent = "";
+        $("einzelfundeAnzahl").textContent = String(allFindings.length);
+        platzhalterAnzahl = zaehlePlatzhalter(processedResults);
         const frei = bewusstFreigegeben > 0 ? `, ${bewusstFreigegeben} bewusst freigegeben` : "";
         if (allFindings.length === 0) {
           banner.className = "audit-banner clean";
@@ -7025,6 +7193,8 @@
         laeuft = false;
         renderFindingGroupsUI();
         renderEntscheidungsListe();
+        renderEinzelDownloads();
+        renderTablePreviewUI();
         $("btnDownloadReport").disabled = false;
         if (!isProbe) {
           tableHasPendingChanges = false;
@@ -7076,6 +7246,9 @@
       $("auditBanner").className = "audit-banner neutral";
       $("auditBanner").textContent = "Noch nicht geprüft.";
       $("auditTableBody").textContent = "";
+      $("einzelfundeAnzahl").textContent = "0";
+      platzhalterAnzahl = new Map();
+      renderEinzelDownloads();
       $("progressBar").style.width = "0%";
       $("progressStatus").textContent = "Bereit.";
       zeigeMeldung("laufMeldung", "");
@@ -7107,13 +7280,25 @@
     // Fundkarten: Entscheidung je Fundgruppe, Sprung zur Fundstelle
     // ------------------------------------------------------------------
     function entscheidungsText(e) {
-      return (e.aktion === "ersetzen" ? "Alle Vorkommen ersetzen" : "Unverändert lassen") + (e.umfang === "dauerhaft" ? " (dauerhafte Regel)" : " (nur dieser Auftrag)");
+      return aktionText(e.gruppe, e.aktion) + (e.umfang === "dauerhaft" ? " (dauerhafte Regel)" : " (nur dieser Auftrag)");
+    }
+
+    // Letzte Möglichkeit je Fundgruppe: die betroffenen Dateien aus dem Auftrag nehmen (Ergebnis wird veraltet)
+    function entferneDateienEinerGruppe(g) {
+      const betroffen = loadedInputFiles.filter(f => g.dateien.indexOf(f.anonPath) >= 0);
+      if (betroffen.length === 0) return;
+      if (!window.confirm(`${betroffen.length} Datei${betroffen.length === 1 ? "" : "en"} aus dem Auftrag entfernen? Sie ${betroffen.length === 1 ? "ist" : "sind"} danach nicht im Ergebnis.`)) return;
+      const ids = new Set(betroffen.map(f => f.id));
+      loadedInputFiles = loadedInputFiles.filter(f => !ids.has(f.id));
+      markiereGeaendert("dateien");
+      aktualisiereDateiInfo();
+      zeigeMeldung("fundMeldung", `${betroffen.length} Datei${betroffen.length === 1 ? "" : "en"} entfernt – bitte erneut verarbeiten.`, "ok");
     }
 
     function entscheide(g, aktion, umfang) {
       if (findingDecisions[g.schluessel]) return;
       const eintraege = entscheidungsEintraege(g, aktion);
-      const eintrag = { schluessel: g.schluessel, aktion, umfang, text: g.text, werte: g.werte.slice(), eintraege };
+      const eintrag = { schluessel: g.schluessel, aktion, umfang, text: g.text, werte: g.werte.slice(), eintraege, gruppe: { geheimnis: g.geheimnis } };
       findingDecisions[g.schluessel] = eintrag;
       if (umfang === "dauerhaft") {
         populateCustomTermsUI(fuegeEintraegeHinzu(readCustomTermsFromUI(), eintraege), "entscheidung");
@@ -7152,6 +7337,8 @@
       if (!el) return;
       el.textContent = "";
       const alle = auftragsEntscheidungen.concat(dauerhafteEntscheidungen);
+      $("entscheidungenAnzahl").textContent = String(alle.length);
+      $("entscheidungenDetails").open = alle.length > 0;
       if (alle.length === 0) {
         const leer = document.createElement("div"); leer.className = "small-muted"; leer.textContent = "Noch keine Entscheidungen.";
         el.appendChild(leer);
@@ -7258,30 +7445,47 @@
           const reihe = document.createElement("div");
           reihe.className = "btn-row";
           const gewaehlterUmfang = () => { const r = card.querySelector(`input[name="umfang-${i}"]:checked`); return r ? r.value : "auftrag"; };
-          const bE = document.createElement("button");
-          bE.type = "button"; bE.className = "btn-sm primary"; bE.dataset.aktion = "ersetzen";
-          bE.textContent = g.geheimnis ? "Alle Vorkommen ersetzen (*****)" : "Alle Vorkommen ersetzen";
-          bE.disabled = !g.kannErsetzen;
-          bE.addEventListener("click", () => entscheide(g, "ersetzen", gewaehlterUmfang()));
-          const bU = document.createElement("button");
-          bU.type = "button"; bU.className = "btn-sm"; bU.dataset.aktion = "unveraendert";
-          bU.textContent = "Unverändert lassen";
-          bU.disabled = !g.kannUnveraendert;
-          bU.addEventListener("click", () => entscheide(g, "unveraendert", gewaehlterUmfang()));
-          reihe.append(bE, bU);
-          card.append(umfang, hinweis, reihe);
-          if (!g.kannUnveraendert) {
-            const w = document.createElement("div");
-            w.className = "small-muted";
-            w.textContent = g.geheimnis
-              ? "Geheimnisse können nicht freigegeben werden; „Alle Vorkommen ersetzen“ macht daraus *****."
-              : "Dieser Fund kann nicht freigegeben werden (eigener Begriff, interne Domain oder Windows-Kennung).";
-            card.appendChild(w);
+          // Verdachtsfund: "Unverändert lassen" erst nach ausdrücklicher Bestätigung
+          let bestaetigt = null;
+          if (g.bestaetigung) {
+            const lab = document.createElement("label");
+            lab.className = "fk-bestaetigung";
+            bestaetigt = document.createElement("input");
+            bestaetigt.type = "checkbox";
+            bestaetigt.dataset.bestaetigung = "1";
+            lab.append(bestaetigt, document.createTextNode(" " + g.bestaetigung));
+            card.appendChild(lab);
           }
+          g.aktionen.forEach((aktion, ai) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "btn-sm" + (ai === 0 && aktion !== "unveraendert" ? " primary" : "") + (aktion === "datei-entfernen" ? " danger" : "");
+            b.dataset.aktion = aktion;
+            b.textContent = aktionText(g, aktion);
+            if (aktion === "unveraendert" && bestaetigt) {
+              b.disabled = true;
+              bestaetigt.addEventListener("change", () => { b.disabled = !bestaetigt.checked; });
+            }
+            b.addEventListener("click", () => {
+              if (aktion === "datei-entfernen") entferneDateienEinerGruppe(g);
+              else entscheide(g, aktion, gewaehlterUmfang());
+            });
+            reihe.appendChild(b);
+          });
+          card.append(umfang, hinweis, reihe);
+          const w = document.createElement("div");
+          w.className = "small-muted";
+          w.textContent = g.verdacht
+            ? "Verdacht (z. B. Build-ID oder Prüfsumme): nach Prüfung freigeben oder als Geheimnis maskieren."
+            : (g.sicheresGeheimnis
+              ? "Sicher erkanntes Geheimnis: kann nicht freigegeben werden; „Alle Vorkommen ersetzen“ macht daraus *****."
+              : (g.kannUnveraendert ? "" : "Dieser Fund kann nicht freigegeben werden (eigener Begriff oder interne Domain)."));
+          if (w.textContent) card.appendChild(w);
         }
         list.appendChild(card);
       });
       const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
+      $("reiterFundeAnzahl").textContent = laufErgebnis ? `(${offen} offen)` : "";
       btn.disabled = findingGroups.length === 0 || offen > 0;
       $("btnNaechsterFund").disabled = offen === 0;
       status.textContent = findingGroups.length === 0 ? "" : (offen > 0 ? `${offen} von ${findingGroups.length} Fundgruppe(n) noch offen` : "Alle Fundgruppen entschieden – jetzt neu verarbeiten");
@@ -7312,8 +7516,63 @@
       await executeRun(false);
     });
 
+    // Einzelne anonymisierte Datei herunterladen (gleiche Sperrregeln wie das ZIP)
+    function ladeEinzelDatei(idx, meldungId) {
+      if (!exportFrei()) {
+        const st = ablaufStatusJetzt();
+        zeigeMeldung(meldungId, `Gesperrt: ${st.grund} Nächster Schritt: ${st.aktion}`);
+        return;
+      }
+      const res = processedResults[idx];
+      if (!res) return;
+      const e = einzelDateiEintrag(res);
+      triggerDownload(e.data, e.name, e.mime);
+      zeigeMeldung(meldungId, "");
+    }
+
+    function renderEinzelDownloads() {
+      const tbody = $("einzelDownloadListe");
+      tbody.textContent = "";
+      $("einzelDownloadAnzahl").textContent = String(processedResults.length);
+      const einzeln = processedResults.length === 1;
+      const haupt = $("btnDownloadEinzelHaupt");
+      haupt.hidden = !einzeln;
+      haupt.textContent = einzeln ? "Datei herunterladen: " + einzelDateiEintrag(processedResults[0]).name : "Datei herunterladen";
+      // Bei nur einer Datei ist der Einzel-Download der Hauptknopf, das ZIP die Nebenoption
+      $("btnDownloadZip").className = einzeln ? "" : "success";
+      $("btnDownloadZip").textContent = einzeln ? "Als ZIP herunterladen" : "Ergebnis-ZIP herunterladen";
+      if (processedResults.length === 0) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td"); td.colSpan = 3; td.className = "small-muted"; td.textContent = "Noch keine verarbeiteten Dateien.";
+        tr.appendChild(td); tbody.appendChild(tr);
+      }
+      const max = 2000;
+      processedResults.slice(0, max).forEach((res, idx) => {
+        const tr = document.createElement("tr");
+        const tdN = document.createElement("td"); tdN.textContent = res.path;
+        const tdG = document.createElement("td"); tdG.textContent = `${Math.max(1, Math.round(res.anonText.length / 1024))} KB`;
+        const tdA = document.createElement("td");
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "btn-sm einzel-download-btn"; b.textContent = "Herunterladen";
+        b.dataset.index = String(idx);
+        b.setAttribute("aria-label", "Anonymisierte Datei herunterladen: " + res.path);
+        b.addEventListener("click", () => ladeEinzelDatei(idx, "exportMeldung"));
+        tdA.appendChild(b);
+        tr.append(tdN, tdG, tdA);
+        tbody.appendChild(tr);
+      });
+      if (processedResults.length > max) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td"); td.colSpan = 3; td.className = "small-muted"; td.textContent = `… sowie ${processedResults.length - max} weitere Dateien (im ZIP enthalten).`;
+        tr.appendChild(td); tbody.appendChild(tr);
+      }
+      updateReleaseUI();
+    }
+    $("btnDownloadEinzelHaupt").addEventListener("click", () => ladeEinzelDatei(0, "exportMeldung"));
+    $("btnDownloadEinzeln").addEventListener("click", () => ladeEinzelDatei(vorschauIndex, "vorschauMeldung"));
+
     document.getElementById("btnDownloadZip").addEventListener("click", () => {
-      if (!releaseAllowed) {
+      if (!exportFrei()) {
         const st = ablaufStatusJetzt();
         zeigeMeldung("exportMeldung", `Gesperrt: ${st.grund} Nächster Schritt: ${st.aktion}`);
         return;
@@ -7560,6 +7819,7 @@
       auditText,
       auditTextDetail,
       freigabeKategorie,
+      pruefeFreigabeEintrag,
       FREIGABE_KATEGORIEN,
       isBinaryBytes,
       decodeBytesWithBom,
@@ -7609,6 +7869,11 @@
       fundKategorieText,
       istGeheimnisFund,
       bildeFundgruppen,
+      zaehlePlatzhalter,
+      dateiAnzeigeName,
+      erstesVorkommen,
+      einzelDateiEintrag,
+      aktionText,
       literalMuster,
       entscheidungsEintraege,
       fuegeEintraegeHinzu,

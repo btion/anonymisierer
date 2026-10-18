@@ -2104,9 +2104,13 @@ namespace AnonTool
         // ----------------------------------------------------------------
         // Kategoriegebundene Freigaben (ausnahmen.freigegeben: [{ kategorie, wert }]): ein bewusst
         // unverändert gelassener Wert gilt nur für seine Kategorie, nicht als allgemeine Ausnahme.
-        // Geheimnisse, Sperrbegriffe, interne Domains und SIDs sind nicht freigebbar. Identisch zu anonymisierer.html.
+        // Sicher erkannte Geheimnisse (Geheimnismuster, Zugangsdaten mit eindeutigem Schlüsselwort, Passwort-Hash,
+        // Teilmaskierung), Sperrbegriffe und interne Domains sind nicht freigebbar. Verdachtsfunde (langer Hex-/Base64-Wert,
+        // "token"/"pwd", alle Heuristiken der Nachprüfung) sind als "Verdacht" freigebbar. Identisch zu anonymisierer.html.
         // ----------------------------------------------------------------
-        public static readonly string[] FreigabeKategorien = new string[] { "Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld" };
+        public static readonly string[] FreigabeKategorien = new string[] { "Benutzer", "Hostname", "Seriennummer", "Domaene", "IPv4", "IPv6", "MAC", "EMail", "URL", "Freitext", "Tabellenfeld", "Verdacht", "SID" };
+        // Mehrdeutige Zugangsdaten-Schlüsselwörter ("token bucket", Befehl "pwd"): Fund ist nur ein Verdacht
+        private static readonly Regex RxVerdachtSchluesselwort = new Regex("^(?:token|pwd)(?![A-Za-z0-9_-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         private static readonly string[][] FreigabeBekanntPraefixe = new string[][] {
             new string[] { "HOST|", "Hostname" }, new string[] { "USER|", "Benutzer" }, new string[] { "SERIAL|", "Seriennummer" },
             new string[] { "MAIL|", "EMail" }, new string[] { "URL|", "URL" }, new string[] { "DOMAIN|", "Domaene" } };
@@ -2134,6 +2138,10 @@ namespace AnonTool
                 case "Rest-EMail": return "EMail";
                 case "Rest-Freitext": return "Freitext";
                 case "Rest-Tabellenfeld": return "Tabellenfeld";
+                case "Nachpruefung-Beschreibung": return "Freitext";
+                case "Nachpruefung-SID": return "SID";
+                case "Verdacht-Geheimnis-Blob": case "Nachpruefung-Geheimnis": case "Nachpruefung-Teilmaskierung": return "Verdacht";
+                case "Verdacht-Zugangsdaten": return RxVerdachtSchluesselwort.IsMatch((fund ?? "").Trim()) ? "Verdacht" : null;
                 case "Rest-Bekannt":
                 case "Pfad-Bekannt":
                     if (state == null) return null;
