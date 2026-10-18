@@ -121,6 +121,26 @@ for (const [i, g] of (diskRules.geheimnisMuster || []).entries()) {
   assert(maxRef <= groupCount, `Ersetzungstext geheimnisMuster[${i}] verweist nur auf vorhandene Gruppen ($${maxRef} <= ${groupCount})`);
 }
 
+// Testdaten: private IPv4 nur aus 10.0.0.0/24, 172.16.0.0/24 und 192.168.0.0/24 (für die Privat/Öffentlich-Trennung),
+// sonst nur Dokumentationsnetze 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+{
+  const listTestFiles = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name.startsWith("_tmp") ? [] : listTestFiles(full);
+    return [full];
+  });
+  const rxPrivate = /(?<![0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}|192\.168\.[0-9]{1,3})\.[0-9]{1,3}(?![0-9])/g;
+  const allowedNets = new Set(["10.0.0", "172.16.0", "192.168.0"]);
+  const badIps = [];
+  for (const file of listTestFiles(__dirname)) {
+    const content = fs.readFileSync(file, "utf8");
+    for (const m of content.matchAll(rxPrivate)) {
+      if (!allowedNets.has(m[1])) badIps.push(path.relative(ROOT, file) + ": " + m[0]);
+    }
+  }
+  assert(badIps.length === 0, `Testdaten: private IPv4 nur aus 10.0.0.0/24, 172.16.0.0/24, 192.168.0.0/24 (${badIps.slice(0, 5).join(", ")})`);
+}
+
 console.log("=== 3. Führe Testkorpus tests/faelle.json aus (LF und CRLF) ===");
 const cases = JSON.parse(fs.readFileSync(CASES_PATH, "utf8"));
 assert(cases.length >= 48, `Mindestens 48 Testfälle vorhanden (gefunden: ${cases.length})`);
@@ -1167,7 +1187,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   // 17.8 Lokale Muster (eigeneHostnamenMuster, seriennummerMuster, tabellenSpalten) aus anon-regeln.lokal.json, Parität A == B
   {
     const lokalMusterJson = JSON.stringify({
-      eigeneHostnamenMuster: ["(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"],
+      eigeneHostnamenMuster: ["(?i)(?<![A-Za-z0-9-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9-])"],
       seriennummerMuster: ["(?i)((?<![A-Za-z0-9_])Inventar-Nr[ \\t]*:[ \\t]*)([A-Za-z0-9-]{5,24})()"],
       tabellenSpalten: [{ name: "Beispiel Nachbartabelle", kopf: ["Nachbar", "Schnittstelle"], spalten: [{ name: "Nachbar", kategorie: "HOST" }] }]
     }, null, 2);
@@ -1182,7 +1202,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     ].join("\n");
     const lokalMusterExpected = [
       "Peer HOST-2 is reachable",
-      "uplink HOST-3 up, backup xy2-dist11_alt",
+      "uplink HOST-3 up, backup HOST-3_alt",
       "Inventar-Nr: SERIAL-1",
       "",
       "Nachbar        Schnittstelle",
@@ -1203,8 +1223,8 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     if (jsMusterOut !== lokalMusterExpected) console.error("    Erhalten: " + JSON.stringify(jsMusterOut));
     assert(jsMusterOut === lokalMusterExpected, "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (JS)");
     const musterFindings = core.auditText(jsMusterOut, "lokal.txt", musterCfg, musterState);
-    assert(musterFindings.length === 1 && musterFindings[0].kategorie === "Rest-Bekannt",
-      `Lokale Muster: Prüfmodus meldet nur den Rest 'xy2-dist11_alt' (${JSON.stringify(musterFindings.map(f => f.kategorie + ":" + f.fund))})`);
+    assert(musterFindings.length === 0,
+      `Lokale Muster: Ausgabe ist im Prüfmodus SAUBER (${JSON.stringify(musterFindings.map(f => f.kategorie + ":" + f.fund))})`);
     const rawMusterFindings = core.auditText(lokalMusterInput, "lokal.txt", musterCfg);
     assert(rawMusterFindings.some(f => f.kategorie === "Rest-Hostname") && rawMusterFindings.some(f => f.kategorie === "Rest-Seriennummer") && rawMusterFindings.some(f => f.kategorie === "Rest-Tabellenfeld"),
       "Lokale Muster: Prüfmodus meldet Rohdaten über lokale Muster (Hostname, Seriennummer, Tabellenfeld)");
@@ -1225,7 +1245,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       const esc = (p) => p.replace(/\\/g, "\\\\");
       const psMusterCmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(musterInPath)}" -Ausgabe "${esc(musterOutDir)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lokalMusterPath)}" -TabellenPfad "${esc(musterTabPath)}" -Unverschluesselt > $null; exit $LASTEXITCODE`;
       const psMusterRun = spawnSync("pwsh", ["-NoProfile", "-Command", psMusterCmd], { encoding: "utf8" });
-      assert(psMusterRun.status === 2, `anon.ps1 mit lokalen Mustern meldet den Rest und endet mit Exit-Code 2 (${psMusterRun.status})`);
+      assert(psMusterRun.status === 0, `anon.ps1 mit lokalen Mustern endet SAUBER mit Exit-Code 0 (${psMusterRun.status})`);
       const psMusterOut = fs.readFileSync(path.join(musterOutDir, "anonym", "eingabe.txt"), "utf8");
       assert(psMusterOut === jsMusterOut, "Parität: Lokale Muster liefern in anonymisierer.html und anon.ps1 identische Ausgabe");
       fs.rmSync(tmpMusterDir, { recursive: true, force: true });

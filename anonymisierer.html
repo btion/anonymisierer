@@ -1199,7 +1199,7 @@
       "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
       "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
-      "(?i)(?<![A-Za-z0-9_-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9_-])"
+      "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"
     ],
     "tabellenSpalten": [
       {
@@ -2105,10 +2105,10 @@
       });
 
       // Entdeckte und im Lauf bereits bekannte Hostnamen überall ersetzen
-      // (Grenzen: kein Buchstabe, keine Ziffer, kein "_" und kein "-" direkt davor oder danach)
+      // (Grenzen: kein Buchstabe, keine Ziffer und kein "-" direkt davor oder danach; "_" trennt wie in Beschreibungen üblich)
       const known = collectKnownHosts(state, discoveredHosts, cfg);
       if (known.keys.length > 0) {
-        const combinedHostRx = new RegExp(`(?<![A-Za-z0-9_-])(?:${known.keys.map(k => escapeRegExp(k)).join("|")})(?![A-Za-z0-9_-])`, "gi");
+        const combinedHostRx = new RegExp(`(?<![A-Za-z0-9-])(?:${known.keys.map(k => escapeRegExp(k)).join("|")})(?![A-Za-z0-9-])`, "gi");
         text = text.replace(combinedHostRx, (m) => {
           const tok = known.map.get(m.toLowerCase());
           if (tok) {

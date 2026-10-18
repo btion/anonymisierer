@@ -46,6 +46,8 @@
 
 .PARAMETER Zurueck
     Rückübersetzungs-Modus: Übersetzt eine Textdatei (z.B. KI-Antwort) mithilfe von -TabellenPfad wieder in echte Werte.
+    Ziel: -Ausgabe (Datei; bei mehreren Eingaben Ordner) oder standardmäßig %LOCALAPPDATA%\Anon\klartext\ (ACL nur Benutzer).
+    Der Klartext wird nie auf der Konsole ausgegeben und nie unterhalb von anonym\ oder in einem Ausgabeordner eines Laufs gespeichert.
 
 .PARAMETER Pruefen
     Führt nur den Prüfmodus auf den angegebenen Dateien/Ordnern aus und gibt "SAUBER" bei 0 Treffern zurück.
@@ -1332,13 +1334,13 @@ namespace AnonTool
                 });
 
                 // Entdeckte und im Lauf bereits bekannte Hostnamen überall im restlichen Text in einem Durchlauf ersetzen
-                // (Grenzen: kein Buchstabe, keine Ziffer, kein "_" und kein "-" direkt davor oder danach)
+                // (Grenzen: kein Buchstabe, keine Ziffer und kein "-" direkt davor oder danach; "_" trennt wie in Beschreibungen üblich)
                 SortedDictionary<string, string> knownHosts = CollectKnownHosts(state, discoveredHosts, cfg);
                 if (knownHosts.Count > 0)
                 {
                     List<string> escapedHosts = new List<string>(knownHosts.Count);
                     foreach (string kh in knownHosts.Keys) escapedHosts.Add(Regex.Escape(kh));
-                    string combinedHostPat = "(?<![A-Za-z0-9_-])(?:" + string.Join("|", escapedHosts.ToArray()) + ")(?![A-Za-z0-9_-])";
+                    string combinedHostPat = "(?<![A-Za-z0-9-])(?:" + string.Join("|", escapedHosts.ToArray()) + ")(?![A-Za-z0-9-])";
                     text = Regex.Replace(text, combinedHostPat, (Match m) =>
                     {
                         string tok;
@@ -2672,6 +2674,25 @@ function Stop-MitNummer {
     throw ("Abbruch bei Datei Nr. {0} (Schritt: {1}, Fehlerart: {2})." -f $Nummer, $Schritt, $art)
 }
 
+# Rückübersetzter Klartext darf NIE unterhalb von anonym\ oder in einem Ausgabeordner eines Laufs liegen
+# (erkennbar an den Geschwistern anonym\ und bericht.json)
+function Assert-KlartextZiel {
+    param([string]$Pfad)
+    $dir = Split-Path -Parent ([System.IO.Path]::GetFullPath($Pfad))
+    while (-not [string]::IsNullOrEmpty($dir)) {
+        $leaf = Split-Path -Leaf $dir
+        if ($leaf -ieq "anonym") {
+            throw "SICHERHEITSFEHLER: Rückübersetzter Klartext darf nicht unterhalb eines Ordners 'anonym' gespeichert werden."
+        }
+        if ((Test-Path -LiteralPath (Join-Path $dir "anonym") -PathType Container) -and (Test-Path -LiteralPath (Join-Path $dir "bericht.json") -PathType Leaf)) {
+            throw "SICHERHEITSFEHLER: Rückübersetzter Klartext darf nicht in einem Ausgabeordner eines Anonymisierungslaufs gespeichert werden."
+        }
+        $parent = Split-Path -Parent $dir
+        if ($parent -eq $dir) { break }
+        $dir = $parent
+    }
+}
+
 # Basisordner %LOCALAPPDATA%\Anon (unter macOS/Linux: ~/.local/share/Anon)
 function Get-AnonBaseDir {
     $localAppData = $env:LOCALAPPDATA
@@ -2797,16 +2818,31 @@ if ($Zurueck) {
         }
         $rawText = [AnonTool.TarGzHelper]::DecodeTextWithBom($inBytes)
         $restored = [AnonTool.AnonEngine]::DeanonymizeText($rawText, $state.Reverse)
+
+        # Zielpfad: -Ausgabe (eine Eingabe = Datei, mehrere Eingaben = Ordner) oder <Basis>\klartext\
         if (-not [string]::IsNullOrEmpty($Ausgabe)) {
-            $outParent = Split-Path -Parent $Ausgabe
-            if (-not [string]::IsNullOrEmpty($outParent) -and -not (Test-Path -LiteralPath $outParent)) {
-                [void](New-Item -ItemType Directory -Path $outParent -Force)
+            if ($Eingabe.Count -gt 1) {
+                $zielPfad = Join-Path $Ausgabe ("rueck-{0:D3}.txt" -f $einNr)
+            } else {
+                $zielPfad = $Ausgabe
             }
-            [System.IO.File]::WriteAllText($Ausgabe, $restored, (New-Object System.Text.UTF8Encoding($false)))
-            Write-Host "Rückübersetzung gespeichert in: $Ausgabe" -ForegroundColor Green
         } else {
-            Write-Output $restored
+            $klartextDir = Join-Path (Get-AnonBaseDir) "klartext"
+            $zielPfad = Join-Path $klartextDir ("rueck-{0}-{1:D3}.txt" -f (Get-Date).ToString("yyyyMMdd-HHmmss"), $einNr)
         }
+        Assert-KlartextZiel -Pfad $zielPfad
+        $zielDir = Split-Path -Parent ([System.IO.Path]::GetFullPath($zielPfad))
+        if (-not (Test-Path -LiteralPath $zielDir)) {
+            [void](New-Item -ItemType Directory -Path $zielDir -Force)
+            Set-RestrictedUserAcl -TargetPath $zielDir
+        }
+        try {
+            [System.IO.File]::WriteAllText($zielPfad, $restored, (New-Object System.Text.UTF8Encoding($false)))
+        } catch {
+            Stop-MitNummer -Nummer $einNr -Schritt "Schreiben" -Fehler $_
+        }
+        Set-RestrictedUserAcl -TargetPath $zielPfad
+        Write-Host "Rückübersetzung gespeichert in: $zielPfad" -ForegroundColor Green
     }
     exit 0
 }

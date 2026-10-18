@@ -56,7 +56,7 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
    - Archive werden **nicht** im Ausgabeordner entpackt, sondern unter `%LOCALAPPDATA%\Anon\arbeit\<zufall>\` (ACL nur Ihr Benutzer). Der Ordner wird nach jedem Lauf gelöscht, auch bei Fehler oder Abbruch (Strg+C). Reste eines hart beendeten Laufs werden beim nächsten Start entfernt.
    - Konsole und Fehlermeldungen enthalten **keine echten Werte**: Prüftreffer nur mit Kategorie, Datei und Zeile; Fehler nur mit laufender Nummer der Datei, Schritt und Fehlerart.
 3. **Prüfen (`-Pruefen`):**
-   Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `_` oder `-` grenzen (z. B. `Uplink_XY1-SW01_P56`).
+   Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `-` grenzen (z. B. `XY1-SW01-alt`).
    - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **`SAUBER`** (Exit-Code `0`).
    - Werden Restfunde entdeckt (`RESTFUNDE_VORHANDEN`), beendet sich `anon.ps1` auch im Hauptlauf mit **Exit-Code `2`**. Ergänzen Sie in diesem Fall das fehlende Muster in Ihrer `anon-regeln.lokal.json` und starten Sie den Lauf erneut.
 4. **Sichtprüfung (Pflichtschritt vor jeder Weitergabe!):**
@@ -156,9 +156,10 @@ Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldat
 ```
 
 ### Rückübersetzen einer KI-Antwort (`-Zurueck`)
+Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `%LOCALAPPDATA%\Anon\klartext\rueck-<Zeitstempel>-001.txt` (ACL nur Ihr Benutzer). Ein Ziel unterhalb eines Ordners `anonym\` oder in einem Ausgabeordner eines Laufs (erkennbar an `anonym\` und `bericht.json`) wird abgelehnt.
 ```powershell
 .\anon.ps1 -Zurueck -Eingabe "C:\Faelle\ki-antwort.txt" `
-           -Ausgabe "C:\Faelle\ki-antwort-echt.txt" `
+           -Ausgabe "C:\Klartext\ki-antwort-echt.txt" `
            -Tabelle "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json"
 ```
 
@@ -235,10 +236,10 @@ Begriffe in `festeZuordnung` und `firmenUndStandorte` werden automatisch mit Nam
 Das Basisregelwerk erkennt nur generische Beispielpräfixe (`sw-`, `core-`, `dist-`, `acc-` mit mindestens einer Ziffer). Ihr echtes Namensschema gehört in die lokale Datei. Gruppe 1 (oder der ganze Treffer) wird zu `HOST-n`:
 ```json
 "eigeneHostnamenMuster": [
-  "(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"
+  "(?i)(?<![A-Za-z0-9-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9-])"
 ]
 ```
-Einmal erkannte Hostnamen werden danach im gesamten Lauf ersetzt. Gesucht wird dabei mit den Grenzen `(?<![A-Za-z0-9_-])` und `(?![A-Za-z0-9_-])`, ein Name direkt an `_` oder `-` (z. B. `Uplink_XY1-SW01_P56`) wird also **nicht** ersetzt, aber vom Prüfmodus als `Rest-Bekannt` gemeldet.
+Einmal erkannte Hostnamen werden danach im gesamten Lauf ersetzt. Gesucht wird mit den Grenzen `(?<![A-Za-z0-9-])` und `(?![A-Za-z0-9-])`: `_` gilt als Trennzeichen (Hostnamen enthalten nach RFC 1123 keinen Unterstrich, in Beschreibungen ist er der übliche Trenner), aus `Uplink_XY1-SW01_P56` wird also `Uplink_HOST-1_P56`. Ein Name direkt an `-` (z. B. `XY1-SW01-alt`) wird nicht ersetzt, aber vom Prüfmodus als `Rest-Bekannt` gemeldet.
 
 ### C. Tabellenspalten (`tabellenSpalten`)
 Für Tabellen ohne Schlüsselwort pro Zeile (letzte Spalte von `show interface brief`, LLDP `PORT-DESC`/`SYS-NAME`, Cisco CDP `Device ID`) werden die Spaltengrenzen aus der Kopfzeile bestimmt. Eine Tabelle beginnt an einer Zeile, die alle Wörter aus `kopf` enthält, und endet an der nächsten Leerzeile. Werte nur aus Ziffern und Portnotation (`1/1/49`, `--`) bleiben stehen:
@@ -261,7 +262,7 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 "hostnamenMuster": [
   "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
   "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
-  "(?i)(?<![A-Za-z0-9_-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9_-])"
+  "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"
 ]
 ```
 

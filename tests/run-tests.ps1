@@ -947,18 +947,18 @@ $musterAusgabe = Join-Path $musterTestDir "ausgabe"
 $musterTabelle = Join-Path $musterTestDir "tabelle.json"
 $musterJson = @'
 {
-  "eigeneHostnamenMuster": ["(?i)(?<![A-Za-z0-9_-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9_-])"],
+  "eigeneHostnamenMuster": ["(?i)(?<![A-Za-z0-9-])(xy[0-9]-(?:sw|dist)[0-9]{2})(?![A-Za-z0-9-])"],
   "seriennummerMuster": ["(?i)((?<![A-Za-z0-9_])Inventar-Nr[ \\t]*:[ \\t]*)([A-Za-z0-9-]{5,24})()"],
   "tabellenSpalten": [{ "name": "Beispiel Nachbartabelle", "kopf": ["Nachbar", "Schnittstelle"], "spalten": [{ "name": "Nachbar", "kategorie": "HOST" }] }]
 }
 '@
 [System.IO.File]::WriteAllText($musterRegeln, $musterJson, (New-Object System.Text.UTF8Encoding($false)))
 $musterInput = "Peer XY1-SW03 is reachable`nuplink xy2-dist11 up, backup xy2-dist11_alt`nInventar-Nr: INV-0042-77`n`nNachbar        Schnittstelle`nnb-lager-ost   1/1/7`n"
-$musterExpected = "Peer HOST-2 is reachable`nuplink HOST-3 up, backup xy2-dist11_alt`nInventar-Nr: SERIAL-1`n`nNachbar        Schnittstelle`nHOST-1         1/1/7`n"
+$musterExpected = "Peer HOST-2 is reachable`nuplink HOST-3 up, backup HOST-3_alt`nInventar-Nr: SERIAL-1`n`nNachbar        Schnittstelle`nHOST-1         1/1/7`n"
 [System.IO.File]::WriteAllText($musterEingabe, $musterInput, (New-Object System.Text.UTF8Encoding($false)))
 
 & $anonScript -Eingabe $musterEingabe -Ausgabe $musterAusgabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -TabellenPfad $musterTabelle -Unverschluesselt > $null
-Assert-Equal $LASTEXITCODE 2 "Lokale Muster: Rest 'xy2-dist11_alt' wird gemeldet (Exit-Code 2)"
+Assert-Equal $LASTEXITCODE 0 "Lokale Muster: Ausgabe ist SAUBER (Exit-Code 0)"
 $musterOut = [System.IO.File]::ReadAllText((Join-Path (Join-Path $musterAusgabe "anonym") "eingabe.txt"), [System.Text.Encoding]::UTF8)
 Assert-True ($musterOut -ceq $musterExpected) "Lokale Muster: eigeneHostnamenMuster, seriennummerMuster und tabellenSpalten greifen (PS1)"
 & $anonScript -Eingabe $musterEingabe -Regeln $rulesPath -LokaleRegeln $musterRegeln -Pruefen > $null
@@ -990,7 +990,7 @@ $p2Dir = Join-Path $tempRunRoot "punkt2"
 [void](New-Item -ItemType Directory -Path $p2Dir -Force)
 $p2In = Join-Path $p2Dir "eingabe"
 [void](New-Item -ItemType Directory -Path $p2In -Force)
-[System.IO.File]::WriteAllText((Join-Path $p2In "probe.txt"), "hostname edge7`nlink edge7_alt`nip 192.0.2.10`n", (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText((Join-Path $p2In "probe.txt"), "hostname edge7`nlink edge7-alt`nip 192.0.2.10`n", (New-Object System.Text.UTF8Encoding($false)))
 
 # 9.1 Unbekannte Tabellenformate: Abbruch, Datei bleibt unverändert
 $fremdeTabellen = [ordered]@{
@@ -1064,6 +1064,21 @@ $verwaist = Join-Path $arbeitRoot "verwaist0001"
 (Get-Item -LiteralPath $verwaist).LastWriteTime = (Get-Date).AddDays(-2)
 & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-verwaist") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-verwaist.json") -Unverschluesselt *> $null
 Assert-True (-not (Test-Path -LiteralPath $verwaist)) "Verwaister Arbeitsordner eines abgebrochenen Laufs wird beim nächsten Start gelöscht"
+
+# 9.6b Rückübersetzung: Klartext nie unter anonym\ oder im Ausgabeordner eines Laufs, Standard <Basis>\klartext\
+$laufOrdner = Join-Path $p2Dir "aus-konsole"
+$kiDatei = Join-Path $p2Dir "ki.txt"
+[System.IO.File]::WriteAllText($kiDatei, "Pruefe HOST-1 und NET-1.H1", (New-Object System.Text.UTF8Encoding($false)))
+$konsoleTab = Join-Path $p2Dir "tab-konsole.json"
+Assert-Throws { & $anonScript -Zurueck -Eingabe $kiDatei -Ausgabe (Join-Path (Join-Path $laufOrdner "anonym") "rueck.txt") -TabellenPfad $konsoleTab *> $null } "-Zurueck: Ziel unterhalb von anonym\ wird abgelehnt"
+Assert-Throws { & $anonScript -Zurueck -Eingabe $kiDatei -Ausgabe (Join-Path $laufOrdner "rueck.txt") -TabellenPfad $konsoleTab *> $null } "-Zurueck: Ziel im Ausgabeordner eines Laufs (anonym\ + bericht.json) wird abgelehnt"
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $laufOrdner "rueck.txt"))) "-Zurueck: im Ausgabeordner wurde nichts geschrieben"
+$rueckKonsole = (& $anonScript -Zurueck -Eingabe $kiDatei -TabellenPfad $konsoleTab *>&1 | Out-String)
+$klartextDir = Join-Path (Join-Path $env:LOCALAPPDATA "Anon") "klartext"
+$klartextDateien = @(Get-ChildItem -LiteralPath $klartextDir -File -ErrorAction SilentlyContinue)
+Assert-True ($klartextDateien.Count -eq 1) "-Zurueck ohne -Ausgabe: Klartext landet in <Basis>\klartext\"
+Assert-True ($klartextDateien.Count -eq 1 -and [System.IO.File]::ReadAllText($klartextDateien[0].FullName).Contains("edge7")) "-Zurueck ohne -Ausgabe: Datei enthält den rückübersetzten Text"
+Assert-True (-not $rueckKonsole.Contains("edge7")) "-Zurueck: Klartext erscheint nicht auf der Konsole"
 
 # 9.7 Prüfung der Quelldateien: UTF-8 mit BOM, keine Gedankenstriche (PS 5.1 liest .ps1 ohne BOM als ANSI)
 foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {

@@ -9,9 +9,9 @@
   },
   {
     "id": "TC02",
-    "name": "Nicht-netzerhaltende IPv4 mit Privat/Öffentlich-Trennung (nur Dokumentationsadressen, daher beide IP-PUB)",
-    "eingabe": "src=192.0.2.55 dst=198.51.100.8",
-    "erwartet": "src=IP-PUB-1 dst=IP-PUB-2",
+    "name": "Nicht-netzerhaltende IPv4 mit Privat/Öffentlich-Trennung",
+    "eingabe": "src=192.168.0.55 dst=192.0.2.53",
+    "erwartet": "src=IP-PRIV-1 dst=IP-PUB-1",
     "netzerhaltend": false,
     "sauber": true
   },
@@ -498,10 +498,19 @@
   },
   {
     "id": "TC61",
-    "name": "Bekannte Hosts: Grenzen ohne _ und - (edge7_alt, edge7-alt bleiben), Prüfmodus meldet die Reste",
+    "name": "Bekannte Hosts: _ trennt (edge7_alt wird ersetzt), - gehört zum Namen (edge7-alt bleibt), Prüfmodus meldet den Rest",
     "eingabe": "hostname edge7\nlink edge7 up\nlink edge7_alt\nlink edge7-alt",
-    "erwartet": "hostname HOST-1\nlink HOST-1 up\nlink edge7_alt\nlink edge7-alt",
+    "erwartet": "hostname HOST-1\nlink HOST-1 up\nlink HOST-1_alt\nlink edge7-alt",
     "netzerhaltend": true,
     "sauber": false
+  },
+  {
+    "id": "TC62",
+    "name": "Bekannter Host direkt an _ außerhalb von Beschreibungsfeldern (Uplink_XY1-SW01_P56)",
+    "eingabe": "System Name: XY1-SW01\n2026-10-16 link down on Uplink_XY1-SW01_P56\nvlan 20 name VL_XY1-SW01_MGMT",
+    "erwartet": "System Name: HOST-1\n2026-10-16 link down on Uplink_HOST-1_P56\nvlan 20 name VL_HOST-1_MGMT",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRueck": true
   }
 ]
