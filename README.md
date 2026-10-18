@@ -321,6 +321,8 @@ Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\f
   ```bash
   node tests/run-tests-text.js
   ```
+- **CI** (`.github/workflows/ci.yml`): Node, Windows PowerShell 5.1 (Pflicht), PowerShell 7 und gitleaks (`.gitleaks.toml`, Allowlist nur für eindeutig erfundene Testwerte).
+- **Sicherheitslücken melden:** siehe [`SECURITY.md`](./SECURITY.md).
 - **Gemeinsamer Kern:** `core/` und `regeln/anon-regeln.json` werden mit `node tools/einbetten.js` in beide HTML-Seiten eingebettet; `node tools/einbetten.js --pruefen` (und die Testsuite) meldet Abweichungen.
 
 ---
@@ -350,6 +352,7 @@ Details: [`docs/lese-auftrag-netconan-presidio.md`](./docs/lese-auftrag-netconan
 | `api/` | geplant: Docker-Dienst für n8n (Teil D) |
 | `tests/` | `faelle.json`, `faelle-text.json`, Beispiele, Sollstand `erwartet/`, `run-tests.js`, `run-tests-text.js`, `run-tests.ps1` |
 | `tools/` | `einbetten.js` (Kern und Regelwerk in die HTML-Seiten einbetten) |
+| `.github/workflows/` | CI (Node, Windows PowerShell 5.1, PowerShell 7, gitleaks) |
 | `docs/` | Lese-Auftrag netconan/Presidio, Datenlizenzen |
 
 Der Sammler (`switch-sammler.ps1`) ist ein eigenes Projekt, siehe Abschnitt 3.

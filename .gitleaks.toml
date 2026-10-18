@@ -1,0 +1,15 @@
+# gitleaks-Konfiguration: Standardregeln plus eine enge Allowlist für erfundene Testgeheimnisse.
+# Neue Ausnahmen nur für eindeutig erfundene Werte eintragen, nie für ganze Dateien.
+title = "anonymisierer"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Erfundene Testwerte (tests/faelle.json TC20 und TC21)"
+regexes = [
+  # TC20: Schein-RSA-Schlüssel mit Platzhalterinhalt
+  '''MIIEpAIBAAKCAQEA1234567890abcdef''',
+  # TC21: öffentliches Beispiel-Token von jwt.io
+  '''SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c''',
+]

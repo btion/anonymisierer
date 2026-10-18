@@ -1,0 +1,75 @@
+# CI: Node-Tests (Browser-Engine, Text-Anonymisierer, Einbettung), Windows PowerShell 5.1 (Pflicht),
+# PowerShell 7 und gitleaks. Kein Job darf übersprungen oder als optional markiert werden.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Node (web/, core/, Parität mit pwsh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Eingebetteter Kern synchron
+        run: node tools/einbetten.js --pruefen
+      - name: Netzwerk-Anonymisierer (inkl. Paritätstest mit anon.ps1 über pwsh)
+        run: node tests/run-tests.js
+      - name: Text-Anonymisierer
+        run: node tests/run-tests-text.js
+
+  windows-ps51:
+    name: Windows PowerShell 5.1 (Pflicht)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version und .NET Framework
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          if ($PSVersionTable.PSVersion.Major -ne 5) { throw "Erwartet Windows PowerShell 5.1" }
+          (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full').Release
+      - name: Prüfbefehl der Admin-VM
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\powershell\anon.ps1 -Pruefen -Eingabe .\tests\erwartet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Testsuite
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows-pwsh7:
+    name: PowerShell 7 (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testsuite
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./tests/run-tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks installieren
+        run: |
+          curl -sfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tgz
+          tar xzf gitleaks.tgz gitleaks
+      - name: Arbeitsstand prüfen
+        run: ./gitleaks detect --source . --no-git --config .gitleaks.toml --redact --verbose
+      - name: Git-Historie prüfen
+        run: ./gitleaks detect --source . --config .gitleaks.toml --redact --verbose
