@@ -179,6 +179,9 @@ for (const tc of cases) {
     `${tc.id} (LF): Prüfmodus (-Pruefen) erwartet sauber=${tc.sauber}, erhalten=${isClean}`
   );
 
+  // Eine Zuordnungstabelle enthält nie interne Schutz-Marker (sonst ist die Rückübersetzung kaputt)
+  const tabWerte = [].concat(...Object.values(state.toJSON()).filter(v => v && typeof v === "object").map(v => Object.entries(v).flat())).join("\n");
+  assert(!/[\u0002\u0003]/.test(tabWerte), `${tc.id}: Zuordnungstabelle enthält keine Schutz-Marker`);
   if (Array.isArray(tc.tabelleEnthaeltNicht)) {
     const tabJson = JSON.stringify(state.toJSON());
     for (const geheim of tc.tabelleEnthaeltNicht) {
@@ -1279,7 +1282,9 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(core.findPlaceholderCollisions(doppelt, {}).length === 1, "A5: zwei Originalwerte mit demselben Platzhalter in einer Tabelle werden erkannt");
     assert(core.findPlaceholderCollisions(core.AnonState.fromJSON({ vorwaerts: { "host|a-1": "HOST-1" }, rueckwaerts: { "HOST-1": "a-1" } }), { "a-1": "HOST-1" }).length === 0, "A5: identische Zuordnung ist keine Kollision");
     const ladeHandler = htmlContent.slice(htmlContent.indexOf('getElementById("inputTableFile").addEventListener'), htmlContent.indexOf('getElementById("btnResetTableState")'));
-    assert(ladeHandler.includes("findPlaceholderCollisions("), "A5: anonymisierer.html prüft beim Laden einer Tabelle die Eindeutigkeit der Platzhalter");
+    assert(ladeHandler.includes("validateImportedTable("), "A5: anonymisierer.html prüft beim Laden einer Tabelle die Eindeutigkeit der Platzhalter (validateImportedTable)");
+    const koll5 = core.validateImportedTable({ version: "1.0", vorwaerts: { "host|device-x": "HOST-1" }, rueckwaerts: { "HOST-1": "device-x" } }, { "device-one": "HOST-1" });
+    assert(!koll5.ok, "A5: validateImportedTable lehnt Kollision mit festeZuordnung ab");
     }
 
     // A9: Bezeichnung "Keine Restfunde nach aktivem Regelwerk" statt "SAUBER"
@@ -1287,6 +1292,80 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(htmlContent.includes("Keine Restfunde nach aktivem Regelwerk") && htmlContent.includes('"KEINE_RESTFUNDE"'), "A9: anonymisierer.html meldet 'Keine Restfunde nach aktivem Regelwerk' (Bericht: KEINE_RESTFUNDE)");
     const readmeA9 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
     assert(readmeA9.includes("Keine Restfunde nach aktivem Regelwerk") && readmeA9.includes("KEINE_RESTFUNDE"), "A9: README erklärt 'Keine Restfunde nach aktivem Regelwerk' / KEINE_RESTFUNDE");
+  }
+
+  // --- 21. Paket B: Teilmaskierung, Exportfreigabe, Pfadkollisionen, Tabellenimport ---
+  console.log("--- 21. Paket B: Teilmaskierung, Exportfreigabe, Pfadkollisionen, Tabellenimport ---");
+  {
+    const bCfg = core.buildEngineConfig(diskRules, {});
+    // B1: Prüfmodus erkennt teilweise maskierte Werte
+    for (const teil of ['password "***** BetaSecret77"', "password '***** BetaSecret77'", "secret Rest42*****", "https://alice:*****x@host.example.invalid/"]) {
+      const fundeTeil = core.auditText(teil, "x", bCfg);
+      assert(fundeTeil.length > 0, `B1: Prüfmodus meldet teilweise maskierten Wert (${teil.replace(/[A-Za-z]+[0-9]+/g, "…")}): ${JSON.stringify(fundeTeil.map(f => f.kategorie))}`);
+    }
+
+    // B3: Exportfreigabe als Zustandsautomat; jede relevante Änderung macht das Ergebnis ungültig
+    if (typeof core.createReleaseGuard !== "function") {
+      assert(false, "B3: createReleaseGuard fehlt (zentrale Exportfreigabe)");
+    } else {
+      const g = core.createReleaseGuard();
+      assert(!g.isAllowed(), "B3: ohne Lauf keine Freigabe");
+      let lauf = g.startRun();
+      g.finishRun(lauf, { findings: [], isProbe: false, resultCount: 1 });
+      assert(g.isAllowed(), "B3: Lauf ohne Restfunde gibt frei");
+      for (const grund of ["dateien", "regeln", "eigeneBegriffe", "optionen", "tabelleGeaendert", "tabelleZurueckgesetzt", "tabelleGeladen"]) {
+        lauf = g.startRun();
+        g.finishRun(lauf, { findings: [], isProbe: false, resultCount: 1 });
+        g.markChanged(grund);
+        assert(!g.isAllowed() && g.reason() === grund, `B3: Änderung '${grund}' macht die Freigabe ungültig`);
+      }
+      const alt = g.startRun();
+      g.markChanged("dateien");
+      g.finishRun(alt, { findings: [], isProbe: false, resultCount: 1 });
+      assert(!g.isAllowed(), "B3: Lauf, während dessen sich die Eingabe geändert hat, gibt nicht frei");
+      lauf = g.startRun();
+      g.finishRun(lauf, { findings: [{ kategorie: "Rest-IPv4" }], isProbe: false, resultCount: 1 });
+      assert(!g.isAllowed(), "B3: Lauf mit Restfunden gibt nicht frei");
+      lauf = g.startRun();
+      g.finishRun(lauf, { findings: [], isProbe: true, resultCount: 1 });
+      assert(!g.isAllowed(), "B3: Trockenlauf gibt nicht frei");
+    }
+
+    // B4: Ausgabepfade müssen eindeutig sein (Windows: ohne Groß-/Kleinschreibung)
+    if (typeof core.findPathCollisions !== "function") {
+      assert(false, "B4: findPathCollisions fehlt");
+    } else {
+      assert(core.findPathCollisions(["a/HOST-1.txt", "a/host-1.txt", "b.txt"]).length === 1, "B4: gleiche Ausgabepfade (Groß-/Kleinschreibung) werden erkannt");
+      assert(core.findPathCollisions(["a.txt", "b.txt"]).length === 0, "B4: verschiedene Pfade sind keine Kollision");
+    }
+    const kollFiles = [{ path: "x/privatehost01.txt", text: "hostname privatehost01\n" }, { path: "x/HOST-1.txt", text: "uptime\n" }];
+    const kollLauf = core.reprocessFilesWithState(kollFiles, diskRules, {}, new core.AnonState(), { overrides: { netzerhaltend: true } });
+    assert(kollLauf.ok === false && /Ausgabepfad/.test((kollLauf.errors || []).join(" ")), `B4: Lauf mit doppeltem Ausgabepfad wird abgebrochen (${JSON.stringify(kollLauf.errors)})`);
+    let zipWirft = false;
+    try { core.buildReleaseZipEntries([{ path: "a.txt", anonText: "1" }, { path: "A.txt", anonText: "2" }]); } catch (e) { zipWirft = true; }
+    assert(zipWirft, "B4: ZIP mit doppelten Zielpfaden wird nicht erzeugt");
+
+    // B5: Tabellenimport prüft Schema, Formatversion und beide Richtungen
+    if (typeof core.validateImportedTable !== "function") {
+      assert(false, "B5: validateImportedTable fehlt");
+    } else {
+      const v = (obj) => core.validateImportedTable(obj, {});
+      assert(!v({ version: "1.0", vorwaerts: { "host|device-one": "HOST-1" }, rueckwaerts: { "HOST-1": "device-two" } }).ok, "B5: vorwaerts HOST|device-one -> HOST-1, rueckwaerts HOST-1 -> device-two wird abgelehnt");
+      assert(!v({ version: "9.9", vorwaerts: {}, rueckwaerts: {} }).ok, "B5: unbekannte Formatversion wird abgelehnt");
+      assert(!v({ version: "1.0", vorwaerts: {} }).ok, "B5: fehlendes rueckwaerts wird abgelehnt");
+      assert(!v({ version: "1.0", vorwaerts: { "host|a-1": 5 }, rueckwaerts: { "HOST-1": "a-1" } }).ok, "B5: nicht-textuelle Werte werden abgelehnt");
+      assert(!v({ version: "1.0", vorwaerts: { "host|a-1": "HOST-1" }, rueckwaerts: {} }).ok, "B5: Platzhalter ohne Rückrichtung wird abgelehnt");
+      assert(!v([1, 2]).ok && !v(null).ok, "B5: kein Objekt wird abgelehnt");
+      assert(v({ version: "1.0", vorwaerts: { "mac|0a1b2c3d4e5f": "MAC-1" }, rueckwaerts: { "MAC-1": "0a:1b:2c:3d:4e:5f" } }).ok, "B5: zulässige Normalisierung (MAC) wird akzeptiert");
+      // Echte Tabelle aus einem Lauf inkl. umbenanntem Platzhalter (Alias) muss akzeptiert werden
+      const echt = new core.AnonState();
+      core.processText("hostname dc9-sw01\nip address 192.0.2.5/24\nmac 0a:1b:2c:3d:4e:5f\n description Halle", core.buildEngineConfig(diskRules, { netzerhaltend: true }), echt);
+      assert(v(JSON.parse(JSON.stringify(echt.toJSON()))).ok, `B5: Tabelle aus einem echten Lauf wird akzeptiert (${v(JSON.parse(JSON.stringify(echt.toJSON()))).fehler.join(" | ")})`);
+      const umbenannt = core.renameMappingTableEntry(echt, "HOST-1", "SW-NEU", diskRules, {});
+      assert(umbenannt.ok !== false && v(JSON.parse(JSON.stringify(echt.toJSON()))).ok, "B5: Tabelle mit umbenanntem Platzhalter (Alias) wird akzeptiert");
+      const ladeHandlerB5 = htmlContent.slice(htmlContent.indexOf('getElementById("inputTableFile").addEventListener'), htmlContent.indexOf('getElementById("btnResetTableState")'));
+      assert(ladeHandlerB5.includes("validateImportedTable("), "B5: anonymisierer.html prüft importierte Tabellen vor dem Übernehmen");
+    }
   }
 
   // --- 19. Strukturvorlage (Regelentwicklung ohne Echtdaten) ---

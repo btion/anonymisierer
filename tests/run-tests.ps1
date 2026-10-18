@@ -104,6 +104,7 @@ function New-TestConfig {
         $sr.Name = [string]$gm.name
         $sr.Pattern = [string]$gm.suche
         $sr.Replacement = [string]$gm.ersetzen
+        $sr.NurWertSchuetzen = ($null -ne $gm.PSObject.Properties["nurWertSchuetzen"] -and [bool]$gm.nurWertSchuetzen)
         $sr.Compiled = New-Object System.Text.RegularExpressions.Regex ($sr.Pattern, $rxOpts, $rxTimeout)
         $cfg.GeheimnisMuster.Add($sr)
     }
@@ -165,6 +166,8 @@ foreach ($tc in $cases) {
     $isClean = ($findings.Count -eq 0)
     Assert-True ($isClean -eq [bool]$tc.sauber) "$($tc.id) (LF): Prüfmodus sauber=$isClean (erwartet $($tc.sauber))"
 
+    $tabAlles = (($st.Forward.Keys + $st.Forward.Values + $st.Reverse.Keys + $st.Reverse.Values) -join "`n")
+    Assert-True (-not ($tabAlles.Contains([string][char]2) -or $tabAlles.Contains([string][char]3))) "$($tc.id): Zuordnungstabelle enthält keine Schutz-Marker"
     if ($null -ne $tc.PSObject.Properties["tabelleEnthaeltNicht"]) {
         $tabText = (($st.Forward.Keys + $st.Forward.Values + $st.Reverse.Keys + $st.Reverse.Values) -join "`n")
         foreach ($geheim in $tc.tabelleEnthaeltNicht) {
@@ -873,6 +876,51 @@ Assert-True ($a9Konsole.Contains("KEINE_RESTFUNDE") -and $a9Konsole.Contains("Ke
 $a9Bericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $outDir "bericht.json")))
 Assert-True ($a9Bericht.pruefergebnis -eq "KEINE_RESTFUNDE") "A9: bericht.json pruefergebnis = KEINE_RESTFUNDE"
 Assert-True (-not ([System.IO.File]::ReadAllText($anonScript)).Contains("SAUBER")) "A9: anon.ps1 verwendet die Bezeichnung 'SAUBER' nicht mehr"
+
+# 9.12 Paket B4: Überschneidungen von Eingabe, Ausgabe und Tabelle; doppelte Ausgabepfade
+$ovDir = Join-Path $p2Dir "ueberschneidung"
+$ovEin = Join-Path $ovDir "eingang"
+[void](New-Item -ItemType Directory -Path $ovEin -Force)
+[System.IO.File]::WriteAllText((Join-Path $ovEin "a.txt"), "hostname ov-host01`n", (New-Object System.Text.UTF8Encoding($false)))
+# a) Eingabe liegt im Ordner anonym\ der Ausgabe: darf vor dem Einsammeln nicht gelöscht werden
+$ovAus = Join-Path $ovDir "aus"
+$ovInAnonym = Join-Path (Join-Path $ovAus "anonym") "eingang"
+[void](New-Item -ItemType Directory -Path $ovInAnonym -Force)
+[System.IO.File]::WriteAllText((Join-Path $ovInAnonym "b.txt"), "hostname ov-host02`n", (New-Object System.Text.UTF8Encoding($false)))
+$ovMeldung = ""
+try { & $anonScript -Eingabe $ovInAnonym -Ausgabe $ovAus -Regeln $rulesPath -TabellenPfad (Join-Path $ovDir "tab-a.json") -Unverschluesselt *> $null } catch { $ovMeldung = $_.Exception.Message }
+Assert-True ($ovMeldung -like "*berschneid*" -and (Test-Path -LiteralPath (Join-Path $ovInAnonym "b.txt"))) "B4: Eingabe innerhalb von <Ausgabe>\anonym wird abgelehnt und nicht gelöscht ($ovMeldung)"
+# b) Ausgabe liegt im Eingabeordner
+$ovMeldung2 = ""
+try { & $anonScript -Eingabe $ovEin -Ausgabe (Join-Path $ovEin "aus") -Regeln $rulesPath -TabellenPfad (Join-Path $ovDir "tab-b.json") -Unverschluesselt *> $null } catch { $ovMeldung2 = $_.Exception.Message }
+Assert-True ($ovMeldung2 -like "*berschneid*" -and -not (Test-Path -LiteralPath (Join-Path $ovEin "aus"))) "B4: Ausgabe innerhalb des Eingabeordners wird abgelehnt, nichts angelegt ($ovMeldung2)"
+# c) Zuordnungstabelle liegt im Eingabeordner
+$ovMeldung3 = ""
+try { & $anonScript -Eingabe $ovEin -Ausgabe (Join-Path $ovDir "aus-c") -Regeln $rulesPath -TabellenPfad (Join-Path $ovEin "tabelle.json") -Unverschluesselt *> $null } catch { $ovMeldung3 = $_.Exception.Message }
+Assert-True ($ovMeldung3 -like "*berschneid*" -and -not (Test-Path -LiteralPath (Join-Path $ovEin "tabelle.json"))) "B4: Zuordnungstabelle im Eingabeordner wird abgelehnt ($ovMeldung3)"
+# d) Zwei Eingaben ergeben denselben Ausgabepfad: Abbruch, keine Datei geschrieben
+$ovEin2 = Join-Path $ovDir "eingang2"
+[void](New-Item -ItemType Directory -Path $ovEin2 -Force)
+[System.IO.File]::WriteAllText((Join-Path $ovEin2 "a.txt"), "uptime 1 day`n", (New-Object System.Text.UTF8Encoding($false)))
+$ovAusD = Join-Path $ovDir "aus-d"
+$ovMeldung4 = ""
+try { & $anonScript -Eingabe @($ovEin, $ovEin2) -Ausgabe $ovAusD -Regeln $rulesPath -TabellenPfad (Join-Path $ovDir "tab-d.json") -Unverschluesselt *> $null } catch { $ovMeldung4 = $_.Exception.Message }
+$ovGeschrieben = @(Get-ChildItem -LiteralPath (Join-Path $ovAusD "anonym") -File -Recurse -ErrorAction SilentlyContinue).Count
+Assert-True ($ovMeldung4 -like "*Ausgabepfad*" -and $ovGeschrieben -eq 0 -and -not $ovMeldung4.Contains("a.txt")) "B4: doppelter Ausgabepfad führt zum Abbruch ohne geschriebene Datei, Meldung ohne Dateinamen ($ovMeldung4)"
+
+# 9.13 Paket B5: Tabellenimport prüft Schema, Formatversion und beide Richtungen; abgelehnte Tabelle bleibt unverändert
+$imp = @{
+    "widerspruch" = '{ "version": "1.0", "vorwaerts": { "HOST|device-one": "HOST-1" }, "rueckwaerts": { "HOST-1": "device-two" } }'
+    "version"     = '{ "version": "9.9", "vorwaerts": {}, "rueckwaerts": {} }'
+    "ohneRueck"   = '{ "version": "1.0", "vorwaerts": { "HOST|a-1": "HOST-1" } }'
+}
+foreach ($name in $imp.Keys) {
+    $impTab = Join-Path $p2Dir "import-$name.json"
+    [System.IO.File]::WriteAllText($impTab, $imp[$name], (New-Object System.Text.UTF8Encoding($false)))
+    $impMeldung = ""
+    try { & $anonScript -Zurueck -Eingabe $kiDatei -Ausgabe (Join-Path $p2Dir "import-$name-rueck.txt") -TabellenPfad $impTab *> $null } catch { $impMeldung = $_.Exception.Message }
+    Assert-True ($impMeldung -ne "" -and -not (Test-Path -LiteralPath (Join-Path $p2Dir "import-$name-rueck.txt")) -and [System.IO.File]::ReadAllText($impTab) -ceq $imp[$name]) "B5: Tabellenimport '$name' wird abgelehnt, nichts geschrieben, Tabelle unverändert ($impMeldung)"
+}
 
 # 9.8 Strukturvorlage (-Strukturvorlage)
 $svAus = Join-Path $p2Dir "struktur"

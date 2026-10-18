@@ -147,7 +147,7 @@
     "id": "TC19",
     "name": "Sophos XG / SFOS Shared-Secret und Radius-Secret entfernen",
     "eingabe": "set shared-secret \"MeinSophosIpsecSecret!\"\nset radius-secret GeheimerRadius123",
-    "erwartet": "set shared-secret *****\nset radius-secret *****",
+    "erwartet": "set shared-secret \"*****\"\nset radius-secret *****",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -426,7 +426,7 @@
     "id": "TC53",
     "name": "MikroTik: WireGuard public-key=/private-key=/preshared-key= als Geheimnis (*****) und DHCP-Lease host-name= als HOST-n",
     "eingabe": "/interface wireguard\nadd listen-port=13231 name=wg_standort private-key=\"cGxhY2Vob2xkZXJfcHJpdmF0ZV9rZXlfMTIzNDU2Nzg=\"\n/interface wireguard peers\nadd interface=wg_standort public-key=\"cHVibGljX2tleV9leGFtcGxlX2Jhc2U2NF8xMjM0NTY=\" preshared-key=\"cHJlc2hhcmVkX2tleV9leGFtcGxlXzEyMzQ1Njc4OTA=\"\n/ip dhcp-server lease\nadd address=192.0.2.25 mac-address=AA:BB:CC:11:22:33 host-name=nb-mueller-01 active-host-name=\"nb-mueller-01\"",
-    "erwartet": "/interface wireguard\nadd listen-port=13231 name=TEXT-1 private-key=*****\n/interface wireguard peers\nadd interface=TEXT-1 public-key=***** preshared-key=*****\n/ip dhcp-server lease\nadd address=NET-1.H1 mac-address=MAC-1 host-name=HOST-1 active-host-name=\"HOST-1\"",
+    "erwartet": "/interface wireguard\nadd listen-port=13231 name=TEXT-1 private-key=\"*****\"\n/interface wireguard peers\nadd interface=TEXT-1 public-key=\"*****\" preshared-key=\"*****\"\n/ip dhcp-server lease\nadd address=NET-1.H1 mac-address=MAC-1 host-name=HOST-1 active-host-name=\"HOST-1\"",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -715,5 +715,73 @@
     "sauber": true,
     "pruefeRoh": true,
     "pruefeRohKategorie": "Rest-Geheimnis"
+  },
+  {
+    "id": "TC83",
+    "name": "B1: Geheimnis in doppelten Anführungszeichen mit Leerzeichen vollständig entfernt",
+    "eingabe": "password \"Alpha BetaSecret77\"\nset passwd \"Gamma Delta\\\"Tail99\"",
+    "erwartet": "password \"*****\"\nset passwd \"*****\"",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis",
+    "tabelleEnthaeltNicht": [
+      "BetaSecret77",
+      "Alpha",
+      "Tail99"
+    ]
+  },
+  {
+    "id": "TC84",
+    "name": "B1: Geheimnis in einfachen Anführungszeichen mit Leerzeichen vollständig entfernt",
+    "eingabe": "password 'Alpha BetaSecret77'\nsnmp-server community 'Comm Unity55'",
+    "erwartet": "password '*****'\nsnmp-server community '*****'",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis",
+    "tabelleEnthaeltNicht": [
+      "BetaSecret77",
+      "Unity55"
+    ]
+  },
+  {
+    "id": "TC85",
+    "name": "B1: Numerische und boolesche JSON-Geheimnisse, JSON bleibt gültig",
+    "eingabe": "{\"password\":123456789,\"secret\": -42.5e3,\"psk\":true,\"name\":\"ok\"}",
+    "erwartet": "{\"password\":\"*****\",\"secret\": \"*****\",\"psk\":\"*****\",\"name\":\"TEXT-1\"}",
+    "netzerhaltend": true,
+    "sauber": true,
+    "jsonValid": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis",
+    "tabelleEnthaeltNicht": [
+      "123456789",
+      "42.5e3"
+    ]
+  },
+  {
+    "id": "TC86",
+    "name": "B1: Zugangsdaten in URLs werden vor dem Anlegen von Zuordnungen entfernt",
+    "eingabe": "curl https://alice:Secret77@host.example.invalid/path und ftp://bob:Pa55word@files.example.invalid/",
+    "erwartet": "curl URL-1 und URL-2",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Geheimnis",
+    "tabelleEnthaeltNicht": [
+      "Secret77",
+      "Pa55word"
+    ]
+  },
+  {
+    "id": "TC87",
+    "name": "B2: Alphabetische Werte in eindeutig bezeichneten Feldern werden anonymisiert, CLI-Wörter nicht",
+    "eingabe": "hostname BUCHHALTUNG\nSerial Number: ABCDEFGH\nSystem Name: LAGER\nhostname switch",
+    "erwartet": "hostname HOST-1\nSerial Number: SERIAL-1\nSystem Name: HOST-2\nhostname switch",
+    "netzerhaltend": true,
+    "sauber": true,
+    "pruefeRoh": true,
+    "pruefeRohKategorie": "Rest-Hostname"
   }
 ]
