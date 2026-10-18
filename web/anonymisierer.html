@@ -452,6 +452,7 @@
             <div class="small-muted" style="margin-bottom:8px;">
               Prüfen Sie vor dem Download den Prüfbericht und die Vorschau. Die Zuordnungstabelle wird niemals ins Ausgabe-ZIP gelegt!
             </div>
+            <div id="releaseLockInfo" class="small-muted" style="margin-bottom:8px;">Download und „Anonymisiert kopieren“ sind erst nach einem Lauf mit Prüfergebnis SAUBER freigegeben.</div>
             <div class="btn-row">
               <button type="button" class="success" id="btnDownloadZip" disabled>Anonymisiertes ZIP herunterladen</button>
               <button type="button" id="btnDownloadReport" disabled>Bericht (JSON) laden</button>
@@ -479,6 +480,15 @@
                   <tr><td colspan="4" class="small-muted">Keine Restfunde vorhanden.</td></tr>
                 </tbody>
               </table>
+            </div>
+            <div id="fundgruppenBox" style="display:none; margin-top:10px;">
+              <strong>Fundgruppen entscheiden</strong>
+              <div class="small-muted" style="margin:4px 0 6px;">„Immer ersetzen“ legt den Wert als eigenen Begriff mit Platzhalter an, „Fehlalarm“ als Ausnahme (bleibt im Klartext). Danach wird neu anonymisiert; freigegeben wird erst bei SAUBER.</div>
+              <div id="fundgruppenListe" style="max-height:220px; overflow:auto;"></div>
+              <div class="btn-row" style="margin-top:8px;">
+                <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden &amp; neu anonymisieren</button>
+                <span id="fundgruppenStatus" class="small-muted"></span>
+              </div>
             </div>
           </div>
 
@@ -2151,6 +2161,20 @@
     return false;
   }
 
+  function isTokenChar(c) {
+    return /^[A-Za-z0-9._-]$/.test(c);
+  }
+
+  // Wort um eine Fundstelle: Buchstaben, Ziffern, ".", "_" und "-", ohne abschließenden Punkt
+  function surroundingToken(text, start, length) {
+    let a = start;
+    let b = start + length;
+    while (a > 0 && isTokenChar(text[a - 1])) a--;
+    while (b < text.length && isTokenChar(text[b])) b++;
+    while (b > a && text[b - 1] === ".") b--;
+    return text.slice(a, b);
+  }
+
   function pickGroupValue(m) {
     if (m.length >= 3 && m[2] !== undefined) return m[2].trim();
     if (m.length >= 2 && m[1] !== undefined) return m[1].trim();
@@ -2448,6 +2472,8 @@
           knownText = knownText.replace(phRx, spaceMasker);
         }
         for (const m of knownText.matchAll(rxKnown)) {
+          // Umgebendes Wort (z. B. "edge7-alt") als Ausnahme eingetragen: kein Fund ("Fehlalarm")
+          if (cfg.exakteAusnahmen.has(surroundingToken(knownText, m.index, m[0].length).toLowerCase())) continue;
           const ln = getLineNumberFromIndex(lineStarts, m.index);
           findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-Bekannt", fund: m[0], kontext: getLineCtx(ln) });
         }
@@ -3326,7 +3352,8 @@
     };
   }
 
-  function preparePreviewCopy(processedResults, selectedIndex, mode, confirmFn) {
+  // options.freigegeben === false: Lauf insgesamt nicht SAUBER, anonymisiertes Kopieren gesperrt
+  function preparePreviewCopy(processedResults, selectedIndex, mode, confirmFn, options) {
     if (!Array.isArray(processedResults) || selectedIndex < 0 || selectedIndex >= processedResults.length) {
       return { allowed: false, reason: "NO_FILE", statusMessage: "Keine Datei ausgewählt." };
     }
@@ -3343,13 +3370,16 @@
         return { allowed: false, confirmed: false, confirmMessage, statusMessage: "Kopieren abgebrochen." };
       }
     } else {
+      // Anonymisiert kopieren erst bei SAUBER: keine Bestätigung, die eine Sperre aufhebt
       const findingsCount = Array.isArray(entry.findings) ? entry.findings.length : 0;
-      if (findingsCount > 0) {
-        const confirmMessage = `Warnung: Die Prüfung für diese Datei ist nicht SAUBER (${findingsCount} Restfund(e) vorhanden).\n\nTrotzdem in die Zwischenablage kopieren?`;
-        const confirmed = typeof confirmFn === "function" ? Boolean(confirmFn(confirmMessage)) : false;
-        if (!confirmed) {
-          return { allowed: false, confirmed: false, findingsCount, confirmMessage, statusMessage: "Kopieren abgebrochen." };
-        }
+      const laufGesperrt = Boolean(options && options.freigegeben === false);
+      if (findingsCount > 0 || laufGesperrt) {
+        return {
+          allowed: false,
+          reason: "RESTFUNDE",
+          findingsCount,
+          statusMessage: "Gesperrt: Restfunde vorhanden. Erst jede Fundgruppe entscheiden, dann neu anonymisieren."
+        };
       }
     }
 
@@ -3365,6 +3395,58 @@
       kb,
       statusMessage
     };
+  }
+
+  // Restfunde nach Kategorie und Wert gruppieren (eine Entscheidung je Gruppe)
+  function groupAuditFindings(findings) {
+    const map = new Map();
+    for (const f of (findings || [])) {
+      const fund = String(f.fund == null ? "" : f.fund).trim();
+      const key = f.kategorie + "|" + fund.toLowerCase();
+      if (!map.has(key)) map.set(key, { schluessel: key, kategorie: f.kategorie, fund, anzahl: 0, dateien: [], woerter: [] });
+      const g = map.get(key);
+      g.anzahl++;
+      if (g.dateien.indexOf(f.datei) < 0) g.dateien.push(f.datei);
+      // Entscheidungen gelten für das ganze Wort an der Fundstelle (z. B. "edge7-alt" statt "edge7")
+      let wort = fund;
+      const ctx = String(f.kontext || "");
+      const pos = /\s/.test(fund) ? -1 : ctx.toLowerCase().indexOf(fund.toLowerCase());
+      if (pos >= 0) wort = surroundingToken(ctx, pos, fund.length);
+      if (wort && !g.woerter.some(w => w.toLowerCase() === wort.toLowerCase())) g.woerter.push(wort);
+    }
+    return Array.from(map.values());
+  }
+
+  // Entscheidungen übernehmen: "ersetzen" -> festeZuordnung mit automatischem Platzhalter,
+  // "fehlalarm" -> ausnahmen.exakteWoerter. Liefert neue eigene Begriffe (Eingabe bleibt unverändert).
+  function applyFindingDecisions(customTerms, groups, decisions) {
+    const ct = cloneCustomTerms(customTerms || {});
+    const vorhanden = new Set(ct.festeZuordnung.map(r => String(r.original || "").trim().toLowerCase()));
+    const ausnahmen = new Set(ct.exakteWoerter.map(w => String(w || "").trim().toLowerCase()));
+    for (const g of (groups || [])) {
+      const d = decisions ? decisions[g.schluessel] : undefined;
+      const werte = (Array.isArray(g.woerter) && g.woerter.length > 0 ? g.woerter : [g.fund])
+        .map(w => String(w || "").trim()).filter(Boolean);
+      for (const wert of werte) {
+        if (d === "ersetzen" && !vorhanden.has(wert.toLowerCase())) {
+          ct.festeZuordnung.push({ original: wert, placeholder: "" });
+          vorhanden.add(wert.toLowerCase());
+        } else if (d === "fehlalarm" && !ausnahmen.has(wert.toLowerCase())) {
+          ct.exakteWoerter.push(wert);
+          ausnahmen.add(wert.toLowerCase());
+        }
+      }
+    }
+    return ct;
+  }
+
+  function allGroupsDecided(groups, decisions) {
+    return (groups || []).every(g => decisions && (decisions[g.schluessel] === "ersetzen" || decisions[g.schluessel] === "fehlalarm"));
+  }
+
+  // Freigabe (ZIP, Anonymisiert kopieren) nur nach einem echten Lauf mit SAUBER
+  function isReleaseAllowed(findings, isProbe, results) {
+    return !isProbe && Array.isArray(results) && results.length > 0 && Array.isArray(findings) && findings.length === 0;
   }
 
   function inferCategoryForMapping(placeholder, forwardPrefixMap) {
@@ -3742,6 +3824,9 @@
     let processedResults = []; // [{ path, originalText, anonText, findings }]
     let skippedBinaryFiles = [];
     let lastReportObj = null;
+    let releaseAllowed = false;      // ZIP und "Anonymisiert kopieren" nur bei SAUBER
+    let findingGroups = [];          // Fundgruppen des letzten Laufs
+    let findingDecisions = {};       // schluessel -> "ersetzen" | "fehlalarm"
 
     // Zustand für Vorschau der Zuordnungstabelle
     let tablePreviewShowOriginals = false;
@@ -3884,10 +3969,12 @@
       const sel = document.getElementById("previewFileSelect");
       const idx = sel ? parseInt(sel.value, 10) : -1;
       const statusEl = document.getElementById(mode === "original" ? "copyOriginalStatus" : "copyAnonStatus");
-      const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg));
+      const prep = preparePreviewCopy(processedResults, idx, mode, (msg) => window.confirm(msg), { freigegeben: releaseAllowed });
       if (!prep.allowed) {
         if (statusEl && prep.reason === "NO_FILE") {
           statusEl.textContent = "Keine Datei geladen.";
+        } else if (statusEl && prep.reason === "RESTFUNDE") {
+          statusEl.textContent = prep.statusMessage;
         }
         return;
       }
@@ -4364,6 +4451,9 @@
     });
 
     async function executeRun(isProbe) {
+      // Während eines Laufs und bis zum neuen Prüfergebnis ist nichts freigegeben
+      releaseAllowed = false;
+      updateReleaseUI();
       if (loadedInputFiles.length === 0) {
         alert("Bitte zuerst Dateien auswählen oder 'Beispieldaten laden' klicken.");
         return false;
@@ -4525,7 +4615,11 @@
           pruefTrefferAnzahl: allFindings.length
         };
 
-        document.getElementById("btnDownloadZip").disabled = isProbe || processedResults.length === 0;
+        releaseAllowed = isReleaseAllowed(allFindings, isProbe, processedResults);
+        updateReleaseUI();
+        findingGroups = groupAuditFindings(allFindings);
+        findingDecisions = {};
+        renderFindingGroupsUI();
         document.getElementById("btnDownloadReport").disabled = false;
         if (!isProbe) {
           tableHasPendingChanges = false;
@@ -4555,7 +4649,11 @@
       document.getElementById("previewOriginal").textContent = "";
       document.getElementById("previewAnon").textContent = "";
       document.getElementById("fileCountInfo").textContent = "Arbeitsspeicher vollständig geleert.";
-      document.getElementById("btnDownloadZip").disabled = true;
+      releaseAllowed = false;
+      findingGroups = [];
+      findingDecisions = {};
+      updateReleaseUI();
+      renderFindingGroupsUI();
       document.getElementById("btnDownloadReport").disabled = true;
       maskTablePreviewOriginals();
       updateTableStatusUI();
@@ -4572,7 +4670,68 @@
       setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 250);
     }
 
+    function updateReleaseUI() {
+      document.getElementById("btnDownloadZip").disabled = !releaseAllowed;
+      document.getElementById("btnCopyAnon").disabled = !releaseAllowed;
+      const info = document.getElementById("releaseLockInfo");
+      if (info) {
+        info.textContent = releaseAllowed
+          ? "Prüfergebnis SAUBER: Download und „Anonymisiert kopieren“ sind freigegeben. Bitte trotzdem sichten."
+          : "Gesperrt: Download und „Anonymisiert kopieren“ erst nach einem Lauf mit Prüfergebnis SAUBER.";
+      }
+    }
+
+    function renderFindingGroupsUI() {
+      const box = document.getElementById("fundgruppenBox");
+      const list = document.getElementById("fundgruppenListe");
+      const btn = document.getElementById("btnApplyFindingDecisions");
+      const status = document.getElementById("fundgruppenStatus");
+      list.innerHTML = "";
+      box.style.display = findingGroups.length > 0 ? "block" : "none";
+      for (const g of findingGroups) {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.gap = "8px";
+        row.style.alignItems = "center";
+        row.style.margin = "3px 0";
+        const label = document.createElement("span");
+        label.style.flex = "1";
+        label.textContent = `${g.kategorie}: ${g.woerter.length > 0 ? g.woerter.join(", ") : g.fund} (${g.anzahl}×)`;
+        const mk = (wert, text) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "btn-sm" + (findingDecisions[g.schluessel] === wert ? " primary" : "");
+          b.textContent = text;
+          b.dataset.entscheidung = wert;
+          b.addEventListener("click", () => {
+            findingDecisions[g.schluessel] = wert;
+            renderFindingGroupsUI();
+          });
+          return b;
+        };
+        row.append(label, mk("ersetzen", "Immer ersetzen"), mk("fehlalarm", "Fehlalarm"));
+        list.appendChild(row);
+      }
+      const offen = findingGroups.filter(g => !findingDecisions[g.schluessel]).length;
+      btn.disabled = findingGroups.length === 0 || !allGroupsDecided(findingGroups, findingDecisions);
+      status.textContent = findingGroups.length === 0 ? "" : (offen > 0 ? `${offen} von ${findingGroups.length} Gruppe(n) noch offen` : "Alle Gruppen entschieden");
+    }
+
+    updateReleaseUI();
+
+    document.getElementById("btnApplyFindingDecisions").addEventListener("click", async () => {
+      if (!allGroupsDecided(findingGroups, findingDecisions)) return;
+      const neu = applyFindingDecisions(readCustomTermsFromUI(), findingGroups, findingDecisions);
+      populateCustomTermsUI(neu);
+      unsavedLocalTermsChanges = true;
+      await executeRun(false);
+    });
+
     document.getElementById("btnDownloadZip").addEventListener("click", () => {
+      if (!releaseAllowed) {
+        alert("Gesperrt: Restfunde vorhanden. Erst alle Fundgruppen entscheiden und neu anonymisieren.");
+        return;
+      }
       const entries = buildReleaseZipEntries(processedResults);
       const zipBytes = createZipArchive(entries);
       triggerDownload(zipBytes, "anonym-ausgabe.zip", "application/zip");
@@ -4713,6 +4872,10 @@
       removeMappingTableEntry,
       addMappingTableEntry,
       reprocessFilesWithState,
+      groupAuditFindings,
+      applyFindingDecisions,
+      allGroupsDecided,
+      isReleaseAllowed,
       findTableFields,
       collectKnownTextTokens,
       registerTextMappingInState,

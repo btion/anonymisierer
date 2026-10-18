@@ -865,20 +865,43 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     "Kopierfunktion Anonymisiert (SAUBER, > 200 KB): Liefert ungekürzten Inhalt ohne Warnabfrage inkl. KB-Hinweis"
   );
 
-  // Anonymisiert kopieren (nicht SAUBER): verlangt Bestätigung mit Anzahl der Treffer
-  let dirtyPromptMsg = "";
-  const anonDirtyCancelled = core.preparePreviewCopy(mockProcessedResults, 1, "anon", (msg) => {
-    dirtyPromptMsg = msg;
-    return false;
-  });
-  assert(
-    anonDirtyCancelled.allowed === false &&
-    dirtyPromptMsg.includes("nicht SAUBER") &&
-    dirtyPromptMsg.includes("1"),
-    "Kopierfunktion Anonymisiert (nicht SAUBER): Warnt mit Anzahl der Treffer und bricht ohne Bestätigung ab"
-  );
-  const anonDirtyConfirmed = core.preparePreviewCopy(mockProcessedResults, 1, "anon", () => true);
-  assert(anonDirtyConfirmed.allowed === true && anonDirtyConfirmed.text === "anon with restfund", "Kopierfunktion Anonymisiert (nicht SAUBER): Erlaubt Kopieren nach ausdrücklicher Bestätigung");
+  // Anonymisiert kopieren (nicht SAUBER): gesperrt, auch eine Bestätigung hebt die Sperre nicht auf
+  let dirtyPromptCalled = false;
+  const anonDirtyBlocked = core.preparePreviewCopy(mockProcessedResults, 1, "anon", () => { dirtyPromptCalled = true; return true; });
+  assert(anonDirtyBlocked.allowed === false && anonDirtyBlocked.reason === "RESTFUNDE" && !dirtyPromptCalled,
+    "Kopierfunktion Anonymisiert (nicht SAUBER): gesperrt, keine Bestätigung möglich");
+  const anonLaufGesperrt = core.preparePreviewCopy(mockProcessedResults, 0, "anon", () => true, { freigegeben: false });
+  assert(anonLaufGesperrt.allowed === false && anonLaufGesperrt.reason === "RESTFUNDE",
+    "Kopierfunktion Anonymisiert: gesperrt, solange der Lauf insgesamt nicht SAUBER ist (auch für saubere Einzeldatei)");
+
+  // 16.3b Restfunde: Gruppen entscheiden ("immer ersetzen" / "Fehlalarm"), Freigabe erst bei SAUBER
+  {
+    const gFiles = [{ path: "probe.txt", text: "hostname edge7\nlink edge7-alt\nstatus edge7-alt ok\nkommentar Q-Wert-77\n" }];
+    const gState = new core.AnonState();
+    const lauf1 = core.reprocessFilesWithState(gFiles, diskRules, {}, gState, { overrides: { netzerhaltend: true } });
+    const gruppen = core.groupAuditFindings(lauf1.findings);
+    assert(lauf1.findings.length >= 2 && gruppen.length === 1 && gruppen[0].anzahl === lauf1.findings.length,
+      `Fundgruppen: gleiche Kategorie und gleicher Wert bilden eine Gruppe (${lauf1.findings.length} Funde, ${gruppen.length} Gruppe)`);
+    assert(!core.isReleaseAllowed(lauf1.findings, false, lauf1.results), "Freigabe: bei RESTFUNDE gesperrt");
+    assert(!core.allGroupsDecided(gruppen, {}), "Fundgruppen: ohne Entscheidung nicht vollständig");
+
+    const ersetzt = core.applyFindingDecisions({}, gruppen, { [gruppen[0].schluessel]: "ersetzen" });
+    assert(ersetzt.festeZuordnung.some(r => r.original === "edge7-alt" && r.placeholder === "") && !ersetzt.festeZuordnung.some(r => r.original === "edge7"),
+      `Entscheidung 'immer ersetzen': ganzes Wort an der Fundstelle als eigener Begriff mit automatischem Platzhalter (${JSON.stringify(ersetzt.festeZuordnung)})`);
+    const lauf2 = core.reprocessFilesWithState(gFiles, diskRules, ersetzt, new core.AnonState(), { overrides: { netzerhaltend: true } });
+    assert(lauf2.ok && lauf2.findings.length === 0 && !lauf2.results[0].anonText.includes("edge7") && core.isReleaseAllowed(lauf2.findings, false, lauf2.results),
+      "Nach 'immer ersetzen' und neuem Lauf: SAUBER und freigegeben");
+
+    const fehlalarm = core.applyFindingDecisions({}, gruppen, { [gruppen[0].schluessel]: "fehlalarm" });
+    assert(fehlalarm.exakteWoerter.includes("edge7-alt") && !fehlalarm.exakteWoerter.includes("edge7"), "Entscheidung 'Fehlalarm': das Wort an der Fundstelle wird Ausnahme, nicht der Hostname selbst");
+    const lauf3 = core.reprocessFilesWithState(gFiles, diskRules, fehlalarm, new core.AnonState(), { overrides: { netzerhaltend: true } });
+    assert(lauf3.ok && lauf3.findings.length === 0 && lauf3.results[0].anonText.startsWith("hostname HOST-1"), "Nach 'Fehlalarm' und neuem Lauf: SAUBER, der Hostname bleibt ersetzt");
+    assert(!core.isReleaseAllowed([], true, lauf3.results), "Freigabe: Trockenlauf gibt nie frei");
+
+    const exportHandler = htmlContent.slice(htmlContent.indexOf("function updateReleaseUI()"), htmlContent.indexOf('getElementById("btnDownloadReport").addEventListener'));
+    assert(exportHandler.includes('getElementById("btnDownloadZip").disabled = !releaseAllowed') && exportHandler.includes('getElementById("btnCopyAnon").disabled = !releaseAllowed') && exportHandler.includes("if (!releaseAllowed)"),
+      "UI: ZIP-Download und 'Anonymisiert kopieren' hängen an releaseAllowed (nur bei SAUBER)");
+  }
 
   // 16.4 Vorschau der Zuordnungstabelle: Originale standardmäßig nicht im DOM, erst nach Umschalten sichtbar, Suche/Filter/Sortierung, Tab-Wechsel verdeckt wieder
   const extractedTable = core.extractMappingTableEntries(customState);

@@ -741,10 +741,20 @@ $konsole = (& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-konsole
 Assert-Equal $LASTEXITCODE 2 "Konsolentest: Restfund wird gemeldet (Exit-Code 2)"
 Assert-True ($konsole.Contains("[Rest-Bekannt] probe.txt:2")) "Konsole nennt Kategorie, Datei und Zeile"
 Assert-True (-not $konsole.Contains("edge7")) "Konsole enthält den gefundenen Wert nicht"
+Assert-True ($konsole.Contains("NICHT weitergeben")) "Bei RESTFUNDE_VORHANDEN: Hinweis 'NICHT weitergeben' auf der Konsole"
 $konsolePruef = (& $anonScript -Pruefen -Eingabe $p2In -Regeln $rulesPath *>&1 | Out-String)
+Assert-True ($konsolePruef.Contains("NICHT weitergeben")) "-Pruefen NICHT SAUBER: Hinweis 'NICHT weitergeben' auf der Konsole"
 Assert-True ($konsolePruef.Contains("[Rest-IPv4] probe.txt:3") -and -not $konsolePruef.Contains("192.0.2.10") -and -not $konsolePruef.Contains("edge7")) "-Pruefen: Konsole ohne gefundene Werte"
 $berichtText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $p2Dir "aus-konsole") "bericht.json"))
 Assert-True (-not $berichtText.Contains("edge7")) "bericht.json enthält den gefundenen Wert nicht"
+
+# 9.3b Fehlalarm über anon-regeln.lokal.json: umgebendes Wort als Ausnahme, Hostname bleibt ersetzt (wie anonymisierer.html)
+$fehlalarmRegeln = Join-Path $p2Dir "fehlalarm.lokal.json"
+[System.IO.File]::WriteAllText($fehlalarmRegeln, '{ "ausnahmen": { "exakteWoerter": ["edge7-alt"] } }', (New-Object System.Text.UTF8Encoding($false)))
+& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-fehlalarm") -Regeln $rulesPath -LokaleRegeln $fehlalarmRegeln -TabellenPfad (Join-Path $p2Dir "tab-fehlalarm.json") -Unverschluesselt *> $null
+Assert-Equal $LASTEXITCODE 0 "Fehlalarm 'edge7-alt' als Ausnahme: Lauf ist SAUBER (Exit-Code 0)"
+$fehlalarmText = [System.IO.File]::ReadAllText((Join-Path (Join-Path (Join-Path $p2Dir "aus-fehlalarm") "anonym") "probe.txt"))
+Assert-True ($fehlalarmText.StartsWith("hostname HOST-1") -and $fehlalarmText.Contains("link edge7-alt")) "Fehlalarm: Hostname bleibt ersetzt, nur das Wort 'edge7-alt' bleibt stehen"
 
 # 9.4 Fehlermeldungen ohne Dateinamen
 $fehlerMeldung = ""

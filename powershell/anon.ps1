@@ -1534,6 +1534,22 @@ namespace AnonTool
             return false;
         }
 
+        private static bool IsTokenChar(char c)
+        {
+            return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+        }
+
+        // Wort um eine Fundstelle: Buchstaben, Ziffern, ".", "_" und "-", ohne abschließenden Punkt
+        public static string SurroundingToken(string text, int start, int length)
+        {
+            int a = start;
+            int b = start + length;
+            while (a > 0 && IsTokenChar(text[a - 1])) a--;
+            while (b < text.Length && IsTokenChar(text[b])) b++;
+            while (b > a && text[b - 1] == '.') b--;
+            return text.Substring(a, b - a);
+        }
+
         private static string PickGroupValue(Match m)
         {
             if (m.Groups.Count >= 3 && m.Groups[2].Success) return m.Groups[2].Value.Trim();
@@ -1910,6 +1926,8 @@ namespace AnonTool
                     }
                     foreach (Match m in rxKnown.Matches(knownText))
                     {
+                        // Umgebendes Wort (z.B. "edge7-alt") als Ausnahme eingetragen: kein Fund ("Fehlalarm")
+                        if (cfg.ExakteAusnahmen.Contains(SurroundingToken(knownText, m.Index, m.Length))) continue;
                         int ln = GetLineNumber(lineStarts, m.Index);
                         findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-Bekannt", Fund = m.Value, Kontext = getLineCtx(ln) });
                     }
@@ -2805,6 +2823,7 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
     } else {
         Write-Host "Prüfergebnis: NICHT SAUBER ($($alleFunde.Count) Treffer gefunden)" -ForegroundColor Red
         Write-PruefFunde $alleFunde
+        Write-Host "ACHTUNG: Diese Dateien NICHT weitergeben. Restfunde prüfen, Regeln oder Ausnahmen in anon-regeln.lokal.json ergänzen und neu anonymisieren." -ForegroundColor Red
         exit 2
     }
 }
@@ -3154,5 +3173,6 @@ if ($pruefStatus -eq "SAUBER") {
 } else {
     Write-Host ("Prüfergebnis (-Pruefen)  : {0} ({1} Treffer)" -f $pruefStatus, $allePruefFunde.Count) -ForegroundColor Red
     Write-PruefFunde $allePruefFunde
+    Write-Host "ACHTUNG: Ausgabe NICHT weitergeben. Restfunde prüfen, Regeln oder Ausnahmen in anon-regeln.lokal.json ergänzen und neu anonymisieren." -ForegroundColor Red
     exit 2
 }

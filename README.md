@@ -65,7 +65,7 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
 3. **Prüfen (`-Pruefen`):**
    Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, nicht entfernten Geheimnissen (alle `geheimnisMuster`), Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `-` grenzen (z. B. `XY1-SW01-alt`).
    - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **`SAUBER`** (Exit-Code `0`).
-   - Werden Restfunde entdeckt (`RESTFUNDE_VORHANDEN`), beendet sich `anon.ps1` auch im Hauptlauf mit **Exit-Code `2`**. Ergänzen Sie in diesem Fall das fehlende Muster in Ihrer `anon-regeln.lokal.json` und starten Sie den Lauf erneut.
+   - Werden Restfunde entdeckt (`RESTFUNDE_VORHANDEN`), beendet sich `anon.ps1` auch im Hauptlauf mit **Exit-Code `2`** und dem Hinweis **„NICHT weitergeben“**. Ergänzen Sie in diesem Fall das fehlende Muster in Ihrer `anon-regeln.lokal.json` und starten Sie den Lauf erneut.
 4. **Sichtprüfung (Pflichtschritt vor jeder Weitergabe!):**
    Prüfen Sie die anonymisierten Dateien in `<Ausgabe>\anonym\` (bzw. in der Side-by-Side-Vorschau von `anonymisierer.html`) stichprobenartig mit eigenen Augen – insbesondere ungewöhnliche Freitext-Kommentare, Debug-Ausgaben oder mehrzeilige Notizen.
 5. **Weitergabe:**
@@ -159,6 +159,7 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
    - Klicken Sie auf **„Anonymisieren & Prüfen“**.
    - Prüfen Sie oben rechts das Banner (**`SAUBER (0 Treffer)`** in Grün oder Restfunde in Rot) sowie darunter die Gegenüberstellung **Original vs. Anonymisiert**.
    - Laden Sie mit **„Anonymisiertes ZIP herunterladen“** das Freigabe-ZIP herunter (enthält ausschließlich `anonym/...` mit anonymisierten Dateinamen, **ohne** `bericht.json`).
+   - **Freigabe nur bei SAUBER:** Bei `RESTFUNDE VORHANDEN` sind ZIP-Download und „Anonymisiert kopieren“ gesperrt. Unter dem Prüfbericht erscheinen die Fundgruppen (gleiche Kategorie, gleicher Wert). Entscheiden Sie jede Gruppe: **„Immer ersetzen“** legt das Wort an der Fundstelle als eigenen Begriff mit Platzhalter an, **„Fehlalarm“** als Ausnahme (`ausnahmen.exakteWoerter`). Danach „Entscheidungen anwenden & neu anonymisieren“; freigegeben wird erst, wenn der neue Lauf SAUBER ist. Speichern Sie die Entscheidungen anschließend als `anon-regeln.lokal.json`, damit `anon.ps1` sie ebenfalls nutzt.
 4. **Reiter „3. Zuordnungstabelle (verschlüsselt)“:**
    - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt als `zuordnungstabelle.anontab` (Format `ANON-AES256-2`, PBKDF2-SHA256, auch in `anon.ps1` ladbar) herunterzuladen. Die Passwortfelder werden danach geleert.
    - Ältere Browser-Tabellen im Format `ANON-WEBCRYPTO-AESGCM-1` bleiben hier ladbar; speichern Sie sie einmal neu, um sie in `anon.ps1` nutzen zu können.
