@@ -819,6 +819,19 @@ foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {
     Assert-True (-not $dash) "$([System.IO.Path]::GetFileName($ps1)) enthält keine Gedankenstriche oder typografischen Anführungszeichen"
 }
 
+# 9.8 Strukturvorlage (-Strukturvorlage)
+$svAus = Join-Path $p2Dir "struktur"
+$svKonsole = (& $anonScript -Strukturvorlage -Eingabe (Join-Path $testDir "beispiele-struktur.txt") -Ausgabe $svAus -Regeln $rulesPath *>&1 | Out-String)
+Assert-Equal $LASTEXITCODE 0 "-Strukturvorlage beendet mit Exit-Code 0"
+Assert-True ($svKonsole.Contains("Vor Weitergabe sichten")) "-Strukturvorlage: Hinweis 'Vor Weitergabe sichten' auf der Konsole"
+$svDatei = Join-Path $svAus "strukturvorlage-001.txt"
+Assert-True (Test-Path -LiteralPath $svDatei) "-Strukturvorlage: nummerierte Ausgabedatei (kein Originalname)"
+$svText = [System.IO.File]::ReadAllText($svDatei)
+foreach ($wert in @("xy7", "core03", "Uplink", "192", "Buchhaltung", "Qwertz77", "AQBapG7xYz99", "TW12AB3456", "Kleinbach", "dist04", "leaf01")) {
+    Assert-True (-not $svText.Contains($wert)) "-Strukturvorlage: Wert '$wert' aus der Eingabe ist nicht mehr enthalten"
+}
+Assert-True ($svText.Contains("description <FREITEXT>") -and $svText.Contains("snmp-server community *****") -and $svText.Contains("interface 9/9/99")) "-Strukturvorlage: Freitext, Geheimnis und Form wie erwartet"
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

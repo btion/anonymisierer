@@ -55,6 +55,16 @@
 .PARAMETER Probe
     Trockenlauf: Zeigt nur, was ersetzt würde (Anzahl je Kategorie), schreibt keine anonymisierten Dateien.
 
+.PARAMETER Strukturvorlage
+    Erzeugt aus den Eingabedateien Kopien, in denen alle Werte durch ihre Form ersetzt sind
+    (Großbuchstabe -> A, Kleinbuchstabe -> a, Ziffer -> 9, Sonderzeichen bleiben). Bekannte CLI-Schlüsselwörter
+    und Tabellenköpfe (feste Liste regeln\strukturvorlage.json) bleiben, Freitextfelder werden <FREITEXT>,
+    Geheimnisse *****. Zweck: Regeln für reale Formate entwickeln. Vor Weitergabe sichten!
+    Ziel: -Ausgabe (Ordner) oder %LOCALAPPDATA%\Anon\struktur\<Zeitstempel>\.
+
+.PARAMETER Strukturwoerter
+    Pfad zur Schlüsselwortliste (Standard: strukturvorlage.json neben anon.ps1, sonst ..\regeln\).
+
 .PARAMETER Netzerhaltend
     Schalter: netzerhaltender Modus (NET-x.Hy) unabhängig von der Einstellung 'netzerhaltend' in anon-regeln.json.
 
@@ -102,6 +112,12 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch]$Probe,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Strukturvorlage,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Strukturwoerter,
 
     [Parameter(Mandatory = $false)]
     [switch]$Netzerhaltend,
@@ -1398,6 +1414,156 @@ namespace AnonTool
                 guard++;
             }
 
+            return text;
+        }
+
+        // ----------------------------------------------------------------
+        // Strukturvorlage: Form der Daten ohne Werte (A = Großbuchstabe, a = Kleinbuchstabe, 9 = Ziffer).
+        // Bekannte Schlüsselwörter (feste Liste) bleiben, Freitextfelder werden <FREITEXT>, Geheimnisse *****.
+        // ----------------------------------------------------------------
+        public static HashSet<string> BuildKeywordSet(IEnumerable<string> words)
+        {
+            HashSet<string> set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string w in words)
+            {
+                if (string.IsNullOrEmpty(w)) continue;
+                StringBuilder part = new StringBuilder();
+                foreach (char c in w + " ")
+                {
+                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { part.Append(c); continue; }
+                    if (part.Length > 0) { set.Add(part.ToString().ToLowerInvariant()); part.Length = 0; }
+                }
+            }
+            return set;
+        }
+
+        private static bool IsShapeWordChar(char c)
+        {
+            return char.IsLetter(c) || (c >= '0' && c <= '9');
+        }
+
+        private static string ShapeSegment(string seg, HashSet<string> keywords)
+        {
+            StringBuilder sb = new StringBuilder(seg.Length);
+            int i = 0;
+            while (i < seg.Length)
+            {
+                if (!IsShapeWordChar(seg[i])) { sb.Append(seg[i]); i++; continue; }
+                int j = i;
+                while (j < seg.Length && IsShapeWordChar(seg[j])) j++;
+                string run = seg.Substring(i, j - i);
+                if (keywords.Contains(run.ToLowerInvariant())) { sb.Append(run); i = j; continue; }
+                int k = i;
+                while (k < j)
+                {
+                    int e = k;
+                    bool digit = seg[k] >= '0' && seg[k] <= '9';
+                    while (e < j && ((seg[e] >= '0' && seg[e] <= '9') == digit)) e++;
+                    string part = seg.Substring(k, e - k);
+                    if (digit) sb.Append('9', part.Length);
+                    else if (keywords.Contains(part.ToLowerInvariant())) sb.Append(part);
+                    else
+                    {
+                        foreach (char c in part) sb.Append(char.IsUpper(c) ? 'A' : 'a');
+                    }
+                    k = e;
+                }
+                i = j;
+            }
+            return sb.ToString();
+        }
+
+        public static string BuildStructureTemplate(string input, EngineConfig cfg, HashSet<string> keywords, string freitextPlatzhalter)
+        {
+            if (string.IsNullOrEmpty(input)) return input;
+            string text = input;
+            List<string> protectedValues = new List<string>();
+            Func<string, string> protect = (string val) =>
+            {
+                int idx = protectedValues.Count;
+                protectedValues.Add(val);
+                return "\u0002PROT_" + idx.ToString() + "\u0003";
+            };
+
+            // 1. Tabellenspalten: Text-Spalten werden Freitext, Host-Spalten werden später geformt
+            List<TableField> fields = FindTableFields(text, cfg);
+            if (fields.Count > 0)
+            {
+                StringBuilder sbTab = new StringBuilder(text.Length);
+                int lastPos = 0;
+                foreach (TableField f in fields)
+                {
+                    if (f.Kategorie == "HOST" || IsTableValueExempt(f.Wert, cfg)) continue;
+                    string rep = freitextPlatzhalter;
+                    int fEnd = f.Start + f.Length;
+                    if (rep.Length < f.Length && !IsLineRestBlank(text, fEnd)) rep = rep + new string(' ', f.Length - rep.Length);
+                    sbTab.Append(text, lastPos, f.Start - lastPos);
+                    sbTab.Append(protect(rep));
+                    lastPos = fEnd;
+                }
+                sbTab.Append(text, lastPos, text.Length - lastPos);
+                text = sbTab.ToString();
+            }
+
+            // 2. Geheimnisse: nur "*****" wird geschützt, Präfixe (Schlüsselwörter) werden geformt
+            foreach (SecretRule rule in cfg.GeheimnisMuster)
+            {
+                text = rule.Compiled.Replace(text, (Match m) =>
+                {
+                    string rep = m.Result(rule.Replacement);
+                    return rep.Replace("*****", protect("*****"));
+                });
+            }
+
+            // 3. Freitext-Felder komplett ersetzen (ohne Ausnahmen)
+            foreach (FreeTextRule fRule in cfg.FreitextMuster)
+            {
+                text = fRule.Compiled.Replace(text, (Match m) =>
+                {
+                    if (m.Groups.Count >= 5 && fRule.Category == "BANNER")
+                    {
+                        if (m.Groups[3].Value.Trim().Length == 0) return m.Value;
+                        return m.Groups[1].Value + m.Groups[2].Value + protect(freitextPlatzhalter) + m.Groups[4].Value;
+                    }
+                    else if (m.Groups.Count >= 4)
+                    {
+                        if (m.Groups[2].Value.Trim().Length == 0) return m.Value;
+                        return m.Groups[1].Value + protect(freitextPlatzhalter) + m.Groups[3].Value;
+                    }
+                    else if (m.Groups.Count >= 3)
+                    {
+                        if (m.Groups[2].Value.Trim().Length == 0) return m.Value;
+                        return m.Groups[1].Value + protect(freitextPlatzhalter);
+                    }
+                    return m.Value;
+                });
+            }
+
+            // 4. Alles außerhalb der Schutz-Marker formen
+            StringBuilder sbOut = new StringBuilder(text.Length);
+            int pos = 0;
+            foreach (Match mk in RxUnprotect.Matches(text))
+            {
+                sbOut.Append(ShapeSegment(text.Substring(pos, mk.Index - pos), keywords));
+                sbOut.Append(mk.Value);
+                pos = mk.Index + mk.Length;
+            }
+            sbOut.Append(ShapeSegment(text.Substring(pos), keywords));
+            text = sbOut.ToString();
+
+            // 5. Schutz-Marker auflösen (geschützte Werte enthalten selbst Marker der Präfixe nicht)
+            int guard = 0;
+            while (text.IndexOf('\u0002') >= 0 && guard < 8)
+            {
+                text = RxUnprotect.Replace(text, (Match m) =>
+                {
+                    int idx;
+                    if (int.TryParse(m.Groups[1].Value, out idx) && idx >= 0 && idx < protectedValues.Count)
+                        return protectedValues[idx];
+                    return m.Value;
+                });
+                guard++;
+            }
             return text;
         }
 
@@ -2774,6 +2940,78 @@ function Remove-ArbeitsOrdner {
     if (Test-Path -LiteralPath $Arbeit.Pfad) {
         Remove-Item -LiteralPath $Arbeit.Pfad -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# ----------------------------------------------------------------------------
+# MODUS 0: Strukturvorlage (-Strukturvorlage)
+# ----------------------------------------------------------------------------
+if ($Strukturvorlage) {
+    if ($null -eq $Eingabe -or $Eingabe.Count -eq 0) {
+        throw "Bitte -Eingabe für die Strukturvorlage angeben."
+    }
+    $woerterPfad = $Strukturwoerter
+    if ([string]::IsNullOrEmpty($woerterPfad)) {
+        $woerterPfad = Join-Path $scriptDir "strukturvorlage.json"
+        $repoWoerter = Join-Path (Join-Path (Split-Path -Parent $scriptDir) "regeln") "strukturvorlage.json"
+        if (-not (Test-Path -LiteralPath $woerterPfad) -and (Test-Path -LiteralPath $repoWoerter)) { $woerterPfad = $repoWoerter }
+    }
+    if (-not (Test-Path -LiteralPath $woerterPfad)) {
+        throw "Schlüsselwortliste strukturvorlage.json nicht gefunden (Parameter -Strukturwoerter)."
+    }
+    $vorlageObj = ConvertFrom-Json -InputObject ([AnonTool.TarGzHelper]::DecodeTextWithBom([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $woerterPfad).Path)))
+    $alleWoerter = New-Object 'System.Collections.Generic.List[string]'
+    $swObj = Get-JsonProp $vorlageObj "schluesselwoerter"
+    if ($null -ne $swObj) {
+        foreach ($prop in $swObj.PSObject.Properties) {
+            foreach ($w in @($prop.Value)) { if ($null -ne $w) { $alleWoerter.Add([string]$w) } }
+        }
+    }
+    $keywords = [AnonTool.AnonEngine]::BuildKeywordSet($alleWoerter)
+    $freitextPh = [string](Get-JsonProp $vorlageObj "freitextPlatzhalter")
+    if ([string]::IsNullOrEmpty($freitextPh)) { $freitextPh = "<FREITEXT>" }
+
+    $strukturZiel = $Ausgabe
+    if ([string]::IsNullOrEmpty($strukturZiel)) {
+        $strukturZiel = Join-Path (Join-Path (Get-AnonBaseDir) "struktur") (Get-Date).ToString("yyyyMMdd-HHmmss")
+    }
+    if (-not (Test-Path -LiteralPath $strukturZiel)) { [void](New-Item -ItemType Directory -Path $strukturZiel -Force) }
+
+    # Dateien in fester Reihenfolge (relativer Pfad, ordinal), Ausgabenamen nur nummeriert (Originalnamen können Werte enthalten)
+    $strukturDateien = New-Object 'System.Collections.Generic.List[string]'
+    $einNr = 0
+    foreach ($ein in $Eingabe) {
+        $einNr++
+        if (-not (Test-Path -LiteralPath $ein)) { throw "Eingabe Nr. $einNr existiert nicht." }
+        $item = Get-Item -LiteralPath $ein
+        if ($item.PSIsContainer) {
+            $kinder = @(Get-ChildItem -LiteralPath $item.FullName -Recurse -File | ForEach-Object { $_.FullName })
+            [Array]::Sort($kinder, [System.StringComparer]::Ordinal)
+            foreach ($k in $kinder) { $strukturDateien.Add($k) }
+        } else {
+            $strukturDateien.Add($item.FullName)
+        }
+    }
+    $erlaubteEndungen = @(".txt", ".log", ".cfg", ".conf", ".json", ".xml", ".csv")
+    $nr = 0
+    $geschrieben = 0
+    foreach ($quelle in $strukturDateien) {
+        $nr++
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($quelle)
+            if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
+            $vorlage = [AnonTool.AnonEngine]::BuildStructureTemplate([AnonTool.TarGzHelper]::DecodeTextWithBom($bytes), $cfg, $keywords, $freitextPh)
+            $endung = [System.IO.Path]::GetExtension($quelle).ToLowerInvariant()
+            if ($erlaubteEndungen -notcontains $endung) { $endung = ".txt" }
+            $zielDatei = Join-Path $strukturZiel ("strukturvorlage-{0:D3}{1}" -f $nr, $endung)
+            [System.IO.File]::WriteAllText($zielDatei, $vorlage, (New-Object System.Text.UTF8Encoding($false)))
+            $geschrieben++
+        } catch {
+            Stop-MitNummer -Nummer $nr -Schritt "Strukturvorlage" -Fehler $_
+        }
+    }
+    Write-Host ("STRUKTURVORLAGE: {0} Datei(en) erzeugt in {1}" -f $geschrieben, $strukturZiel) -ForegroundColor Cyan
+    Write-Host "HINWEIS: Vor Weitergabe sichten! Die Vorlage enthält nur die Form der Daten (A/a/9), aber unbekannte Formate oder ungewöhnliche Werte können trotzdem Rückschlüsse erlauben." -ForegroundColor Yellow
+    exit 0
 }
 
 # ----------------------------------------------------------------------------

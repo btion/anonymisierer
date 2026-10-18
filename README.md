@@ -31,7 +31,7 @@ Zusätzlich gibt es den **Text-Anonymisierer** ([`web/text/text-anonymisierer.ht
 
 Kopieren Sie den Projektordner auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisierer\`). Benötigt werden:
 - `powershell\anon.ps1`
-- `regeln\anon-regeln.json` (Basisregelwerk ohne echte Infrastrukturdaten)
+- `regeln\anon-regeln.json` (Basisregelwerk ohne echte Infrastrukturdaten) und `regeln\strukturvorlage.json` (für `-Strukturvorlage`)
 - `web\anonymisierer.html` und `web\text\text-anonymisierer.html` (eigenständige Offline-Seiten)
 - `tests\` (für den Prüfbefehl in Abschnitt 8)
 
@@ -126,6 +126,13 @@ Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen
            -LokaleRegeln ".\anon-regeln.lokal.json" `
            -Tabelle "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json"
 ```
+
+### Strukturvorlage (`-Strukturvorlage`) für die Regelentwicklung
+Erzeugt aus Eingabedateien Kopien, die nur die **Form** der Daten zeigen: Großbuchstabe → `A`, Kleinbuchstabe → `a`, Ziffer → `9`, Sonderzeichen bleiben. Bekannte CLI-Schlüsselwörter und Tabellenköpfe aus der **festen Liste** `regeln/strukturvorlage.json` bleiben stehen (die Liste wird nie aus Eingabedateien gelernt), Freitextfelder (description, name, location, contact, banner, comment, Beschreibungsspalten) werden `<FREITEXT>`, Geheimnisse `*****`. So lassen sich Muster für reale Formate entwickeln, ohne Echtdaten weiterzugeben. **Vor Weitergabe sichten!**
+```powershell
+.\anon.ps1 -Strukturvorlage -Eingabe "C:\Faelle\Eingang\show-tech.txt" -Ausgabe "C:\Faelle\Struktur"
+```
+Die Ausgabedateien heißen `strukturvorlage-001.txt` usw. (Originalnamen können Werte enthalten). Ohne `-Ausgabe`: `%LOCALAPPDATA%\Anon\struktur\<Zeitstempel>\`. In `anonymisierer.html`: Karte „4. Strukturvorlage“ im ersten Reiter (Download als `strukturvorlage.zip`).
 
 ### IP-Modus (`-Netzerhaltend` / `-NichtNetzerhaltend`)
 Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldatei: `-Netzerhaltend` erzeugt `NET-1.H17/24`, `-NichtNetzerhaltend` erzeugt `IP-PRIV-n` / `IP-PUB-n`. Beide zusammen werden abgelehnt.
@@ -349,7 +356,7 @@ Details: [`docs/lese-auftrag-netconan-presidio.md`](./docs/lese-auftrag-netconan
 | `core/` | gemeinsamer Kern für die Browser-Seiten: `text/text-engine.js`, `tabelle/zuordnung.js` (Zuordnungstabelle, Rückübersetzung), `tabelle/krypto.js` (ANON-AES256-2) |
 | `web/` | `anonymisierer.html` (Netzwerkdaten) und `text/text-anonymisierer.html` (Freitext), jeweils eine eigenständige Datei |
 | `powershell/` | `anon.ps1` (Variante A, Windows PowerShell 5.1 und PowerShell 7) |
-| `regeln/` | `anon-regeln.json` (Basisregelwerk, nur Beispielwerte) |
+| `regeln/` | `anon-regeln.json` (Basisregelwerk, nur Beispielwerte), `strukturvorlage.json` (feste Schlüsselwortliste der Strukturvorlage) |
 | `api/` | geplant: Docker-Dienst für n8n (Teil D) |
 | `tests/` | `faelle.json`, `faelle-text.json`, Beispiele, Sollstand `erwartet/`, `run-tests.js`, `run-tests-text.js`, `run-tests.ps1` |
 | `tools/` | `einbetten.js` (Kern und Regelwerk in die HTML-Seiten einbetten) |

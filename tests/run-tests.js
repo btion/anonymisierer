@@ -1240,6 +1240,66 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     fs.rmSync(tmpXDir, { recursive: true, force: true });
   }
 
+  // --- 19. Strukturvorlage (Regelentwicklung ohne Echtdaten) ---
+  console.log("--- 19. Prüfe Strukturvorlage ---");
+  {
+    const vorlageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "regeln", "strukturvorlage.json"), "utf8"));
+    assert(JSON.stringify(vorlageJson) === JSON.stringify(core.STRUKTUR_VORLAGE), "Strukturvorlage: Schlüsselwortliste in anonymisierer.html identisch mit regeln/strukturvorlage.json");
+    const keywords = core.keywordSetFromVorlage(vorlageJson);
+    const svCfg = core.buildEngineConfig(diskRules, {});
+    // Buchstaben- und Ziffernfolgen wie die Vorlage sie trennt
+    const tokens = (t) => {
+      const out = [];
+      for (const run of t.match(/[\p{L}0-9]+/gu) || []) {
+        if (keywords.has(run.toLowerCase())) { out.push(run); continue; }
+        for (const part of run.match(/[0-9]+|\p{L}+/gu) || []) out.push(part);
+      }
+      return out;
+    };
+    const formOnly = (t) => /^[Aa]+$|^9+$/.test(t);
+    const pruefeVorlage = (label, input) => {
+      const out = core.buildStructureTemplate(input, svCfg, keywords, vorlageJson.freitextPlatzhalter);
+      const inputTokens = new Set(tokens(input).filter(t => !keywords.has(t.toLowerCase()) && !formOnly(t)));
+      const leaked = tokens(out).filter(t => inputTokens.has(t) && t !== "FREITEXT");
+      assert(leaked.length === 0, `Strukturvorlage ${label}: keine Buchstaben-/Ziffernfolge aus der Eingabe außer Schlüsselwörtern (${leaked.slice(0, 5).join(", ")})`);
+      if (!/-----BEGIN /.test(input)) {
+        assert(out.split(/\r?\n/).length === input.split(/\r?\n/).length, `Strukturvorlage ${label}: Zeilenzahl bleibt erhalten`);
+      }
+      return out;
+    };
+    const svInput = fs.readFileSync(path.join(__dirname, "beispiele-struktur.txt"), "utf8");
+    for (const [label, eol] of [["LF", "\n"], ["CRLF", "\r\n"]]) {
+      const out = pruefeVorlage("AOS-CX-Auszug " + label, svInput.replace(/\r?\n/g, eol));
+      const lines = out.split(eol);
+      assert(lines[0] === "hostname aa9-aaaa99", `Strukturvorlage ${label}: Schlüsselwort bleibt, Wert wird geformt (${lines[0]})`);
+      assert(lines[1] === "interface 9/9/99" && lines[3] === "    ip address 999.9.9.99/99", `Strukturvorlage ${label}: Ports und IPs als 9-Form (${lines[1]} | ${lines[3]})`);
+      assert(lines[2] === "    description <FREITEXT>" && lines[6] === "    name <FREITEXT>" && lines[10] === "banner motd ^<FREITEXT>^", `Strukturvorlage ${label}: Freitextfelder komplett <FREITEXT>`);
+      assert(lines[7] === "snmp-server community *****" && lines[8].endsWith("password ciphertext *****"), `Strukturvorlage ${label}: Geheimnisse *****`);
+      assert(lines[12].startsWith("LOCAL-PORT  CHASSIS-ID") && lines[12].endsWith("SYS-NAME"), `Strukturvorlage ${label}: Tabellenkopf bleibt erhalten`);
+      assert(lines[14].includes("9a:9a:9a:9a:9a:99") && lines[14].includes("<FREITEXT>") && lines[14].endsWith("aa9-aaaa99"), `Strukturvorlage ${label}: Tabellenzeile geformt, Beschreibungsspalte <FREITEXT> (${lines[14]})`);
+      assert(lines[16].startsWith('{"device_metadata": {"localhost": {"hostname": "aa9-leaf99", "mac": "9a:9a:9a:9a:9a:9a"}}}') && JSON.parse(lines[16]),
+        `Strukturvorlage ${label}: JSON-Struktur und Schlüssel bleiben, Schlüsselwort 'leaf' bleibt stehen (${lines[16]})`);
+    }
+    const sortierteBeispiele = fs.readdirSync(BEISPIELE_DIR).filter(f => !f.startsWith(".")).sort();
+    const jsVorlagen = sortierteBeispiele.map(f => pruefeVorlage(f, fs.readFileSync(path.join(BEISPIELE_DIR, f), "utf8")));
+    assert(htmlContent.includes("Vor Weitergabe sichten!") && htmlContent.includes('id="btnStrukturvorlage"'), "Strukturvorlage: Button und Hinweis 'Vor Weitergabe sichten!' in anonymisierer.html");
+
+    if (pwshCheck.status === 0) {
+      const svDir = fs.mkdtempSync(path.join(os.tmpdir(), "anon-struktur-"));
+      const esc = (p) => p.replace(/\\/g, "\\\\");
+      const svCmd = `& "${esc(PS1_PATH)}" -Strukturvorlage -Eingabe "${esc(BEISPIELE_DIR)}" -Ausgabe "${esc(svDir)}" -Regeln "${esc(RULES_PATH)}"; exit $LASTEXITCODE`;
+      const svRun = spawnSync("pwsh", ["-NoProfile", "-Command", svCmd], { encoding: "utf8" });
+      assert(svRun.status === 0 && /Vor Weitergabe sichten/.test(svRun.stdout), `anon.ps1 -Strukturvorlage: Exit-Code 0 und Hinweis 'Vor Weitergabe sichten' (${svRun.status})`);
+      sortierteBeispiele.forEach((f, i) => {
+        const nr = String(i + 1).padStart(3, "0");
+        const kandidaten = fs.readdirSync(svDir).filter(n => n.startsWith(`strukturvorlage-${nr}`));
+        const psOut = kandidaten.length === 1 ? fs.readFileSync(path.join(svDir, kandidaten[0]), "utf8") : null;
+        assert(psOut === jsVorlagen[i], `Parität Strukturvorlage: ${f} in anon.ps1 und anonymisierer.html identisch`);
+      });
+      fs.rmSync(svDir, { recursive: true, force: true });
+    }
+  }
+
   // --- 18. Gemeinsamer Kern & Aufteilung der Seiten (Freitext: tests/run-tests-text.js) ---
   console.log("--- 18. Prüfe gemeinsamen Kern (core/) und Aufteilung der Seiten ---");
   const einbetten = require(path.join(ROOT, "tools", "einbetten.js"));

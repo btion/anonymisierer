@@ -458,6 +458,16 @@
               <button type="button" id="btnDownloadReport" disabled>Bericht (JSON) laden</button>
             </div>
           </div>
+
+          <div class="card">
+            <h2>4. Strukturvorlage (Regelentwicklung)</h2>
+            <div class="warn-banner" style="display:block; margin-bottom:8px;"><strong>Vor Weitergabe sichten!</strong> Die Strukturvorlage ersetzt alle Werte durch ihre Form (Großbuchstabe → <code>A</code>, Kleinbuchstabe → <code>a</code>, Ziffer → <code>9</code>, Sonderzeichen bleiben). Bekannte CLI-Schlüsselwörter und Tabellenköpfe (feste Liste) bleiben, Freitextfelder werden <code>&lt;FREITEXT&gt;</code>, Geheimnisse <code>*****</code>. Zweck: Regeln für reale Formate entwickeln, ohne Echtdaten weiterzugeben.</div>
+            <div class="btn-row">
+              <button type="button" id="btnStrukturvorlage">Strukturvorlage erzeugen</button>
+              <span id="strukturStatus" class="small-muted"></span>
+            </div>
+            <textarea id="strukturVorschau" rows="8" readonly style="margin-top:8px; display:none;"></textarea>
+          </div>
         </div>
 
         <div>
@@ -1180,6 +1190,621 @@
         ]
       }
     ]
+  };
+
+  // regeln/strukturvorlage.json (eingebettet von tools/einbetten.js)
+  const STRUKTUR_VORLAGE = {
+    "beschreibung": "Feste Liste von CLI-Schlüsselwörtern und Tabellenköpfen je Hersteller für die Strukturvorlage. Wörter auf dieser Liste bleiben erhalten, alle anderen Buchstaben und Ziffern werden durch ihre Form ersetzt (A, a, 9). Nicht aus Eingabedateien ergänzen.",
+    "freitextPlatzhalter": "<FREITEXT>",
+    "schluesselwoerter": {
+      "allgemein": [
+        "3des",
+        "aaa",
+        "accept",
+        "access",
+        "accounting",
+        "acl",
+        "active",
+        "add",
+        "address",
+        "addresses",
+        "admin",
+        "aes",
+        "age",
+        "aggregation",
+        "alias",
+        "all",
+        "allow",
+        "allowed",
+        "any",
+        "api",
+        "area",
+        "arp",
+        "arp_inspection",
+        "as",
+        "auth",
+        "authentication",
+        "authorization",
+        "auto",
+        "backup",
+        "banner",
+        "bgp",
+        "block",
+        "bond",
+        "bonding",
+        "boot",
+        "bridge",
+        "broadcast",
+        "build",
+        "bytes",
+        "capabilities",
+        "capability",
+        "cdp",
+        "cest",
+        "cet",
+        "channel",
+        "chassis",
+        "cipher",
+        "ciphertext",
+        "class",
+        "client",
+        "clients",
+        "clock",
+        "collisions",
+        "community",
+        "config",
+        "configuration",
+        "console",
+        "contact",
+        "control",
+        "cos",
+        "cost",
+        "count",
+        "counter",
+        "counters",
+        "cpu",
+        "crc",
+        "current",
+        "date",
+        "day",
+        "days",
+        "dead",
+        "default",
+        "delete",
+        "deny",
+        "des",
+        "description",
+        "destination",
+        "dhcp",
+        "disable",
+        "disabled",
+        "disabled_reason",
+        "discards",
+        "distance",
+        "dns",
+        "domain",
+        "dot1x",
+        "down",
+        "drop",
+        "drops",
+        "dscp",
+        "dst",
+        "duplex",
+        "eigrp",
+        "enable",
+        "enabled",
+        "enabled_status",
+        "encrypted",
+        "engine",
+        "engineid",
+        "entries",
+        "entry",
+        "err",
+        "error",
+        "error_disabled",
+        "errors",
+        "et",
+        "eth",
+        "ethernet",
+        "evpn",
+        "exec",
+        "expire",
+        "expires",
+        "fa",
+        "fabric",
+        "facility",
+        "fail",
+        "failed",
+        "false",
+        "fan",
+        "fans",
+        "fe",
+        "firmware",
+        "fo",
+        "fortygige",
+        "ftp",
+        "full",
+        "gateway",
+        "ge",
+        "get",
+        "gi",
+        "gigabitethernet",
+        "group",
+        "groups",
+        "half",
+        "hardware",
+        "hash",
+        "hello",
+        "helper",
+        "hold",
+        "holdtime",
+        "holdtme",
+        "hop",
+        "host",
+        "hostname",
+        "hosts",
+        "hour",
+        "hours",
+        "http",
+        "https",
+        "hu",
+        "hundredgige",
+        "icmp",
+        "id",
+        "igmp",
+        "image",
+        "in",
+        "inactive",
+        "index",
+        "inform",
+        "informs",
+        "input",
+        "interface",
+        "interfaces",
+        "interval",
+        "intf",
+        "intrfce",
+        "ip",
+        "ipv4",
+        "ipv6",
+        "irf",
+        "isis",
+        "keepalive",
+        "key",
+        "key_id",
+        "keys",
+        "lacp",
+        "lag",
+        "leaf",
+        "level",
+        "limit",
+        "line",
+        "link",
+        "link_status",
+        "links",
+        "list",
+        "lldp",
+        "lo",
+        "local",
+        "location",
+        "log",
+        "logging",
+        "login",
+        "loopback",
+        "mab",
+        "mac",
+        "management",
+        "manager",
+        "map",
+        "mask",
+        "master",
+        "md5",
+        "mem",
+        "member",
+        "members",
+        "memory",
+        "metric",
+        "mgmt",
+        "minute",
+        "minutes",
+        "mlag",
+        "mld",
+        "mode",
+        "model",
+        "module",
+        "motd",
+        "ms",
+        "mstp",
+        "mtu",
+        "multicast",
+        "name",
+        "native",
+        "ndp",
+        "neighbor",
+        "neighbors",
+        "neighbour",
+        "netconf",
+        "netmask",
+        "network",
+        "networks",
+        "next",
+        "no",
+        "noauth",
+        "none",
+        "ntp",
+        "null",
+        "number",
+        "nve",
+        "octets",
+        "off",
+        "ok",
+        "on",
+        "oper",
+        "operational",
+        "operator",
+        "operators",
+        "ospf",
+        "out",
+        "output",
+        "overlay",
+        "packets",
+        "password",
+        "peer",
+        "peers",
+        "permit",
+        "pim",
+        "plaintext",
+        "platform",
+        "poe",
+        "police",
+        "policies",
+        "policy",
+        "port",
+        "ports",
+        "power",
+        "preference",
+        "prefix",
+        "primary",
+        "priority",
+        "priv",
+        "privilege",
+        "profile",
+        "profiles",
+        "proto",
+        "protocol",
+        "psu",
+        "pvid",
+        "qos",
+        "qsfp",
+        "queue",
+        "queues",
+        "radius",
+        "radius_server",
+        "rate",
+        "read",
+        "reason",
+        "reject",
+        "relay",
+        "remote",
+        "remove",
+        "rest",
+        "restconf",
+        "retry",
+        "rip",
+        "ro",
+        "role",
+        "route",
+        "router",
+        "routes",
+        "routing",
+        "rstp",
+        "rule",
+        "rules",
+        "running",
+        "rw",
+        "rx",
+        "scp",
+        "sec",
+        "second",
+        "secondary",
+        "seconds",
+        "secret",
+        "sensor",
+        "sensors",
+        "serial",
+        "server",
+        "service",
+        "services",
+        "set",
+        "severity",
+        "sfp",
+        "sftp",
+        "sha",
+        "sha1",
+        "sha256",
+        "sha384",
+        "sha512",
+        "shape",
+        "shell",
+        "show",
+        "shutdown",
+        "simple",
+        "slave",
+        "slot",
+        "snmp",
+        "snooping",
+        "software",
+        "source",
+        "spanning",
+        "speed",
+        "spine",
+        "src",
+        "ssh",
+        "stack",
+        "stacking",
+        "standby",
+        "startup",
+        "state",
+        "static",
+        "status",
+        "storm",
+        "stp",
+        "subnet",
+        "success",
+        "supply",
+        "switchname",
+        "syslog",
+        "sysname",
+        "system",
+        "table",
+        "tacacs",
+        "tag",
+        "tagged",
+        "tcp",
+        "te",
+        "telnet",
+        "temp",
+        "temperature",
+        "template",
+        "tengigabitethernet",
+        "tftp",
+        "time",
+        "timeout",
+        "timezone",
+        "total",
+        "trap",
+        "traps",
+        "tree",
+        "true",
+        "trunk",
+        "ttl",
+        "tunnel",
+        "twentyfivegige",
+        "tx",
+        "type",
+        "udp",
+        "underlay",
+        "unicast",
+        "untag",
+        "untagged",
+        "up",
+        "uptime",
+        "user",
+        "username",
+        "utc",
+        "v1",
+        "v2c",
+        "v3",
+        "value",
+        "values",
+        "version",
+        "view",
+        "vif",
+        "vlan",
+        "vlanif",
+        "vlans",
+        "vni",
+        "voltage",
+        "vpc",
+        "vrf",
+        "vsf",
+        "vsx",
+        "vtep",
+        "vty",
+        "vxlan",
+        "web",
+        "weight",
+        "write",
+        "xe",
+        "yes"
+      ],
+      "aruba-aoscx": [
+        "aos",
+        "aoscx",
+        "aruba",
+        "arubaos",
+        "chassis-id",
+        "cx",
+        "hpe",
+        "https-server",
+        "inter-switch-link",
+        "ip-helper-address",
+        "isl",
+        "keepalive",
+        "lag-mode",
+        "local-port",
+        "loop-protect",
+        "mirror",
+        "port-desc",
+        "port-id",
+        "procurve",
+        "qos-trust",
+        "rest-api",
+        "session",
+        "show",
+        "ssh-server",
+        "switch-name",
+        "sys-desc",
+        "sys-name",
+        "system-mac",
+        "tech",
+        "trust",
+        "vlan-id",
+        "vsx-mac",
+        "vsx-sync"
+      ],
+      "cisco": [
+        "anyconnect",
+        "bpduguard",
+        "capability",
+        "catalyst",
+        "channel-group",
+        "cisco",
+        "crypto",
+        "device",
+        "dot1q",
+        "encapsulation",
+        "errdisable",
+        "ether-channel",
+        "glbp",
+        "holdtme",
+        "hsrp",
+        "intrfce",
+        "ios",
+        "iosxe",
+        "ip_address",
+        "ipsec",
+        "isakmp",
+        "local",
+        "nexus",
+        "nx-os",
+        "nxos",
+        "platform",
+        "port-channel",
+        "portfast",
+        "pvst",
+        "rapid-pvst",
+        "spanning-tree",
+        "standby",
+        "storm-control",
+        "switchport",
+        "transform-set",
+        "tunnel-group",
+        "vrrp",
+        "webvpn",
+        "xe",
+        "xr"
+      ],
+      "hpe-comware": [
+        "bridge-aggregation",
+        "comware",
+        "current-configuration",
+        "display",
+        "domain",
+        "h3c",
+        "hp",
+        "hwtacacs",
+        "info-center",
+        "irf-port",
+        "link-type",
+        "local-user",
+        "port-isolate",
+        "route-aggregation",
+        "scheme",
+        "service-type",
+        "stp-edged",
+        "sysname",
+        "vlan-interface"
+      ],
+      "dell-os10-sonic": [
+        "acl_rule",
+        "acl_table",
+        "admin_status",
+        "autoneg",
+        "bgp_neighbor",
+        "breakout",
+        "config_db",
+        "dell",
+        "device_metadata",
+        "enterprise",
+        "feature",
+        "fec",
+        "hwsku",
+        "lanes",
+        "localhost",
+        "loopback_interface",
+        "mac",
+        "mgmt_interface",
+        "mgmt_port",
+        "ntp_server",
+        "oper_status",
+        "os10",
+        "portchannel",
+        "portchannel_member",
+        "redis",
+        "sflow",
+        "sonic",
+        "syslog_server",
+        "vlan_interface",
+        "vlan_member"
+      ],
+      "mikrotik": [
+        "bonding",
+        "bridge-port",
+        "combo",
+        "comment",
+        "default-name",
+        "disabled",
+        "ether",
+        "export",
+        "find",
+        "hide-sensitive",
+        "identity",
+        "interface-list",
+        "mikrotik",
+        "pppoe-out",
+        "print",
+        "routerboard",
+        "routeros",
+        "sfp-sfpplus",
+        "terse",
+        "where",
+        "without-paging",
+        "wlan"
+      ],
+      "fortinet-sophos": [
+        "action",
+        "addrgrp",
+        "config",
+        "dmz",
+        "dstaddr",
+        "dstintf",
+        "edit",
+        "enc",
+        "end",
+        "firewall",
+        "fortigate",
+        "fortinet",
+        "fortios",
+        "ipsec",
+        "lan",
+        "nat",
+        "next",
+        "phase1-interface",
+        "phase2-interface",
+        "psksecret",
+        "schedule",
+        "set",
+        "sfos",
+        "sophos",
+        "srcaddr",
+        "srcintf",
+        "utm",
+        "vdom",
+        "wan",
+        "xg"
+      ]
+    }
   };
 
   // ============================================================================
@@ -2080,6 +2705,133 @@
       guard++;
     }
 
+    return text;
+  }
+
+  // --------------------------------------------------------------------------
+  // Strukturvorlage: Form der Daten ohne Werte (A = Großbuchstabe, a = Kleinbuchstabe, 9 = Ziffer).
+  // Bekannte Schlüsselwörter (feste Liste) bleiben, Freitextfelder werden <FREITEXT>, Geheimnisse *****.
+  // Identisch zu AnonEngine.BuildStructureTemplate in anon.ps1.
+  // --------------------------------------------------------------------------
+  function buildKeywordSet(words) {
+    const set = new Set();
+    for (const w of (words || [])) {
+      for (const part of String(w || "").split(/[^A-Za-z0-9]+/)) {
+        if (part) set.add(part.toLowerCase());
+      }
+    }
+    return set;
+  }
+
+  function keywordSetFromVorlage(vorlage) {
+    const all = [];
+    for (const list of Object.values((vorlage && vorlage.schluesselwoerter) || {})) all.push(...list);
+    return buildKeywordSet(all);
+  }
+
+  function isShapeWordChar(c) {
+    return /^\p{L}$/u.test(c) || (c >= "0" && c <= "9");
+  }
+
+  function shapeSegment(seg, keywords) {
+    let out = "";
+    let i = 0;
+    while (i < seg.length) {
+      if (!isShapeWordChar(seg[i])) { out += seg[i]; i++; continue; }
+      let j = i;
+      while (j < seg.length && isShapeWordChar(seg[j])) j++;
+      const run = seg.slice(i, j);
+      if (keywords.has(run.toLowerCase())) { out += run; i = j; continue; }
+      let k = i;
+      while (k < j) {
+        const digit = seg[k] >= "0" && seg[k] <= "9";
+        let e = k;
+        while (e < j && ((seg[e] >= "0" && seg[e] <= "9") === digit)) e++;
+        const part = seg.slice(k, e);
+        if (digit) out += "9".repeat(part.length);
+        else if (keywords.has(part.toLowerCase())) out += part;
+        else {
+          for (const c of part) out += /^\p{Lu}$/u.test(c) ? "A" : "a";
+        }
+        k = e;
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  function buildStructureTemplate(input, cfg, keywords, freitextPlatzhalter) {
+    if (!input) return input;
+    const ph = freitextPlatzhalter || "<FREITEXT>";
+    let text = input;
+    const protectedValues = [];
+    const protect = (val) => {
+      const idx = protectedValues.length;
+      protectedValues.push(val);
+      return `\u0002PROT_${idx}\u0003`;
+    };
+
+    // 1. Tabellenspalten: Text-Spalten werden Freitext, Host-Spalten werden später geformt
+    const fields = findTableFields(text, cfg);
+    if (fields.length > 0) {
+      const parts = [];
+      let lastPos = 0;
+      for (const f of fields) {
+        if (f.kategorie === "HOST" || isTableValueExempt(f.wert, cfg)) continue;
+        let rep = ph;
+        const fEnd = f.start + f.length;
+        if (rep.length < f.length && !isLineRestBlank(text, fEnd)) rep = rep + " ".repeat(f.length - rep.length);
+        parts.push(text.slice(lastPos, f.start));
+        parts.push(protect(rep));
+        lastPos = fEnd;
+      }
+      parts.push(text.slice(lastPos));
+      text = parts.join("");
+    }
+
+    // 2. Geheimnisse: nur "*****" wird geschützt, Präfixe (Schlüsselwörter) werden geformt
+    for (const rule of cfg.geheimnisMuster) {
+      text = text.replace(rule.compiled, (...args) => applySecretReplacement(rule.replacement, args).split("*****").join(protect("*****")));
+    }
+
+    // 3. Freitext-Felder komplett ersetzen (ohne Ausnahmen)
+    for (const fRule of cfg.freitextMuster) {
+      text = text.replace(fRule.compiled, (...args) => {
+        const m = args[0];
+        const groups = args.slice(1, -2);
+        if (groups.length >= 4 && fRule.category === "BANNER") {
+          if (!(groups[2] || "").trim()) return m;
+          return groups[0] + groups[1] + protect(ph) + groups[3];
+        } else if (groups.length >= 3) {
+          if (!(groups[1] || "").trim()) return m;
+          return groups[0] + protect(ph) + (groups[2] || "");
+        } else if (groups.length >= 2) {
+          if (!(groups[1] || "").trim()) return m;
+          return groups[0] + protect(ph);
+        }
+        return m;
+      });
+    }
+
+    // 4. Alles außerhalb der Schutz-Marker formen
+    let out = "";
+    let pos = 0;
+    for (const mk of text.matchAll(RxUnprotect)) {
+      out += shapeSegment(text.slice(pos, mk.index), keywords) + mk[0];
+      pos = mk.index + mk[0].length;
+    }
+    out += shapeSegment(text.slice(pos), keywords);
+    text = out;
+
+    // 5. Schutz-Marker auflösen
+    let guard = 0;
+    while (text.indexOf("\u0002") !== -1 && guard < 8) {
+      text = text.replace(RxUnprotect, (m, d) => {
+        const idx = parseInt(d, 10);
+        return (idx >= 0 && idx < protectedValues.length) ? protectedValues[idx] : m;
+      });
+      guard++;
+    }
     return text;
   }
 
@@ -4737,6 +5489,39 @@
       triggerDownload(zipBytes, "anonym-ausgabe.zip", "application/zip");
     });
 
+    // Strukturvorlage: nummerierte Dateien (Originalnamen können Werte enthalten) als ZIP
+    document.getElementById("btnStrukturvorlage").addEventListener("click", () => {
+      if (loadedInputFiles.length === 0) {
+        alert("Bitte zuerst Dateien auswählen.");
+        return;
+      }
+      let rules;
+      try { rules = JSON.parse(rulesTextarea.value); } catch (e) { alert("Fehler in der Regeldatei (JSON ungültig): " + e.message); return; }
+      const mergeRes = validateAndMergeEigeneBegriffe(rules, readCustomTermsFromUI());
+      if (!mergeRes.valid) { alert("Fehler in 'Eigene Begriffe':\n" + mergeRes.errors.join("\n")); return; }
+      const cfg = buildEngineConfig(mergeRes.mergedRules, {});
+      const keywords = keywordSetFromVorlage(STRUKTUR_VORLAGE);
+      const enc = new TextEncoder();
+      const sortiert = loadedInputFiles.slice().sort((a, b) => (a.path < b.path ? -1 : (a.path > b.path ? 1 : 0)));
+      const erlaubt = [".txt", ".log", ".cfg", ".conf", ".json", ".xml", ".csv"];
+      const entries = [];
+      let erste = "";
+      sortiert.forEach((item, idx) => {
+        if (isBinaryBytes(item.bytes)) return;
+        const vorlage = buildStructureTemplate(decodeBytesWithBom(item.bytes), cfg, keywords, STRUKTUR_VORLAGE.freitextPlatzhalter);
+        const m = /\.[A-Za-z0-9]+$/.exec(item.path);
+        const endung = m && erlaubt.indexOf(m[0].toLowerCase()) >= 0 ? m[0].toLowerCase() : ".txt";
+        const nr = String(idx + 1).padStart(3, "0");
+        entries.push({ path: `strukturvorlage/strukturvorlage-${nr}${endung}`, data: enc.encode(vorlage) });
+        if (!erste) erste = vorlage;
+      });
+      const vorschau = document.getElementById("strukturVorschau");
+      vorschau.style.display = "block";
+      vorschau.value = formatPreviewText(erste);
+      document.getElementById("strukturStatus").textContent = `${entries.length} Strukturvorlage(n) erzeugt. Vor Weitergabe sichten!`;
+      triggerDownload(createZipArchive(entries), "strukturvorlage.zip", "application/zip");
+    });
+
     document.getElementById("btnDownloadReport").addEventListener("click", () => {
       if (!lastReportObj) return;
       triggerDownload(JSON.stringify(lastReportObj, null, 2), "bericht.json", "application/json");
@@ -4874,6 +5659,10 @@
       reprocessFilesWithState,
       groupAuditFindings,
       applyFindingDecisions,
+      buildStructureTemplate,
+      keywordSetFromVorlage,
+      buildKeywordSet,
+      STRUKTUR_VORLAGE,
       allGroupsDecided,
       isReleaseAllowed,
       findTableFields,

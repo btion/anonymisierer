@@ -1,0 +1,17 @@
+hostname xy7-core03
+interface 1/1/12
+    description Uplink to XY7-DIST04 Raum B12
+    ip address 192.0.2.10/24
+    no shutdown
+vlan 140
+    name Buchhaltung_OG2
+snmp-server community Qwertz77
+user admin group administrators password ciphertext AQBapG7xYz99
+Chassis Serial Nbr : TW12AB3456
+banner motd ^Nur Zutritt fuer Firma Kleinbach^
+
+LOCAL-PORT  CHASSIS-ID         PORT-ID   PORT-DESC                  TTL     SYS-NAME
+------------------------------------------------------------------------------------
+1/1/49      0a:1b:2c:3d:4e:60  1/1/50    Uplink zu Halle Nord       120     xy7-dist04
+
+{"device_metadata": {"localhost": {"hostname": "xy7-leaf01", "mac": "0a:1b:2c:3d:4e:5f"}}}

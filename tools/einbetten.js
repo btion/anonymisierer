@@ -1,4 +1,5 @@
-// Bettet den gemeinsamen Kern (core/) und das Regelwerk (regeln/anon-regeln.json) in die
+// Bettet den gemeinsamen Kern (core/), das Regelwerk (regeln/anon-regeln.json) und die
+// Schlüsselwortliste der Strukturvorlage (regeln/strukturvorlage.json) in die
 // Offline-Seiten ein. Die Seiten bleiben einzelne HTML-Dateien ohne externe Skripte.
 //
 //   node tools/einbetten.js            schreibt alle Seiten neu
@@ -10,6 +11,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const REGELN = "regeln/anon-regeln.json";
+const STRUKTUR = "regeln/strukturvorlage.json";
 
 // Seite -> eingebettete Kerndateien (Reihenfolge wie in der Seite)
 const SEITEN = {
@@ -60,10 +62,21 @@ function regelnEinbetten(html) {
   return html.slice(0, a) + block + html.slice(b + "\n  };".length);
 }
 
+function strukturVorlageEinbetten(html) {
+  const json = JSON.parse(lesen(STRUKTUR));
+  const zeilen = JSON.stringify(json, null, 2).split("\n");
+  const block = "  const STRUKTUR_VORLAGE = " + zeilen.map((z, i) => (i === 0 ? z : "  " + z)).join("\n") + ";";
+  const marke = "  const STRUKTUR_VORLAGE = ";
+  const a = html.indexOf(marke);
+  if (a < 0) throw new Error("STRUKTUR_VORLAGE nicht gefunden");
+  const b = html.indexOf(";\n", a);
+  return html.slice(0, a) + block + html.slice(b + 1);
+}
+
 function sollStand(seite) {
   let html = lesen(seite);
   for (const rel of SEITEN[seite]) html = einbetten(html, rel, seite);
-  if (seite === "web/anonymisierer.html") html = regelnEinbetten(html);
+  if (seite === "web/anonymisierer.html") html = strukturVorlageEinbetten(regelnEinbetten(html));
   return html;
 }
 
