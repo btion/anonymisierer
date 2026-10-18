@@ -53,7 +53,8 @@ Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShel
    - Geheimnisse (Passwörter, Hashes, `ciphertext`, HPE Comware `password/key cipher|simple|hash`, MikroTik `private-key=`/`public-key=`, SNMP-Communities, PSKs, PEM-Blöcke) werden unwiderruflich durch `*****` entfernt.
    - Infrastrukturdaten (IPs mit netzerhaltendem Format `NET-1.H17/24`, MACs als `MAC-1`, Hostnamen als `HOST-1` bzw. feste Rollen wie `CORE-A` / `TOR-A`, VLAN-Namen und Beschreibungen als `TEXT-1`) werden über alle Dateien hinweg konsistent ersetzt.
    - Die Zuordnungstabelle wird **außerhalb** des Ausgabeordners unter `%LOCALAPPDATA%\Anon\Tabellen\` abgelegt (geschützt per Windows-ACL auf Ihren Benutzer sowie standardmäßig unter Windows mit DPAPI oder per `-MitPasswort` mit `ANON-AES256-2` verschlüsselt).
-   - Der temporäre Entpack-Ordner `<Ausgabe>\_arbeit\` wird nach dem Lauf automatisch gelöscht.
+   - Archive werden **nicht** im Ausgabeordner entpackt, sondern unter `%LOCALAPPDATA%\Anon\arbeit\<zufall>\` (ACL nur Ihr Benutzer). Der Ordner wird nach jedem Lauf gelöscht, auch bei Fehler oder Abbruch (Strg+C). Reste eines hart beendeten Laufs werden beim nächsten Start entfernt.
+   - Konsole und Fehlermeldungen enthalten **keine echten Werte**: Prüftreffer nur mit Kategorie, Datei und Zeile; Fehler nur mit laufender Nummer der Datei, Schritt und Fehlerart.
 3. **Prüfen (`-Pruefen`):**
    Nach jedem Lauf sucht der Prüfmodus automatisch in allen Ausgabedateien **und Dateipfaden** nach eventuell verbliebenen IPv4/IPv6-Adressen, MAC-Adressen (alle Schreibweisen), E-Mail-Adressen, Sperrbegriffen, Hashes, langen Hex/Base64-Blobs, Hostnamen, Seriennummern, Benutzern, nicht ersetzten Freitext-Feldern und Tabellenspalten. Zusätzlich sucht er nach allen Originalwerten, die im Lauf erkannt wurden (Hosts, Seriennummern, Benutzer, Mail, Firmen), auch dort, wo sie direkt an `_` oder `-` grenzen (z. B. `Uplink_XY1-SW01_P56`).
    - Nur wenn **0 Treffer** vorliegen, lautet das Ergebnis **`SAUBER`** (Exit-Code `0`).
@@ -113,7 +114,14 @@ cd C:\Tools\anonymisierer
 - **Zuordnungstabelle (getrennt, ACL- & DPAPI-geschützt):** `%LOCALAPPDATA%\Anon\Tabellen\tabelle-<Zeitstempel>.json`
 
 ### Mit Passwortverschlüsselung (`-MitPasswort`, Format `ANON-AES256-2`) oder Klartext (`-Unverschluesselt`)
-Passwörter müssen **mindestens 12 Zeichen** lang sein und werden sicher per `Read-Host -AsSecureString` abgefragt (beim Neuanlegen zweimal zur Bestätigung). Das Format `ANON-AES256-2` leitet über `PBKDF2-SHA1` (600.000 Iterationen) einen Master-Key ab, trennt davon per `HMAC-SHA256` separate Schlüssel für AES-256-CBC (`"enc"`) und HMAC-SHA256 (`"mac"`) ab und sichert Header, Iterationszahl, Salt, IV und Ciphertext vor der Entschlüsselung in konstanter Zeit ab. Ältere `ANON-AES256-1`-Tabellen bleiben mit einer Warnung ladbar und werden beim nächsten Speichern automatisch auf `ANON-AES256-2` aktualisiert.
+Passwörter müssen **mindestens 12 Zeichen** lang sein und werden sicher per `Read-Host -AsSecureString` abgefragt (beim Neuanlegen zweimal zur Bestätigung). Das Passwort bleibt bis zur Schlüsselableitung ein `SecureString`; die Zwischenpuffer werden danach mit Nullen überschrieben.
+
+Das Format `ANON-AES256-2` (gemeinsam für `anon.ps1` und `anonymisierer.html`):
+- Schlüsselableitung **PBKDF2-SHA256** mit 600.000 Iterationen, wenn .NET Framework **4.7.2 oder neuer** vorhanden ist (Windows 10 ab 1803, Windows Server 2019). Auf älteren Systemen nutzt `anon.ps1` **PBKDF2-SHA1** und vermerkt das im Feld `kdf`. Eine im Browser erzeugte Tabelle (immer PBKDF2-SHA256) lässt sich auf solchen Systemen nicht laden; dann bricht `anon.ps1` mit einer Meldung ab.
+- Aus dem Hauptschlüssel werden per HMAC-SHA256 getrennte Schlüssel für AES-256-CBC (`"enc"`) und HMAC-SHA256 (`"mac"`) gebildet; Kopf, Iterationszahl, Salt (16 Byte), IV (16 Byte) und Ciphertext werden vor der Entschlüsselung in konstanter Zeit geprüft.
+- Beim Laden werden höchstens **5.000.000 Iterationen** akzeptiert.
+- Ältere `ANON-AES256-1`-Tabellen bleiben mit einer Warnung ladbar und werden beim nächsten Speichern auf `ANON-AES256-2` gehoben.
+- **Unbekannte Formate** (auch das frühere Browser-Format `ANON-WEBCRYPTO-AESGCM-1`, fremde oder beschädigte JSON-Dateien) führen zum Abbruch; die Datei wird **nie überschrieben**.
 ```powershell
 # Mit eigenem Passwort (mind. 12 Zeichen, zweimalige verdeckte Abfrage):
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang" -Ausgabe "C:\Faelle\Ausgang" `
@@ -134,6 +142,9 @@ Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen
            -LokaleRegeln ".\anon-regeln.lokal.json" `
            -Tabelle "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json"
 ```
+
+### IP-Modus (`-Netzerhaltend` / `-NichtNetzerhaltend`)
+Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldatei: `-Netzerhaltend` erzeugt `NET-1.H17/24`, `-NichtNetzerhaltend` erzeugt `IP-PRIV-n` / `IP-PUB-n`. Beide zusammen werden abgelehnt.
 
 ### Trockenlauf (`-Probe`) und reiner Prüfmodus (`-Pruefen`)
 ```powershell
@@ -163,8 +174,9 @@ Wird eine verschlüsselte Tabelle (Passwort oder DPAPI) über `-Tabelle` geladen
    - Klicken Sie auf **„Anonymisieren & Prüfen“**.
    - Prüfen Sie oben rechts das Banner (**`SAUBER (0 Treffer)`** in Grün oder Restfunde in Rot) sowie darunter die Gegenüberstellung **Original vs. Anonymisiert**.
    - Laden Sie mit **„Anonymisiertes ZIP herunterladen“** das Freigabe-ZIP herunter (enthält ausschließlich `anonym/...` mit anonymisierten Dateinamen, **ohne** `bericht.json`).
-4. **Reiter „3. Zuordnungstabelle (AES-GCM)“:**
-   - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt herunterzuladen.
+4. **Reiter „3. Zuordnungstabelle (verschlüsselt)“:**
+   - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt als `zuordnungstabelle.anontab` (Format `ANON-AES256-2`, PBKDF2-SHA256, auch in `anon.ps1` ladbar) herunterzuladen. Die Passwortfelder werden danach geleert.
+   - Ältere Browser-Tabellen im Format `ANON-WEBCRYPTO-AESGCM-1` bleiben hier ladbar; speichern Sie sie einmal neu, um sie in `anon.ps1` nutzen zu können.
    - Zum Laden einer verschlüsselten Tabelle tragen Sie das Passwort **vor** dem Auswählen der Datei in das verdeckte Passwortfeld (`type="password"`) ein (es wird kein `prompt()`-Dialog verwendet, damit das Passwort nicht im Klartext auf dem Bildschirm erscheint).
 5. **Reiter „4. Text (Datenschutz)“ (Nur Web / Browser):**
    > **Wichtiger Hinweis:** Text-Reiter nur Web, in `anon.ps1` nicht enthalten. Die Parität zwischen PowerShell und Web gilt für diesen Reiter nicht.
@@ -282,6 +294,25 @@ Nicht ersetzt werden u. a. Versionen (`10.13.1020`), Portnamen, VLAN-IDs, Produk
 ---
 
 ## 8. Tests ausführen
+
+### Prüfbefehl für die Admin-VM (Windows PowerShell 5.1)
+Prüft, dass die C#-Engine unter PS 5.1 kompiliert, und zeigt die .NET-Version (für PBKDF2-SHA256 ist 4.7.2 nötig, Release-Wert ≥ 461808):
+```powershell
+cd C:\Tools\anonymisierer
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$PSVersionTable.PSVersion.ToString(); (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full').Release"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\anon.ps1 -Pruefen -Eingabe .\tests\erwartet
+```
+Erwartet: Version `5.1.x`, eine Release-Nummer und `Prüfergebnis: SAUBER (0 Treffer)` mit Exit-Code `0`. Ein Kompilierfehler der Engine erscheint als `Add-Type`-Fehler.
+
+Danach die vollständige Testsuite (Exit-Code `0` = alles grün):
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+```
+
+### Regeln für Testdaten und Regex
+- `tests\erwartet\` ist der committete Sollstand. `run-tests.js` vergleicht nur; neu erzeugen bei gewollter Änderung: `node tests/run-tests.js --aktualisieren`.
+- In `anon-regeln.json` sind `\w`, `\d` und `\b` verboten (in .NET Unicode, in JavaScript nur ASCII). Stattdessen `[0-9]`, `[A-Za-z0-9_]`, `(?<![A-Za-z0-9_])` / `(?![A-Za-z0-9_])`. Ersetzungstexte dürfen nur `$1` bis `$9` verwenden.
+- Alle `.ps1`-Dateien sind UTF-8 **mit BOM** gespeichert (sonst liest PS 5.1 sie als ANSI) und enthalten keine Gedankenstriche.
 
 Der Ordner `tests\` enthält **61 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits-, Sammler- und Randfälle.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Offline-Werkzeug zum Anonymisieren von Netzwerk-Logs, Show-Techs und Konfigurationen.
     Kompatibel mit Windows PowerShell 5.1+ und PowerShell 7+, ohne externe Module und ohne Netzwerkzugriffe.
@@ -11,7 +11,8 @@
     unwiderruflich durch *****.
     Speichert die Zuordnungstabelle strikt getrennt vom Ausgabeordner (Standard: %LOCALAPPDATA%\Anon\Tabellen\),
     geschützt per NTFS-ACL auf den aktuellen Benutzer und optional verschlüsselt (DPAPI oder AES-256).
-    Freigegeben wird ausschließlich <Ausgabe>\anonym\; der Arbeitsordner <Ausgabe>\_arbeit\ wird nach dem Lauf gelöscht.
+    Freigegeben wird ausschließlich <Ausgabe>\anonym\. Archive werden unter %LOCALAPPDATA%\Anon\arbeit\<zufall>\
+    entpackt (ACL nur Benutzer); dieser Ordner wird nach jedem Lauf gelöscht, auch bei Fehler oder Abbruch.
 
 .PARAMETER Eingabe
     Pfad zu einer Datei, einem Ordner oder einem Archiv (.zip, .tar.gz, .tgz). Mehrfachangabe möglich.
@@ -53,7 +54,10 @@
     Trockenlauf: Zeigt nur, was ersetzt würde (Anzahl je Kategorie), schreibt keine anonymisierten Dateien.
 
 .PARAMETER Netzerhaltend
-    Überschreibt die Einstellung 'netzerhaltend' aus anon-regeln.json ($true / $false).
+    Schalter: netzerhaltender Modus (NET-x.Hy) unabhängig von der Einstellung 'netzerhaltend' in anon-regeln.json.
+
+.PARAMETER NichtNetzerhaltend
+    Schalter: IPs als IP-PRIV-n / IP-PUB-n statt netzerhaltend. Nicht zusammen mit -Netzerhaltend verwendbar.
 
 .PARAMETER Kategorien
     Kommagetrennte Liste aktiver Kategorien (z.B. "ip,mac,hostnamen,geheimnisseEntfernen").
@@ -98,7 +102,10 @@ param(
     [switch]$Probe,
 
     [Parameter(Mandatory = $false)]
-    [Nullable[bool]]$Netzerhaltend = $null,
+    [switch]$Netzerhaltend,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$NichtNetzerhaltend,
 
     [Parameter(Mandatory = $false)]
     [string[]]$Kategorien
@@ -118,9 +125,102 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Security.Cryptography;
 
 namespace AnonTool
 {
+    // Passwort-Behandlung ohne verwalteten Klartext-String: SecureString -> UTF-8-Bytes -> PBKDF2,
+    // alle Zwischenpuffer werden danach mit Nullen überschrieben.
+    public static class AnonCrypto
+    {
+        // PBKDF2 mit SHA256 gibt es ab .NET Framework 4.7.2 (Rfc2898DeriveBytes mit HashAlgorithmName)
+        public static bool Sha256KdfAvailable()
+        {
+            return GetSha256Ctor() != null;
+        }
+
+        private static ConstructorInfo GetSha256Ctor()
+        {
+            Type han = typeof(Rfc2898DeriveBytes).Assembly.GetType("System.Security.Cryptography.HashAlgorithmName");
+            if (han == null) return null;
+            return typeof(Rfc2898DeriveBytes).GetConstructor(new Type[] { typeof(byte[]), typeof(byte[]), typeof(int), han });
+        }
+
+        public static void Zero(byte[] b)
+        {
+            if (b != null) Array.Clear(b, 0, b.Length);
+        }
+
+        public static byte[] SecureStringToUtf8(SecureString s)
+        {
+            if (s == null) return new byte[0];
+            IntPtr ptr = IntPtr.Zero;
+            char[] chars = new char[s.Length];
+            try
+            {
+                ptr = Marshal.SecureStringToGlobalAllocUnicode(s);
+                Marshal.Copy(ptr, chars, 0, chars.Length);
+                return new UTF8Encoding(false).GetBytes(chars);
+            }
+            finally
+            {
+                Array.Clear(chars, 0, chars.Length);
+                if (ptr != IntPtr.Zero) Marshal.ZeroFreeGlobalAllocUnicode(ptr);
+            }
+        }
+
+        public static bool SecureStringEquals(SecureString a, SecureString b)
+        {
+            byte[] x = SecureStringToUtf8(a);
+            byte[] y = SecureStringToUtf8(b);
+            try
+            {
+                if (x.Length != y.Length) return false;
+                int diff = 0;
+                for (int i = 0; i < x.Length; i++) diff |= x[i] ^ y[i];
+                return diff == 0;
+            }
+            finally
+            {
+                Zero(x);
+                Zero(y);
+            }
+        }
+
+        public static byte[] DeriveMasterKey(SecureString password, byte[] salt, int iterations, bool sha256)
+        {
+            byte[] pw = SecureStringToUtf8(password);
+            try
+            {
+                DeriveBytes kdf;
+                if (sha256)
+                {
+                    ConstructorInfo ci = GetSha256Ctor();
+                    if (ci == null) throw new InvalidOperationException("PBKDF2-SHA256 benötigt .NET Framework 4.7.2 oder neuer.");
+                    Type han = ci.GetParameters()[3].ParameterType;
+                    object sha = han.GetProperty("SHA256").GetValue(null, null);
+                    kdf = (DeriveBytes)ci.Invoke(new object[] { pw, salt, iterations, sha });
+                }
+                else
+                {
+                    // über Reflection: in .NET 9 (pwsh 7) ist der Konstruktor als veraltet markiert (SYSLIB0060)
+                    kdf = (DeriveBytes)Activator.CreateInstance(typeof(Rfc2898DeriveBytes), new object[] { pw, salt, iterations });
+                }
+                using (kdf)
+                {
+                    return kdf.GetBytes(32);
+                }
+            }
+            finally
+            {
+                Zero(pw);
+            }
+        }
+    }
+
     public class AnonState
     {
         public Dictionary<string, string> Forward = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1814,14 +1914,21 @@ namespace AnonTool
 
 if (-not ("AnonTool.AnonEngine" -as [type])) {
     if ($PSVersionTable.PSEdition -eq "Desktop") {
-        Add-Type -TypeDefinition $csharpCode -ReferencedAssemblies @("System.Core", "System.IO.Compression") -ErrorAction Stop
+        # Windows PowerShell 5.1: System.Linq liegt in System.Core (GZipStream, Regex, Kryptografie in System/mscorlib)
+        Add-Type -TypeDefinition $csharpCode -ReferencedAssemblies @("System.Core") -ErrorAction Stop
     } else {
         Add-Type -TypeDefinition $csharpCode -ErrorAction Stop
     }
 }
 
+# ZIP-Unterstützung sofort laden und bei Fehler abbrechen (nicht erst beim Entpacken)
 try {
-    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+} catch {
+    throw "System.IO.Compression.FileSystem konnte nicht geladen werden (.NET Framework 4.5 oder neuer erforderlich)."
+}
+# DPAPI (ProtectedData) ist nur unter Windows vorhanden und optional
+try {
     Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue
 } catch {}
 
@@ -2115,38 +2222,55 @@ $script:MIN_PASSWORD_LENGTH       = 12
 $script:LastLoadedProtection      = "NONE"
 $script:LastLoadedPasswordSecure  = $null
 
-function ConvertFrom-SecureStringToPlain {
-    param([SecureString]$SecStr)
-    if ($null -eq $SecStr) { return $null }
-    $bstr = [IntPtr]::Zero
-    try {
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecStr)
-        return [System.Runtime.InteropServices.Marshal]::PtrToStringUni($bstr)
-    } finally {
-        if ($bstr -ne [IntPtr]::Zero) {
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-        }
-    }
-}
+$script:PBKDF2_MAX_ITERATIONS      = 5000000
 
 function Read-TablePasswordInteractive {
     param([switch]$ConfirmTwice)
     if ($ConfirmTwice) {
         $s1 = Read-Host -Prompt "Passwort zum Verschlüsseln der Zuordnungstabelle eingeben (mind. 12 Zeichen)" -AsSecureString
         $s2 = Read-Host -Prompt "Passwort zur Bestätigung erneut eingeben" -AsSecureString
-        $p1 = ConvertFrom-SecureStringToPlain -SecStr $s1
-        $p2 = ConvertFrom-SecureStringToPlain -SecStr $s2
-        if ([string]::IsNullOrEmpty($p1) -or $p1.Length -lt $script:MIN_PASSWORD_LENGTH) {
+        if ($null -eq $s1 -or $s1.Length -lt $script:MIN_PASSWORD_LENGTH) {
             throw "Das Passwort muss mindestens $($script:MIN_PASSWORD_LENGTH) Zeichen lang sein."
         }
-        if ($p1 -cne $p2) {
+        if (-not [AnonTool.AnonCrypto]::SecureStringEquals($s1, $s2)) {
             throw "Die eingegebenen Passwörter stimmen nicht überein."
         }
+        $s2.Dispose()
         return $s1
     } else {
         $s1 = Read-Host -Prompt "Passwort zum Entschlüsseln der Zuordnungstabelle eingeben" -AsSecureString
         return $s1
     }
+}
+
+# Hauptschlüssel ableiten und daraus getrennte Schlüssel für AES ("enc") und HMAC ("mac") bilden
+function Get-TableSubKeys {
+    param([SecureString]$PasswordSecure, [byte[]]$Salt, [int]$Iterations, [bool]$Sha256)
+    $masterKey = [AnonTool.AnonCrypto]::DeriveMasterKey($PasswordSecure, $Salt, $Iterations, $Sha256)
+    try {
+        $hmacDerive = New-Object System.Security.Cryptography.HMACSHA256(,$masterKey)
+        $encKey = $hmacDerive.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("enc"))
+        $macKey = $hmacDerive.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("mac"))
+        $hmacDerive.Dispose()
+        return @{ Enc = $encKey; Mac = $macKey }
+    } finally {
+        [AnonTool.AnonCrypto]::Zero($masterKey)
+    }
+}
+
+function Test-TableIterations {
+    param($Value, [string]$Format)
+    if ($null -eq $Value) {
+        throw "Manipulierte oder ungültige $Format Zuordnungstabelle: Feld 'iterations' fehlt."
+    }
+    $iter = 0
+    if (-not [int]::TryParse([string]$Value, [ref]$iter) -or $iter -le 0) {
+        throw "Manipulierte oder ungültige $Format Zuordnungstabelle: Ungültige Iterationszahl."
+    }
+    if ($iter -gt $script:PBKDF2_MAX_ITERATIONS) {
+        throw "Zuordnungstabelle abgelehnt: Iterationszahl über dem Höchstwert von 5.000.000."
+    }
+    return $iter
 }
 
 function Protect-TableContent {
@@ -2170,8 +2294,7 @@ function Protect-TableContent {
         }
     }
     elseif ($null -ne $PasswordSecure) {
-        $plainPass = ConvertFrom-SecureStringToPlain -SecStr $PasswordSecure
-        if ([string]::IsNullOrEmpty($plainPass) -or $plainPass.Length -lt $script:MIN_PASSWORD_LENGTH) {
+        if ($PasswordSecure.Length -lt $script:MIN_PASSWORD_LENGTH) {
             throw "Das Passwort für die Tabellenverschlüsselung muss mindestens $($script:MIN_PASSWORD_LENGTH) Zeichen lang sein."
         }
         $effIter = if ($Iterations -gt 0) { $Iterations } else { $script:PBKDF2_DEFAULT_ITERATIONS }
@@ -2181,40 +2304,32 @@ function Protect-TableContent {
         $rng.GetBytes($salt)
         $rng.GetBytes($iv)
 
-        # ANON-AES256-2: Master-Key aus PBKDF2-SHA1, getrennte Schlüssel encKey und macKey via HMAC-SHA256
-        $kdf = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($plainPass, $salt, $effIter)
-        $masterKey = $kdf.GetBytes(32)
-
-        $hmacDeriveEnc = New-Object System.Security.Cryptography.HMACSHA256(,$masterKey)
-        $encKey = $hmacDeriveEnc.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("enc"))
-
-        $hmacDeriveMac = New-Object System.Security.Cryptography.HMACSHA256(,$masterKey)
-        $macKey = $hmacDeriveMac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("mac"))
+        # ANON-AES256-2: PBKDF2-SHA256 ab .NET 4.7.2, sonst PBKDF2-SHA1; getrennte Schlüssel für AES und HMAC
+        $useSha256 = [AnonTool.AnonCrypto]::Sha256KdfAvailable()
+        $kdfName = if ($useSha256) { "PBKDF2-SHA256" } else { "PBKDF2-SHA1" }
+        $keys = Get-TableSubKeys -PasswordSecure $PasswordSecure -Salt $salt -Iterations $effIter -Sha256 $useSha256
 
         $aes = [System.Security.Cryptography.Aes]::Create()
         $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
         $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $encKey
+        $aes.Key = $keys.Enc
         $aes.IV = $iv
 
         $plainBytes = [System.Text.Encoding]::UTF8.GetBytes($PlainJson)
         $encryptor = $aes.CreateEncryptor()
         $cipherBytes = $encryptor.TransformFinalBlock($plainBytes, 0, $plainBytes.Length)
+        $aes.Dispose()
 
-        # MAC über UTF8("ANON-AES256-2|" + iter) + salt + iv + ciphertext
-        $prefixBytes = [System.Text.Encoding]::UTF8.GetBytes("ANON-AES256-2|" + $effIter.ToString())
-        $macInput = New-Object byte[] ($prefixBytes.Length + $salt.Length + $iv.Length + $cipherBytes.Length)
-        [System.Buffer]::BlockCopy($prefixBytes, 0, $macInput, 0, $prefixBytes.Length)
-        [System.Buffer]::BlockCopy($salt, 0, $macInput, $prefixBytes.Length, $salt.Length)
-        [System.Buffer]::BlockCopy($iv, 0, $macInput, $prefixBytes.Length + $salt.Length, $iv.Length)
-        [System.Buffer]::BlockCopy($cipherBytes, 0, $macInput, $prefixBytes.Length + $salt.Length + $iv.Length, $cipherBytes.Length)
-
-        $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$macKey)
+        $macInput = Get-Aes256V2MacInput -Iterations $effIter -Salt $salt -Iv $iv -Cipher $cipherBytes
+        $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$keys.Mac)
         $macBytes = $hmac.ComputeHash($macInput)
+        $hmac.Dispose()
+        [AnonTool.AnonCrypto]::Zero($keys.Enc)
+        [AnonTool.AnonCrypto]::Zero($keys.Mac)
 
         $wrapper = [ordered]@{
             format     = "ANON-AES256-2"
-            kdf        = "PBKDF2-SHA1"
+            kdf        = $kdfName
             iterations = $effIter
             salt       = [Convert]::ToBase64String($salt)
             iv         = [Convert]::ToBase64String($iv)
@@ -2224,6 +2339,18 @@ function Protect-TableContent {
         return ($wrapper | ConvertTo-Json -Depth 5)
     }
     return $PlainJson
+}
+
+# MAC über UTF8("ANON-AES256-2|" + iter) + salt + iv + ciphertext
+function Get-Aes256V2MacInput {
+    param([int]$Iterations, [byte[]]$Salt, [byte[]]$Iv, [byte[]]$Cipher)
+    $prefixBytes = [System.Text.Encoding]::UTF8.GetBytes("ANON-AES256-2|" + $Iterations.ToString())
+    $macInput = New-Object byte[] ($prefixBytes.Length + $Salt.Length + $Iv.Length + $Cipher.Length)
+    [System.Buffer]::BlockCopy($prefixBytes, 0, $macInput, 0, $prefixBytes.Length)
+    [System.Buffer]::BlockCopy($Salt, 0, $macInput, $prefixBytes.Length, $Salt.Length)
+    [System.Buffer]::BlockCopy($Iv, 0, $macInput, $prefixBytes.Length + $Salt.Length, $Iv.Length)
+    [System.Buffer]::BlockCopy($Cipher, 0, $macInput, $prefixBytes.Length + $Salt.Length + $Iv.Length, $Cipher.Length)
+    return ,$macInput
 }
 
 function Test-HmacConstantTime32 {
@@ -2242,7 +2369,14 @@ function Unprotect-TableContent {
         [string]$RawFileContent,
         [SecureString]$PasswordSecure
     )
-    $obj = ConvertFrom-Json -InputObject $RawFileContent
+    try {
+        $obj = ConvertFrom-Json -InputObject $RawFileContent
+    } catch {
+        throw "Zuordnungstabelle ist kein gültiges JSON. Die Datei wird nicht verwendet und nicht überschrieben."
+    }
+    if ($null -eq $obj -or $obj -is [System.Array]) {
+        throw "Unbekanntes Tabellenformat. Die Datei wird nicht verwendet und nicht überschrieben."
+    }
     $fmt = Get-JsonProp $obj "format"
     if ($fmt -eq "ANON-DPAPI-1") {
         $script:LastLoadedProtection = "DPAPI"
@@ -2254,17 +2388,19 @@ function Unprotect-TableContent {
         if ($null -eq $PasswordSecure) {
             $PasswordSecure = Read-TablePasswordInteractive -ConfirmTwice:$false
         }
-        $plainPass = ConvertFrom-SecureStringToPlain -SecStr $PasswordSecure
-        if ([string]::IsNullOrEmpty($plainPass)) {
+        if ($null -eq $PasswordSecure -or $PasswordSecure.Length -eq 0) {
             throw "Die Zuordnungstabelle ist passwortgeschützt. Bitte -MitPasswort angeben."
         }
-        $iterVal = Get-JsonProp $obj "iterations"
-        if ($null -eq $iterVal) {
-            throw "Manipulierte oder ungültige ANON-AES256-2 Zuordnungstabelle: Feld 'iterations' fehlt."
+        $iterations = Test-TableIterations -Value (Get-JsonProp $obj "iterations") -Format "ANON-AES256-2"
+
+        $kdfName = [string](Get-JsonProp $obj "kdf")
+        if ([string]::IsNullOrEmpty($kdfName)) { $kdfName = "PBKDF2-SHA1" }
+        if ($kdfName -ne "PBKDF2-SHA1" -and $kdfName -ne "PBKDF2-SHA256") {
+            throw "Unbekanntes Ableitungsverfahren '$kdfName' in der Zuordnungstabelle. Die Datei wird nicht verwendet und nicht überschrieben."
         }
-        $iterations = [int]$iterVal
-        if ($iterations -le 0) {
-            throw "Manipulierte oder ungültige ANON-AES256-2 Zuordnungstabelle: Ungültige Iterationszahl."
+        $useSha256 = ($kdfName -eq "PBKDF2-SHA256")
+        if ($useSha256 -and -not [AnonTool.AnonCrypto]::Sha256KdfAvailable()) {
+            throw "Die Zuordnungstabelle nutzt PBKDF2-SHA256; dafür wird .NET Framework 4.7.2 oder neuer benötigt."
         }
 
         $saltStr = [string](Get-JsonProp $obj "salt")
@@ -2284,37 +2420,29 @@ function Unprotect-TableContent {
             throw "Manipulierte Zuordnungstabelle: Ungültige Länge von Salt, IV, HMAC (muss exakt 32 Byte sein) oder Ciphertext."
         }
 
-        $kdf = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($plainPass, $salt, $iterations)
-        $masterKey = $kdf.GetBytes(32)
+        $keys = Get-TableSubKeys -PasswordSecure $PasswordSecure -Salt $salt -Iterations $iterations -Sha256 $useSha256
+        try {
+            $macInput = Get-Aes256V2MacInput -Iterations $iterations -Salt $salt -Iv $iv -Cipher $cipherBytes
+            $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$keys.Mac)
+            $actualMac = $hmac.ComputeHash($macInput)
+            $hmac.Dispose()
 
-        $hmacDeriveEnc = New-Object System.Security.Cryptography.HMACSHA256(,$masterKey)
-        $encKey = $hmacDeriveEnc.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("enc"))
+            if (-not (Test-HmacConstantTime32 -ExpectedMac $expectedMac -ActualMac $actualMac)) {
+                throw "Falsches Passwort oder manipulierte Zuordnungstabelle (HMAC-Prüfung fehlgeschlagen)."
+            }
 
-        $hmacDeriveMac = New-Object System.Security.Cryptography.HMACSHA256(,$masterKey)
-        $macKey = $hmacDeriveMac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("mac"))
-
-        $prefixBytes = [System.Text.Encoding]::UTF8.GetBytes("ANON-AES256-2|" + $iterations.ToString())
-        $macInput = New-Object byte[] ($prefixBytes.Length + $salt.Length + $iv.Length + $cipherBytes.Length)
-        [System.Buffer]::BlockCopy($prefixBytes, 0, $macInput, 0, $prefixBytes.Length)
-        [System.Buffer]::BlockCopy($salt, 0, $macInput, $prefixBytes.Length, $salt.Length)
-        [System.Buffer]::BlockCopy($iv, 0, $macInput, $prefixBytes.Length + $salt.Length, $iv.Length)
-        [System.Buffer]::BlockCopy($cipherBytes, 0, $macInput, $prefixBytes.Length + $salt.Length + $iv.Length, $cipherBytes.Length)
-
-        $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$macKey)
-        $actualMac = $hmac.ComputeHash($macInput)
-
-        if (-not (Test-HmacConstantTime32 -ExpectedMac $expectedMac -ActualMac $actualMac)) {
-            throw "Falsches Passwort oder manipulierte Zuordnungstabelle (HMAC-Prüfung fehlgeschlagen)."
+            $aes = [System.Security.Cryptography.Aes]::Create()
+            $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+            $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+            $aes.Key = $keys.Enc
+            $aes.IV = $iv
+            $decryptor = $aes.CreateDecryptor()
+            $plainBytes = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
+            $aes.Dispose()
+        } finally {
+            [AnonTool.AnonCrypto]::Zero($keys.Enc)
+            [AnonTool.AnonCrypto]::Zero($keys.Mac)
         }
-
-        $aes = [System.Security.Cryptography.Aes]::Create()
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $encKey
-        $aes.IV = $iv
-
-        $decryptor = $aes.CreateDecryptor()
-        $plainBytes = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
         $script:LastLoadedProtection = "PASSWORD"
         $script:LastLoadedPasswordSecure = $PasswordSecure
         return [System.Text.Encoding]::UTF8.GetString($plainBytes)
@@ -2324,19 +2452,14 @@ function Unprotect-TableContent {
         if ($null -eq $PasswordSecure) {
             $PasswordSecure = Read-TablePasswordInteractive -ConfirmTwice:$false
         }
-        $plainPass = ConvertFrom-SecureStringToPlain -SecStr $PasswordSecure
-        if ([string]::IsNullOrEmpty($plainPass)) {
+        if ($null -eq $PasswordSecure -or $PasswordSecure.Length -eq 0) {
             throw "Die Zuordnungstabelle ist passwortgeschützt. Bitte -MitPasswort angeben."
         }
         # Iterationszahl aus dem Tabellenkopf lesen; Fallback auf 100.000 für ältere Tabellen ohne Feld
-        $iterations = $script:PBKDF2_LEGACY_ITERATIONS
-        $iterProp = Get-JsonProp $obj "iterations"
-        $iterPropDe = Get-JsonProp $obj "iterationen"
-        if ($null -ne $iterProp) {
-            $iterations = [int]$iterProp
-        } elseif ($null -ne $iterPropDe) {
-            $iterations = [int]$iterPropDe
-        }
+        $iterRaw = Get-JsonProp $obj "iterations"
+        if ($null -eq $iterRaw) { $iterRaw = Get-JsonProp $obj "iterationen" }
+        if ($null -eq $iterRaw) { $iterRaw = $script:PBKDF2_LEGACY_ITERATIONS }
+        $iterations = Test-TableIterations -Value $iterRaw -Format "ANON-AES256-1"
 
         $salt = [Convert]::FromBase64String([string](Get-JsonProp $obj "salt"))
         $iv = [Convert]::FromBase64String([string](Get-JsonProp $obj "iv"))
@@ -2347,26 +2470,38 @@ function Unprotect-TableContent {
             throw "Manipulierte Zuordnungstabelle: HMAC-Länge ungültig."
         }
 
-        $kdf = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($plainPass, $salt, $iterations)
-        $key = $kdf.GetBytes(32)
-
-        $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$key)
-        $actualMac = $hmac.ComputeHash($cipherBytes)
-        if (-not (Test-HmacConstantTime32 -ExpectedMac $expectedMac -ActualMac $actualMac)) {
-            throw "Falsches Passwort oder manipulierte Zuordnungstabelle (HMAC-Prüfung fehlgeschlagen)."
+        $key = [AnonTool.AnonCrypto]::DeriveMasterKey($PasswordSecure, $salt, $iterations, $false)
+        try {
+            $hmac = New-Object System.Security.Cryptography.HMACSHA256(,$key)
+            $actualMac = $hmac.ComputeHash($cipherBytes)
+            $hmac.Dispose()
+            if (-not (Test-HmacConstantTime32 -ExpectedMac $expectedMac -ActualMac $actualMac)) {
+                throw "Falsches Passwort oder manipulierte Zuordnungstabelle (HMAC-Prüfung fehlgeschlagen)."
+            }
+            $aes = [System.Security.Cryptography.Aes]::Create()
+            $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+            $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+            $aes.Key = $key
+            $aes.IV = $iv
+            $decryptor = $aes.CreateDecryptor()
+            $plainBytes = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
+            $aes.Dispose()
+        } finally {
+            [AnonTool.AnonCrypto]::Zero($key)
         }
-
-        $aes = [System.Security.Cryptography.Aes]::Create()
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $key
-        $aes.IV = $iv
-
-        $decryptor = $aes.CreateDecryptor()
-        $plainBytes = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
         $script:LastLoadedProtection = "PASSWORD"
         $script:LastLoadedPasswordSecure = $PasswordSecure
         return [System.Text.Encoding]::UTF8.GetString($plainBytes)
+    }
+    elseif ($null -ne $fmt) {
+        if ([string]$fmt -eq "ANON-WEBCRYPTO-AESGCM-1") {
+            throw "Tabellenformat ANON-WEBCRYPTO-AESGCM-1 (ältere Browser-Tabelle) wird von anon.ps1 nicht unterstützt. Bitte in anonymisierer.html laden und neu speichern (ANON-AES256-2). Die Datei wird nicht überschrieben."
+        }
+        throw "Unbekanntes Tabellenformat. Die Datei wird nicht verwendet und nicht überschrieben."
+    }
+    # Unverschlüsselte Tabelle: muss die erwartete Struktur haben
+    if ($null -eq (Get-JsonProp $obj "vorwaerts") -and $null -eq (Get-JsonProp $obj "rueckwaerts")) {
+        throw "Unbekanntes Tabellenformat (weder verschlüsselt noch Zuordnungstabelle). Die Datei wird nicht verwendet und nicht überschrieben."
     }
     $script:LastLoadedProtection = "PLAIN"
     return $RawFileContent
@@ -2512,7 +2647,79 @@ if ([string]::IsNullOrEmpty($Regeln)) {
     $Regeln = Join-Path $scriptDir "anon-regeln.json"
 }
 
-$cfg = Load-EngineConfig -RegelDatei $Regeln -LokaleRegelDatei $LokaleRegeln -OverrideNetzerhaltend $Netzerhaltend -AktivKategorien $Kategorien
+if ($Netzerhaltend -and $NichtNetzerhaltend) {
+    throw "-Netzerhaltend und -NichtNetzerhaltend schließen sich aus."
+}
+$netzOverride = $null
+if ($Netzerhaltend) { $netzOverride = $true }
+if ($NichtNetzerhaltend) { $netzOverride = $false }
+
+$cfg = Load-EngineConfig -RegelDatei $Regeln -LokaleRegelDatei $LokaleRegeln -OverrideNetzerhaltend $netzOverride -AktivKategorien $Kategorien
+
+# Konsolenausgabe von Prüftreffern: nur Kategorie, Datei und Zeile, nie der gefundene Wert
+function Write-PruefFunde {
+    param($Funde)
+    foreach ($fd in $Funde) {
+        Write-Host ("  [{0}] {1}:{2}" -f $fd.Kategorie, $fd.Datei, $fd.Zeile) -ForegroundColor Yellow
+    }
+}
+
+# Fehlermeldungen ohne Datei- oder Pfadnamen: nur laufende Nummer, Schritt und Fehlerart
+function Stop-MitNummer {
+    param([int]$Nummer, [string]$Schritt, $Fehler)
+    $art = "Fehler"
+    if ($null -ne $Fehler -and $null -ne $Fehler.Exception) { $art = $Fehler.Exception.GetType().Name }
+    throw ("Abbruch bei Datei Nr. {0} (Schritt: {1}, Fehlerart: {2})." -f $Nummer, $Schritt, $art)
+}
+
+# Basisordner %LOCALAPPDATA%\Anon (unter macOS/Linux: ~/.local/share/Anon)
+function Get-AnonBaseDir {
+    $localAppData = $env:LOCALAPPDATA
+    if ([string]::IsNullOrEmpty($localAppData)) {
+        $localAppData = Join-Path $HOME ".local/share"
+    }
+    return (Join-Path $localAppData "Anon")
+}
+
+# Arbeitsordner für entpackte Archive: %LOCALAPPDATA%\Anon\arbeit\<zufall>, ACL nur Benutzer.
+# Eine offene Sperrdatei markiert den laufenden Lauf; verwaiste Ordner früherer Abbrüche werden beim Start entfernt.
+function New-ArbeitsOrdner {
+    $root = Join-Path (Get-AnonBaseDir) "arbeit"
+    if (-not (Test-Path -LiteralPath $root)) {
+        [void](New-Item -ItemType Directory -Path $root -Force)
+        Set-RestrictedUserAcl -TargetPath $root
+    }
+    $isWindowsOs = ($env:OS -eq "Windows_NT") -or ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT)
+    foreach ($alt in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue)) {
+        $frei = $true
+        $sperre = Join-Path $alt.FullName "lauf.lock"
+        if (Test-Path -LiteralPath $sperre) {
+            try {
+                $fs = [System.IO.File]::Open($sperre, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+                $fs.Dispose()
+            } catch {
+                $frei = $false
+            }
+        }
+        # Ohne Windows-Dateisperren: nur Ordner entfernen, die älter als 24 Stunden sind
+        if ($frei -and -not $isWindowsOs -and $alt.LastWriteTime -gt (Get-Date).AddHours(-24)) { $frei = $false }
+        if ($frei) { Remove-Item -LiteralPath $alt.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    $dir = Join-Path $root ([Guid]::NewGuid().ToString("N"))
+    [void](New-Item -ItemType Directory -Path $dir -Force)
+    Set-RestrictedUserAcl -TargetPath $dir
+    $lockStream = [System.IO.File]::Open((Join-Path $dir "lauf.lock"), [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    return [pscustomobject]@{ Pfad = $dir; Sperre = $lockStream }
+}
+
+function Remove-ArbeitsOrdner {
+    param($Arbeit)
+    if ($null -eq $Arbeit) { return }
+    try { $Arbeit.Sperre.Dispose() } catch {}
+    if (Test-Path -LiteralPath $Arbeit.Pfad) {
+        Remove-Item -LiteralPath $Arbeit.Pfad -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ----------------------------------------------------------------------------
 # MODUS 1: Nur Prüfmodus (-Pruefen ohne Anonymisierungslauf)
@@ -2522,9 +2729,12 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
         throw "Bitte -Eingabe für den Prüfmodus (-Pruefen) angeben."
     }
     $alleFunde = New-Object 'System.Collections.Generic.List[AnonTool.AuditFinding]'
+    $einNr = 0
+    $dateiNr = 0
     foreach ($ein in $Eingabe) {
+        $einNr++
         if (-not (Test-Path -LiteralPath $ein)) {
-            throw "Eingabepfad existiert nicht: $ein"
+            throw "Eingabe Nr. $einNr existiert nicht."
         }
         $item = Get-Item -LiteralPath $ein
         $files = @()
@@ -2534,15 +2744,20 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
             $files = @($item)
         }
         foreach ($f in $files) {
-            $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
-            if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
-            $txt = [AnonTool.TarGzHelper]::DecodeTextWithBom($bytes)
-            $relAuditPath = if ($item.PSIsContainer) {
-                $f.FullName.Substring($item.FullName.Length).TrimStart('\', '/')
-            } else {
-                $f.Name
+            $dateiNr++
+            try {
+                $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+                if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
+                $txt = [AnonTool.TarGzHelper]::DecodeTextWithBom($bytes)
+                $relAuditPath = if ($item.PSIsContainer) {
+                    $f.FullName.Substring($item.FullName.Length).TrimStart('\', '/')
+                } else {
+                    $f.Name
+                }
+                $funde = [AnonTool.AnonEngine]::AuditText($txt, $relAuditPath, $cfg)
+            } catch {
+                Stop-MitNummer -Nummer $dateiNr -Schritt "Prüfen" -Fehler $_
             }
-            $funde = [AnonTool.AnonEngine]::AuditText($txt, $relAuditPath, $cfg)
             foreach ($fd in $funde) { $alleFunde.Add($fd) }
         }
     }
@@ -2552,9 +2767,7 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
         exit 0
     } else {
         Write-Host "Prüfergebnis: NICHT SAUBER ($($alleFunde.Count) Treffer gefunden)" -ForegroundColor Red
-        foreach ($fd in $alleFunde) {
-            Write-Host ("  [{0}] {1}:{2} -> {3}" -f $fd.Kategorie, $fd.Datei, $fd.Zeile, $fd.Fund) -ForegroundColor Yellow
-        }
+        Write-PruefFunde $alleFunde
         exit 2
     }
 }
@@ -2574,8 +2787,14 @@ if ($Zurueck) {
         $activeSecPass = Read-TablePasswordInteractive -ConfirmTwice:$false
     }
     $state = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPass
+    $einNr = 0
     foreach ($ein in $Eingabe) {
-        $inBytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $ein).Path)
+        $einNr++
+        try {
+            $inBytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $ein).Path)
+        } catch {
+            Stop-MitNummer -Nummer $einNr -Schritt "Lesen" -Fehler $_
+        }
         $rawText = [AnonTool.TarGzHelper]::DecodeTextWithBom($inBytes)
         $restored = [AnonTool.AnonEngine]::DeanonymizeText($rawText, $state.Reverse)
         if (-not [string]::IsNullOrEmpty($Ausgabe)) {
@@ -2604,11 +2823,7 @@ if (-not $Probe -and [string]::IsNullOrEmpty($Ausgabe)) {
 
 # Tabellenpfad bestimmen und Sicherheitsprüfung durchführen (NIE im Ausgabeordner!)
 if ([string]::IsNullOrEmpty($TabellenPfad)) {
-    $localAppData = $env:LOCALAPPDATA
-    if ([string]::IsNullOrEmpty($localAppData)) {
-        $localAppData = Join-Path $HOME ".local/share"
-    }
-    $defaultTabDir = Join-Path (Join-Path $localAppData "Anon") "Tabellen"
+    $defaultTabDir = Join-Path (Get-AnonBaseDir) "Tabellen"
     $stamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
     $TabellenPfad = Join-Path $defaultTabDir "tabelle-$stamp.json"
 }
@@ -2620,7 +2835,7 @@ if (-not [string]::IsNullOrEmpty($Ausgabe)) {
     $fullOut = [System.IO.Path]::GetFullPath($Ausgabe).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
     $fullTab = [System.IO.Path]::GetFullPath($TabellenPfad)
     if ($fullTab.StartsWith($fullOut, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "SICHERHEITSFEHLER: Die Zuordnungstabelle (-TabellenPfad '$fullTab') darf NIEMALS innerhalb des Ausgabeordners ('$fullOut') gespeichert werden!"
+        throw "SICHERHEITSFEHLER: Die Zuordnungstabelle (-TabellenPfad) darf NIEMALS innerhalb des Ausgabeordners (-Ausgabe) gespeichert werden!"
     }
 }
 
@@ -2633,25 +2848,21 @@ if ($MitPasswort -and $null -eq $activeSecPass) {
 
 $state = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPass
 
+$arbeit = $null
 $arbeitOrdner = $null
 $anonymOrdner = $null
 if (-not $Probe) {
-    $arbeitOrdner = Join-Path $Ausgabe "_arbeit"
     $anonymOrdner = Join-Path $Ausgabe "anonym"
-    if (Test-Path -LiteralPath $arbeitOrdner) { Remove-Item -LiteralPath $arbeitOrdner -Recurse -Force }
     if (Test-Path -LiteralPath $anonymOrdner) { Remove-Item -LiteralPath $anonymOrdner -Recurse -Force }
-    [void](New-Item -ItemType Directory -Path $arbeitOrdner -Force)
     [void](New-Item -ItemType Directory -Path $anonymOrdner -Force)
-} else {
-    # Für -Probe falls ein Archiv entpackt werden muss und Ausgabe angegeben ist
-    if (-not [string]::IsNullOrEmpty($Ausgabe)) {
-        $arbeitOrdner = Join-Path $Ausgabe "_arbeit"
-        if (Test-Path -LiteralPath $arbeitOrdner) { Remove-Item -LiteralPath $arbeitOrdner -Recurse -Force }
-        [void](New-Item -ItemType Directory -Path $arbeitOrdner -Force)
-    }
+}
+# Alter Arbeitsordner früherer Versionen im Ausgabeordner wird entfernt
+if (-not [string]::IsNullOrEmpty($Ausgabe)) {
+    $altArbeit = Join-Path $Ausgabe "_arbeit"
+    if (Test-Path -LiteralPath $altArbeit) { Remove-Item -LiteralPath $altArbeit -Recurse -Force }
 }
 
-# Sammle alle zu verarbeitenden Dateien (inkl. rekursivem Entpacken von .zip / .tar.gz / .tgz in _arbeit)
+# Sammle alle zu verarbeitenden Dateien (inkl. rekursivem Entpacken von .zip / .tar.gz / .tgz im Arbeitsordner)
 $dateiListe = New-Object 'System.Collections.Generic.List[psobject]'
 $uebersprungeneDateien = New-Object 'System.Collections.Generic.List[string]'
 
@@ -2713,11 +2924,21 @@ function Expand-InputItem {
 }
 
 try {
+    # Entpacken nie im Ausgabeordner, sondern unter %LOCALAPPDATA%\Anon\arbeit\<zufall>
+    $arbeit = New-ArbeitsOrdner
+    $arbeitOrdner = $arbeit.Pfad
+
+    $einNr = 0
     foreach ($ein in $Eingabe) {
+        $einNr++
         if (-not (Test-Path -LiteralPath $ein)) {
-            throw "Eingabepfad nicht gefunden: $ein"
+            throw "Eingabe Nr. $einNr nicht gefunden."
         }
-        Expand-InputItem -ItemPath $ein -RelPrefix "" -WorkRoot $arbeitOrdner
+        try {
+            Expand-InputItem -ItemPath $ein -RelPrefix "" -WorkRoot $arbeitOrdner
+        } catch {
+            throw ("Abbruch bei Eingabe Nr. {0} (Schritt: Einlesen/Entpacken, Fehlerart: {1})." -f $einNr, $_.Exception.GetType().Name)
+        }
     }
 
     $dateiBerichte = New-Object 'System.Collections.Generic.List[psobject]'
@@ -2725,19 +2946,31 @@ try {
 
     # Durchlauf 1: Alle Dateien einmal verarbeiten, damit Hostnamen aus späteren Dateien
     # (z.B. "hostname X" in Datei 3) auch in früheren Dateien ersetzt werden. Ausgabe wird verworfen.
+    $dateiNr = 0
     foreach ($eintrag in $dateiListe) {
-        [void][AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
-        $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
-        if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
-        [void][AnonTool.AnonEngine]::ProcessText([AnonTool.TarGzHelper]::DecodeTextWithBom($bytes), $cfg, $state)
+        $dateiNr++
+        try {
+            [void][AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
+            $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
+            if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) { continue }
+            [void][AnonTool.AnonEngine]::ProcessText([AnonTool.TarGzHelper]::DecodeTextWithBom($bytes), $cfg, $state)
+        } catch {
+            Stop-MitNummer -Nummer $dateiNr -Schritt "Durchlauf 1" -Fehler $_
+        }
     }
     $state.Stats = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
 
     # Durchlauf 2: Endgültige Ausgabe mit vollständiger Zuordnungstabelle
     $anonErgebnisse = New-Object 'System.Collections.Generic.List[psobject]'
+    $dateiNr = 0
     foreach ($eintrag in $dateiListe) {
-        $anonRelPfad = [AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
-        $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
+        $dateiNr++
+        try {
+            $anonRelPfad = [AnonTool.AnonEngine]::ProcessPath($eintrag.RelPfad, $cfg, $state)
+            $bytes = [System.IO.File]::ReadAllBytes($eintrag.QuellPfad)
+        } catch {
+            Stop-MitNummer -Nummer $dateiNr -Schritt "Lesen" -Fehler $_
+        }
         if ([AnonTool.TarGzHelper]::IsBinaryContent($bytes)) {
             $uebersprungeneDateien.Add($anonRelPfad)
             continue
@@ -2746,8 +2979,12 @@ try {
         $vorherStats = @{}
         foreach ($k in $state.Stats.Keys) { $vorherStats[$k] = $state.Stats[$k] }
 
-        $text = [AnonTool.TarGzHelper]::DecodeTextWithBom($bytes)
-        $anonText = [AnonTool.AnonEngine]::ProcessText($text, $cfg, $state)
+        try {
+            $text = [AnonTool.TarGzHelper]::DecodeTextWithBom($bytes)
+            $anonText = [AnonTool.AnonEngine]::ProcessText($text, $cfg, $state)
+        } catch {
+            Stop-MitNummer -Nummer $dateiNr -Schritt "Anonymisieren" -Fehler $_
+        }
 
         $dateiStat = [ordered]@{}
         $gesamtInDatei = 0
@@ -2767,7 +3004,11 @@ try {
             if (-not [string]::IsNullOrEmpty($zielDir) -and -not (Test-Path -LiteralPath $zielDir)) {
                 [void](New-Item -ItemType Directory -Path $zielDir -Force)
             }
-            [System.IO.File]::WriteAllText($zielDatei, $anonText, (New-Object System.Text.UTF8Encoding($false)))
+            try {
+                [System.IO.File]::WriteAllText($zielDatei, $anonText, (New-Object System.Text.UTF8Encoding($false)))
+            } catch {
+                Stop-MitNummer -Nummer $dateiNr -Schritt "Schreiben" -Fehler $_
+            }
         }
 
         $anonErgebnisse.Add([pscustomobject]@{
@@ -2791,10 +3032,8 @@ try {
     }
 }
 finally {
-    # Arbeitsordner <Ausgabe>\_arbeit\ wird IMMER nach dem Lauf gelöscht
-    if (-not [string]::IsNullOrEmpty($arbeitOrdner) -and (Test-Path -LiteralPath $arbeitOrdner)) {
-        Remove-Item -LiteralPath $arbeitOrdner -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    # Arbeitsordner wird IMMER gelöscht, auch bei Fehler oder Abbruch (Strg+C)
+    Remove-ArbeitsOrdner $arbeit
 }
 
 # Zuordnungstabelle speichern (nur wenn nicht -Probe)
@@ -2862,8 +3101,6 @@ if ($pruefStatus -eq "SAUBER") {
     exit 0
 } else {
     Write-Host ("Prüfergebnis (-Pruefen)  : {0} ({1} Treffer)" -f $pruefStatus, $allePruefFunde.Count) -ForegroundColor Red
-    foreach ($fd in $allePruefFunde) {
-        Write-Host ("  [{0}] {1}:{2} -> {3}" -f $fd.Kategorie, $fd.Datei, $fd.Zeile, $fd.Fund) -ForegroundColor Yellow
-    }
+    Write-PruefFunde $allePruefFunde
     exit 2
 }

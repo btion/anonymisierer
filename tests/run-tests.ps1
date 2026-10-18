@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Automatisiertes Testskript für anon.ps1 (PowerShell 5.1+ und PowerShell 7+).
     Prüft:
@@ -202,12 +202,17 @@ $outDir = Join-Path $tempRunRoot "ausgabe"
 $tabDir = Join-Path $tempRunRoot "tabellen"
 $tabFile = Join-Path $tabDir "test-tabelle.json"
 $secPass = ConvertTo-SecureString "TestPasswort123!" -AsPlainText -Force
+# Arbeitsordner und Standardtabellen des Testlaufs in einen eigenen LOCALAPPDATA-Ordner legen
+$origLocalAppData = $env:LOCALAPPDATA
+$env:LOCALAPPDATA = Join-Path $tempRunRoot "localappdata"
+$arbeitRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Anon") "arbeit"
 
 & $anonScript -Eingabe $beispieleDir -Ausgabe $outDir -Regeln $rulesPath -TabellenPfad $tabFile -PasswortSecure $secPass > $null
 Assert-True ($LASTEXITCODE -eq 0) "End-to-End CLI-Lauf auf sauberen Beispieldateien liefert Exit-Code 0"
 
 Assert-True (Test-Path -LiteralPath (Join-Path $outDir "anonym")) "<Ausgabe>\anonym\ wurde erstellt"
-Assert-True (-not (Test-Path -LiteralPath (Join-Path $outDir "_arbeit"))) "<Ausgabe>\_arbeit\ wurde nach dem Lauf gelöscht"
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $outDir "_arbeit"))) "Kein Arbeitsordner im Ausgabeordner"
+Assert-True ((Test-Path -LiteralPath $arbeitRoot) -and (@(Get-ChildItem -LiteralPath $arbeitRoot -Directory).Count -eq 0)) "Arbeitsordner unter LOCALAPPDATA\Anon\arbeit wurde nach dem Lauf gelöscht"
 Assert-True (Test-Path -LiteralPath (Join-Path $outDir "bericht.json")) "<Ausgabe>\bericht.json wurde erstellt"
 Assert-True (Test-Path -LiteralPath $tabFile) "Zuordnungstabelle wurde außerhalb von <Ausgabe> gespeichert"
 
@@ -307,7 +312,8 @@ foreach ($bFile in @("ev-utf16le.log", "ev-utf16be.log", "ev-utf8bom.log")) {
 # ----------------------------------------------------------------------------
 $tabHeaderObj = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($tabFile, [System.Text.Encoding]::UTF8))
 Assert-True ($tabHeaderObj.format -eq "ANON-AES256-2") "Befund 4: Tabellenformat ist ANON-AES256-2"
-Assert-True ($tabHeaderObj.kdf -eq "PBKDF2-SHA1") "Befund 4: Tabellenkopf kdf ist PBKDF2-SHA1"
+$expKdf = if ([AnonTool.AnonCrypto]::Sha256KdfAvailable()) { "PBKDF2-SHA256" } else { "PBKDF2-SHA1" }
+Assert-True ($tabHeaderObj.kdf -eq $expKdf) "Befund 4: Tabellenkopf kdf ist $expKdf (SHA256 ab .NET 4.7.2)"
 Assert-True ([int]$tabHeaderObj.iterations -eq 600000) "Befund 4: PBKDF2 Iterationszahl im Tabellenkopf ist 600.000 ($($tabHeaderObj.iterations))"
 
 $kiAntwortPfad = Join-Path $tempRunRoot "ki-antwort.txt"
@@ -727,7 +733,7 @@ $anonTimestampDir = Get-ChildItem -LiteralPath (Join-Path $sammlerOutE2E "anonym
 $e2eBericht = Get-Content -LiteralPath (Join-Path $anonTimestampDir.FullName "bericht.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-Equal $e2eBericht.pruefergebnis "SAUBER" "Anonymisierte Sammler-Ausgabe ist im Prüfmodus SAUBER"
 
-Write-Host "`n=== 7. Prüfe Code-Review Commit 65cd5d4 (Befunde 1–3) ===" -ForegroundColor Cyan
+Write-Host "`n=== 7. Prüfe Code-Review Commit 65cd5d4 (Befunde 1-3) ===" -ForegroundColor Cyan
 
 # 7.1 Befund 1: Freitext-Leck bei geschützten Wörtern im Body (LF + CRLF, inkl. Alle-freitextMuster-Schleife)
 $freitextSamplesByRule = @{
@@ -978,6 +984,98 @@ Assert-Equal $LASTEXITCODE 0 "Rückübersetzung mit Aliastabelle beendet mit Exi
 
 $kiRueckText = [System.IO.File]::ReadAllText($kiRueckPfad, [System.Text.Encoding]::UTF8)
 Assert-True ($kiRueckText.Trim() -eq "Prüfe Uplink Praxis Dr Weber und Uplink Praxis Dr Weber") "Rückübersetzung (-Zurueck) funktioniert sowohl für neuen Namen als auch für alten Alias 'TEXT-23'"
+
+Write-Host "=== 9. Datenabfluss & Tabellenformate (Punkt 2) ===" -ForegroundColor Cyan
+$p2Dir = Join-Path $tempRunRoot "punkt2"
+[void](New-Item -ItemType Directory -Path $p2Dir -Force)
+$p2In = Join-Path $p2Dir "eingabe"
+[void](New-Item -ItemType Directory -Path $p2In -Force)
+[System.IO.File]::WriteAllText((Join-Path $p2In "probe.txt"), "hostname edge7`nlink edge7_alt`nip 192.0.2.10`n", (New-Object System.Text.UTF8Encoding($false)))
+
+# 9.1 Unbekannte Tabellenformate: Abbruch, Datei bleibt unverändert
+$fremdeTabellen = [ordered]@{
+    "unbekannt" = '{ "format": "ANON-UNBEKANNT-9", "daten": "AAAA" }'
+    "webcrypto" = '{ "format": "ANON-WEBCRYPTO-AESGCM-1", "kdf": "PBKDF2-SHA256", "iterations": 600000, "salt": "AAAAAAAAAAAAAAAAAAAAAA==", "iv": "AAAAAAAAAAAAAAAA", "daten": "AAAA" }'
+    "fremdjson" = '{ "irgendwas": 1 }'
+    "kaputt"    = '{ kein json'
+}
+foreach ($name in $fremdeTabellen.Keys) {
+    $tPfad = Join-Path $p2Dir "tabelle-$name.json"
+    [System.IO.File]::WriteAllText($tPfad, $fremdeTabellen[$name], (New-Object System.Text.UTF8Encoding($false)))
+    $vorher = [System.IO.File]::ReadAllText($tPfad)
+    $meldung = ""
+    try {
+        & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-$name") -Regeln $rulesPath -TabellenPfad $tPfad -Unverschluesselt *> $null
+    } catch { $meldung = $_.Exception.Message }
+    Assert-True ($meldung -ne "") "Tabellenformat '$name': anon.ps1 bricht mit Fehler ab"
+    Assert-True ([System.IO.File]::ReadAllText($tPfad) -ceq $vorher) "Tabellenformat '$name': Tabellendatei wurde nicht überschrieben"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path (Join-Path $p2Dir "aus-$name") (Join-Path "anonym" "probe.txt")))) "Tabellenformat '$name': keine Ausgabe geschrieben"
+}
+
+# 9.2 Obergrenze 5.000.000 Iterationen
+$iterTab = Join-Path $p2Dir "tabelle-iter.json"
+[System.IO.File]::WriteAllText($iterTab, '{ "format": "ANON-AES256-2", "kdf": "PBKDF2-SHA1", "iterations": 5000001, "salt": "AAAAAAAAAAAAAAAAAAAAAA==", "iv": "AAAAAAAAAAAAAAAAAAAAAA==", "hmac": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "daten": "AAAAAAAAAAAAAAAAAAAAAA==" }', (New-Object System.Text.UTF8Encoding($false)))
+$iterMeldung = ""
+try {
+    & $anonScript -Zurueck -Eingabe (Join-Path $p2In "probe.txt") -TabellenPfad $iterTab -PasswortSecure $secPass *> $null
+} catch { $iterMeldung = $_.Exception.Message }
+Assert-True ($iterMeldung -like "*5.000.000*") "Iterationszahl über 5.000.000 wird beim Laden abgelehnt"
+
+# 9.3 Konsole: Prüftreffer nur mit Kategorie, Datei und Zeile, nie mit dem Wert
+$konsole = (& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-konsole") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-konsole.json") -Unverschluesselt *>&1 | Out-String)
+Assert-Equal $LASTEXITCODE 2 "Konsolentest: Restfund wird gemeldet (Exit-Code 2)"
+Assert-True ($konsole.Contains("[Rest-Bekannt] probe.txt:2")) "Konsole nennt Kategorie, Datei und Zeile"
+Assert-True (-not $konsole.Contains("edge7")) "Konsole enthält den gefundenen Wert nicht"
+$konsolePruef = (& $anonScript -Pruefen -Eingabe $p2In -Regeln $rulesPath *>&1 | Out-String)
+Assert-True ($konsolePruef.Contains("[Rest-IPv4] probe.txt:3") -and -not $konsolePruef.Contains("192.0.2.10") -and -not $konsolePruef.Contains("edge7")) "-Pruefen: Konsole ohne gefundene Werte"
+$berichtText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $p2Dir "aus-konsole") "bericht.json"))
+Assert-True (-not $berichtText.Contains("edge7")) "bericht.json enthält den gefundenen Wert nicht"
+
+# 9.4 Fehlermeldungen ohne Dateinamen
+$fehlerMeldung = ""
+try {
+    & $anonScript -Eingabe (Join-Path $p2Dir "geheim-sw01_192.0.2.77.txt") -Ausgabe (Join-Path $p2Dir "aus-fehler") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-fehler.json") -Unverschluesselt *> $null
+} catch { $fehlerMeldung = $_.Exception.Message }
+Assert-True ($fehlerMeldung -like "*Nr. 1*" -and -not $fehlerMeldung.Contains("geheim-sw01") -and -not $fehlerMeldung.Contains("192.0.2.77")) "Fehlermeldung nennt nur die laufende Nummer, keinen Dateinamen ($fehlerMeldung)"
+$fehlerPruef = ""
+try { & $anonScript -Pruefen -Eingabe (Join-Path $p2Dir "geheim-sw01.txt") -Regeln $rulesPath *> $null } catch { $fehlerPruef = $_.Exception.Message }
+Assert-True ($fehlerPruef -like "*Nr. 1*" -and -not $fehlerPruef.Contains("geheim-sw01")) "-Pruefen: Fehlermeldung ohne Dateinamen"
+$sicherMeldung = ""
+try {
+    & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "kunde-x") -TabellenPfad (Join-Path (Join-Path $p2Dir "kunde-x") "tab.json") -Regeln $rulesPath -Unverschluesselt *> $null
+} catch { $sicherMeldung = $_.Exception.Message }
+Assert-True ($sicherMeldung -like "*SICHERHEITSFEHLER*" -and -not $sicherMeldung.Contains("kunde-x")) "Tabelle im Ausgabeordner: Fehlermeldung ohne Pfade"
+
+# 9.5 -Netzerhaltend / -NichtNetzerhaltend als Schalter
+& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-nicht") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-nicht.json") -Unverschluesselt -NichtNetzerhaltend *> $null
+$nichtText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $p2Dir "aus-nicht") (Join-Path "anonym" "probe.txt")))
+Assert-True ($nichtText.Contains("ip IP-PUB-1")) "-NichtNetzerhaltend: IP wird als IP-PUB-n ersetzt"
+& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-netz") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-netz.json") -Unverschluesselt -Netzerhaltend *> $null
+$netzText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $p2Dir "aus-netz") (Join-Path "anonym" "probe.txt")))
+Assert-True ($netzText.Contains("ip NET-1.H1")) "-Netzerhaltend: IP wird als NET-n.Hm ersetzt"
+Assert-Throws { & $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-beide") -Regeln $rulesPath -Unverschluesselt -Netzerhaltend -NichtNetzerhaltend *> $null } "-Netzerhaltend und -NichtNetzerhaltend zusammen werden abgelehnt"
+$paramInfo = (Get-Command $anonScript).Parameters
+Assert-True ($paramInfo["Netzerhaltend"].ParameterType -eq [System.Management.Automation.SwitchParameter] -and $paramInfo["NichtNetzerhaltend"].ParameterType -eq [System.Management.Automation.SwitchParameter]) "-Netzerhaltend und -NichtNetzerhaltend sind Schalter (kein Nullable[bool])"
+
+# 9.6 Verwaiste Arbeitsordner früherer Abbrüche werden beim Start entfernt
+$verwaist = Join-Path $arbeitRoot "verwaist0001"
+[void](New-Item -ItemType Directory -Path $verwaist -Force)
+[System.IO.File]::WriteAllText((Join-Path $verwaist "reste.txt"), "hostname edge7")
+(Get-Item -LiteralPath $verwaist).LastWriteTime = (Get-Date).AddDays(-2)
+& $anonScript -Eingabe $p2In -Ausgabe (Join-Path $p2Dir "aus-verwaist") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-verwaist.json") -Unverschluesselt *> $null
+Assert-True (-not (Test-Path -LiteralPath $verwaist)) "Verwaister Arbeitsordner eines abgebrochenen Laufs wird beim nächsten Start gelöscht"
+
+# 9.7 Prüfung der Quelldateien: UTF-8 mit BOM, keine Gedankenstriche (PS 5.1 liest .ps1 ohne BOM als ANSI)
+foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {
+    $raw = [System.IO.File]::ReadAllBytes($ps1)
+    $hasBom = ($raw.Length -ge 3 -and $raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF)
+    Assert-True $hasBom "$([System.IO.Path]::GetFileName($ps1)) ist UTF-8 mit BOM"
+    $txt = [System.Text.Encoding]::UTF8.GetString($raw)
+    $dash = $txt.IndexOf([char]0x2013) -ge 0 -or $txt.IndexOf([char]0x2014) -ge 0 -or $txt.IndexOf([char]0x201E) -ge 0 -or $txt.IndexOf([char]0x201C) -ge 0
+    Assert-True (-not $dash) "$([System.IO.Path]::GetFileName($ps1)) enthält keine Gedankenstriche oder typografischen Anführungszeichen"
+}
+
+$env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners
 if (Test-Path -LiteralPath $tempRunRoot) { Remove-Item -LiteralPath $tempRunRoot -Recurse -Force }

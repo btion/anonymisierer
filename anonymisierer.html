@@ -389,7 +389,7 @@
   <nav class="tabs">
     <button class="active" data-tab="tab-anon">1. Anonymisieren &amp; Prüfen</button>
     <button data-tab="tab-regeln">2. Regeldatei &amp; Eigene Begriffe</button>
-    <button data-tab="tab-tabelle">3. Zuordnungstabelle (AES-GCM)</button>
+    <button data-tab="tab-tabelle">3. Zuordnungstabelle (verschlüsselt)</button>
     <button data-tab="tab-text">4. Text (Datenschutz)</button>
     <button data-tab="tab-zurueck">5. Rückübersetzen</button>
   </nav>
@@ -596,9 +596,9 @@
     <!-- TAB 3: ZUORDNUNGSTABELLE -->
     <section id="tab-tabelle" class="tab-panel">
       <div class="card">
-        <h2>Zuordnungstabelle verwalten (WebCrypto AES-256-GCM + PBKDF2)</h2>
+        <h2>Zuordnungstabelle verwalten (ANON-AES256-2: PBKDF2-SHA256 + AES-256-CBC + HMAC-SHA256)</h2>
         <div class="small-muted" style="margin-bottom:12px;">
-          Die Zuordnungstabelle ist genauso vertraulich wie die Originaldaten! Sie wird mit Ihrem Passwort per PBKDF2 (600.000 Iterationen, SHA-256) und AES-256-GCM verschlüsselt heruntergeladen und kann für Folgeläufe oder zur Rückübersetzung wieder geladen werden. Ältere Tabellen bleiben weiterhin ladbar.
+          Die Zuordnungstabelle ist genauso vertraulich wie die Originaldaten! Sie wird mit Ihrem Passwort im Format ANON-AES256-2 (PBKDF2-SHA256 mit 600.000 Iterationen, AES-256-CBC, HMAC-SHA256) verschlüsselt heruntergeladen und ist damit auch in anon.ps1 ladbar. Ältere Tabellen (ANON-WEBCRYPTO-AESGCM-1, ANON-AES256-1) bleiben im Browser ladbar.
         </div>
         <div class="grid-2">
           <div>
@@ -608,7 +608,7 @@
             <label class="small-muted">Passwort zur Bestätigung wiederholen:</label>
             <input type="password" id="tableSavePassConfirm" placeholder="Passwort erneut eingeben..." style="margin:6px 0 10px 0;">
             <div class="btn-row">
-              <button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Tabelle (.anon-tab) herunterladen</button>
+              <button type="button" class="primary" id="btnExportEncryptedTable">Verschlüsselte Tabelle (.anontab) herunterladen</button>
             </div>
             <div id="tableSaveStatus" class="small-muted" style="margin-top:8px;"></div>
           </div>
@@ -619,7 +619,7 @@
             <div class="btn-row">
               <button type="button" id="btnLoadTableFile">Tabellendatei auswählen &amp; laden</button>
               <button type="button" class="danger" id="btnResetTableState">Neue leere Tabelle starten</button>
-              <input type="file" id="inputTableFile" accept=".json,.anon-tab" style="display:none">
+              <input type="file" id="inputTableFile" accept=".json,.anontab,.anon-tab" style="display:none">
             </div>
             <div id="tableLoadStatus" class="small-muted" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
           </div>
@@ -967,14 +967,14 @@
         "RSTP"
       ],
       "versionKontext": [
-        "(?i)\\b(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|comware|routeros|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?\\d+(?:\\.\\d+){1,4}(?:[-._a-zA-Z0-9]+)?",
-        "(?i)\\b(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
-        "\\b\\d{1,3}\\.\\d{1,3}\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?\\b"
+        "(?i)(?<![A-Za-z0-9_])(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|comware|routeros|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?[0-9]+(?:\\.[0-9]+){1,4}(?:[-._a-zA-Z0-9]+)?",
+        "(?i)(?<![A-Za-z0-9_])(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4}(?![A-Za-z0-9_])",
+        "(?<![A-Za-z0-9_])[0-9]{1,3}\\.[0-9]{1,3}\\.(?:25[6-9]|2[6-9][0-9]|[3-9][0-9]{2}|[0-9]{4,})(?:\\.[0-9]+)?(?![A-Za-z0-9_])"
       ],
       "musterRegex": [
-        "(?i)\\b(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)\\b",
-        "(?<![0-9A-Fa-f:])\\d{1,2}:\\d{2}:\\d{2}(?:[.,]\\d{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-]\\d{2}:?\\d{2}))?(?![0-9A-Fa-f:])",
-        "\\b(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)\\b",
+        "(?i)(?<![A-Za-z0-9_])(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)[0-9]+(?:[/:.-][0-9]+)*|(?:bridge|bonding)[0-9]*)(?![A-Za-z0-9_])",
+        "(?<![0-9A-Fa-f:])[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-][0-9]{2}:?[0-9]{2}))?(?![0-9A-Fa-f:])",
+        "(?<![A-Za-z0-9_])(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)(?![A-Za-z0-9_])",
         "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)"
       ]
     },
@@ -1023,10 +1023,10 @@
         "TACACS"
       ],
       "erlaubtMuster": [
-        "^(?:NET-\\d+(?:\\.H\\d+)?(?:/\\d{1,3})?|IP6?(?:-PRIV|-PUB)?-\\d+|MAC-\\d+|HOST-\\d+|DOMAIN-\\d+|USER-\\d+|SERIAL-\\d+|TEXT-\\d+|MAIL-\\d+|URL-\\d+|ORT-\\d+|KONTAKT-\\d+|BANNER-\\d+|FIRMA-\\d+|PERSON-\\d+|SW-EIGEN-\\d+)$",
-        "(?i)^(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)\\d+(?:[/:.-]\\d+)*|(?:bridge|bonding)\\d*)$",
-        "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.\\d{1,2}\\.\\d{1,2}\\.\\d{4}$",
-        "^v?\\d+\\.\\d+\\.(?:25[6-9]|2[6-9]\\d|[3-9]\\d{2}|\\d{4,})(?:\\.\\d+)?$"
+        "^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|MAC-[0-9]+|HOST-[0-9]+|DOMAIN-[0-9]+|USER-[0-9]+|SERIAL-[0-9]+|TEXT-[0-9]+|MAIL-[0-9]+|URL-[0-9]+|ORT-[0-9]+|KONTAKT-[0-9]+|BANNER-[0-9]+|FIRMA-[0-9]+|PERSON-[0-9]+|SW-EIGEN-[0-9]+)$",
+        "(?i)^(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)[0-9]+(?:[/:.-][0-9]+)*|(?:bridge|bonding)[0-9]*)$",
+        "^(?:FL|KB|WC|YA|YB|WB|YC|PL|TL)\\.[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4}$",
+        "^v?[0-9]+\\.[0-9]+\\.(?:25[6-9]|2[6-9][0-9]|[3-9][0-9]{2}|[0-9]{4,})(?:\\.[0-9]+)?$"
       ]
     },
     "geheimnisMuster": [
@@ -1039,31 +1039,31 @@
       {
         "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
         "hersteller": "FortiGate/Sophos",
-        "suche": "(?i)(\\bset[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"[^\"]+\"|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Aruba AOS-CX / AOS-S ciphertext, Passwörter, Keys",
         "hersteller": "Aruba",
-        "suche": "(?i)(\\b(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:ciphertext|wpa-passphrase|key[ \\t]+(?:plaintext|ciphertext)|password[ \\t]+(?:plaintext|ciphertext|manager|operator))[ \\t]+)(\"[^\"]+\"|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "HPE Comware password/key (cipher|simple|hash) & snmp-agent community",
         "hersteller": "HPE Comware",
-        "suche": "(?i)(\\b(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:password[ \\t]+(?:cipher|simple|hash)|snmp-agent[ \\t]+community[ \\t]+(?:read|write)(?:[ \\t]+(?:cipher|simple))?|key(?:[ \\t]+(?:authentication|accounting))?[ \\t]+(?:cipher|simple))[ \\t]+)(\"[^\"]+\"|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "MikroTik RouterOS Passwörter, Secrets, WireGuard Keys (inkl. public-key=) & PSKs",
         "hersteller": "MikroTik",
-        "suche": "(?i)(\\b(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"[^\"]+\"|[^\\s\\r\\n]+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:password|secret|passphrase|wpa-pre-shared-key|wpa2-pre-shared-key|private-key|public-key|preshared-key|auth-key|enc-key|radius-secret)=)(\"[^\"]+\"|[^\\s\\r\\n]+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
         "hersteller": "Cisco",
-        "suche": "(?i)(\\b(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+\\d+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+\\d+)?|key-string(?:[ \\t]+\\d+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+\\d+)?|tacacs-server[ \\t]+key(?:[ \\t]+\\d+)?)[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"[^\"]+\"|\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -1075,25 +1075,25 @@
       {
         "name": "SNMP Community & SNMPv3 Auth/Priv Keys (CLI)",
         "hersteller": "Alle",
-        "suche": "(?i)(\\bsnmp-server[ \\t]+community[ \\t]+)(\"[^\"]+\"|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])snmp-server[ \\t]+community[ \\t]+)(\"[^\"]+\"|\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "SNMPv3 Auth/Priv Passwörter",
         "hersteller": "Alle",
-        "suche": "(?i)(\\b(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:auth|priv)[ \\t]+(?:md5|sha|sha256|sha384|sha512|des|3des|aes|aes128|aes192|aes256)(?:[ \\t]+(?:plaintext|ciphertext|0|7))?[ \\t]+)(\\S+)",
         "ersetzen": "$1*****"
       },
       {
         "name": "API-Keys, Bearer Tokens & generische Key/Secret-Zuweisungen",
         "hersteller": "Alle",
-        "suche": "(?i)(\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|shared[_-]?secret|psk|passphrase)[ \\t]*[:=][ \\t]*\"?)(?:Bearer[ \\t]+)?([^\\s\"',;]+)(\"?)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|shared[_-]?secret|psk|passphrase)[ \\t]*[:=][ \\t]*\"?)(?:Bearer[ \\t]+)?([^\\s\"',;]+)(\"?)",
         "ersetzen": "$1*****$3"
       },
       {
         "name": "Authorization Bearer Header",
         "hersteller": "Alle",
-        "suche": "(?i)(\\bAuthorization[ \\t]*:[ \\t]*Bearer[ \\t]+)(\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])Authorization[ \\t]*:[ \\t]*Bearer[ \\t]+)(\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -1105,7 +1105,7 @@
       {
         "name": "Lange Hex-/Base64-Geheimnis-Blobs (>40 Zeichen Hex oder Base64 mit Padding)",
         "hersteller": "Alle",
-        "suche": "\\b(?:[A-Fa-f0-9]{40,}|[A-Za-z0-9+/]{44,}={1,2})\\b",
+        "suche": "(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))(?:[A-Fa-f0-9]{40,}|[A-Za-z0-9+/]{44,}={1,2})(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))",
         "ersetzen": "*****"
       }
     ],
@@ -1153,40 +1153,40 @@
       {
         "name": "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \\-Fortsetzung)",
         "kategorie": "TEXT",
-        "suche": "(?i)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?\")((?:[^\"\\\\]|\\\\.|\\\\\\r?\\n)*)(\")"
+        "suche": "(?i)((?<![A-Za-z0-9_])comment=(?:\\\\\\r?\\n[ \\t]*)?\")((?:[^\"\\\\]|\\\\.|\\\\\\r?\\n)*)(\")"
       },
       {
         "name": "MikroTik comment= (ohne Anführungszeichen)",
         "kategorie": "TEXT",
-        "suche": "(?im)(\\bcomment=(?:\\\\\\r?\\n[ \\t]*)?)(?!\")([^\"\\r\\n]+?)()(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
+        "suche": "(?im)((?<![A-Za-z0-9_])comment=(?:\\\\\\r?\\n[ \\t]*)?)(?!\")([^\"\\r\\n]+?)()(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
       },
       {
         "name": "MikroTik SNMP Location (location=)",
         "kategorie": "ORT",
-        "suche": "(?im)(\\blocation=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
+        "suche": "(?im)((?<![A-Za-z0-9_])location=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
       },
       {
         "name": "MikroTik SNMP Contact (contact=)",
         "kategorie": "KONTAKT",
-        "suche": "(?im)(\\bcontact=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
+        "suche": "(?im)((?<![A-Za-z0-9_])contact=\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]+[a-z0-9-]+=[\\S]+|[ \\t]*(?=\\r?$))"
       },
       {
         "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
         "kategorie": "TEXT",
-        "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))\\b[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
+        "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))(?![A-Za-z0-9_])[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
       }
     ],
     "seriennummerMuster": [
-      "(?i)(\\b(?:Serial[ \\t-]*(?:Number|Nbr|No|Num)\\.?|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|\\b(?:Serial[ \\t-]+(?:Number|Nbr|No|Num)\\.?|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
+      "(?i)((?<![A-Za-z0-9_])(?:Serial[ \\t-]*(?:Number|Nbr|No|Num)\\.?|Service[ \\t]*Tag|Asset[ \\t]*Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial|SN)[ \\t]*[:=][ \\t]*\"?|(?<![A-Za-z0-9_])(?:Serial[ \\t-]+(?:Number|Nbr|No|Num)\\.?|Service[ \\t]+Tag|Asset[ \\t]+Tag|Processor[ \\t]+board[ \\t]+ID|Chassis[ \\t]+SN|System[ \\t]+Serial[ \\t]+Number|Board[ \\t]+Serial)[ \\t]+\"?)([A-Za-z0-9-]{5,24})(\"?)",
       "(?i)(\"(?:serial|serial_number|service_tag|asset_tag|chassis_serial)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9-]{5,24})(\")"
     ],
     "benutzerMuster": [
-      "(?im)(\\b(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type)|[ \\t]*(?=\\r?$))",
+      "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]+(?:password|secret|privilege|role|group|nopassword|ciphertext|hash|sshkey|auth|level|view|service-type)|[ \\t]*(?=\\r?$))",
       "(?im)^([ \\t]*local-user[ \\t]+)([A-Za-z0-9._-]{2,64})()(?=[ \\t]|\\r?$)",
       "(?im)(/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))[^\\r\\n]*?(?<![A-Za-z0-9-])name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
-      "(?i)(\\b(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
+      "(?i)((?<![A-Za-z0-9_])(?:user|usr|login|account|SubjectUserName|TargetUserName|user_name|username)[ \\t]*=[ \\t]*[\"]?)([A-Za-z0-9._\\\\@-]{2,32})([\"]?)",
       "(?i)(\"(?:username|user_name|account_name|login_user)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._\\\\@-]{2,32})(\")",
-      "(?i)(\\b(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
+      "(?i)((?<![A-Za-z0-9_])(?:Accepted|Failed)[ \\t]+(?:password|publickey|keyboard-interactive(?:/pam)?)[ \\t]+for[ \\t]+(?:invalid[ \\t]+user[ \\t]+)?)([A-Za-z0-9._-]{2,32})(?=[ \\t]+from[ \\t]+)"
     ],
     "hostnamenMuster": [
       "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
@@ -2788,6 +2788,16 @@
   const PBKDF2_DEFAULT_ITERATIONS = 600000;
   const PBKDF2_LEGACY_ITERATIONS = 100000;
   const MIN_PASSWORD_LENGTH = 12;
+  const PBKDF2_MAX_ITERATIONS = 5000000;
+
+  function checkTableIterations(iterations, format) {
+    if (!Number.isInteger(iterations) || iterations <= 0) {
+      throw new Error(`Ungültige oder fehlende Iterationszahl in ${format}.`);
+    }
+    if (iterations > PBKDF2_MAX_ITERATIONS) {
+      throw new Error("Zuordnungstabelle abgelehnt: Iterationszahl über dem Höchstwert von 5.000.000.");
+    }
+  }
 
   function validatePasswordMinLength(password) {
     if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
@@ -2807,11 +2817,11 @@
     return macInput;
   }
 
-  async function deriveAes256V2Subkeys(password, salt, iterations) {
+  async function deriveAes256V2Subkeys(password, salt, iterations, kdf) {
     const enc = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
     const masterBits = await crypto.subtle.deriveBits(
-      { name: "PBKDF2", salt, iterations, hash: "SHA-1" },
+      { name: "PBKDF2", salt, iterations, hash: kdf === "PBKDF2-SHA256" ? "SHA-256" : "SHA-1" },
       keyMaterial,
       256
     );
@@ -2829,22 +2839,24 @@
     return { aesKey, macKey };
   }
 
-  async function encryptTableAes256V2(plainJsonStr, password, customIterations) {
+  // Standardformat der Browser-Variante (lesbar von anon.ps1); kdf: "PBKDF2-SHA256" (Standard) oder "PBKDF2-SHA1"
+  async function encryptTableAes256V2(plainJsonStr, password, customIterations, kdfName) {
     validatePasswordMinLength(password);
+    const kdf = kdfName === "PBKDF2-SHA1" ? "PBKDF2-SHA1" : "PBKDF2-SHA256";
     const iterations = (typeof customIterations === "number" && customIterations > 0)
       ? customIterations
       : PBKDF2_DEFAULT_ITERATIONS;
     const enc = new TextEncoder();
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(16));
-    const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations);
+    const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations, kdf);
     const cipherBuf = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, aesKey, enc.encode(plainJsonStr));
     const cipher = new Uint8Array(cipherBuf);
     const macInput = buildAes256V2MacInput(iterations, salt, iv, cipher);
     const macBytes = new Uint8Array(await crypto.subtle.sign("HMAC", macKey, macInput));
     return JSON.stringify({
       format: "ANON-AES256-2",
-      kdf: "PBKDF2-SHA1",
+      kdf,
       iterations,
       salt: bytesToBase64(salt),
       iv: bytesToBase64(iv),
@@ -2864,8 +2876,10 @@
     if (obj.format === "ANON-AES256-2") {
       const iterProp = obj.iterations !== undefined ? obj.iterations : obj.iterationen;
       const iterations = Number(iterProp);
-      if (!Number.isInteger(iterations) || iterations <= 0) {
-        throw new Error("Ungültige oder fehlende Iterationszahl in ANON-AES256-2.");
+      checkTableIterations(iterations, "ANON-AES256-2");
+      const kdf = obj.kdf === undefined ? "PBKDF2-SHA1" : obj.kdf;
+      if (kdf !== "PBKDF2-SHA1" && kdf !== "PBKDF2-SHA256") {
+        throw new Error("Unbekanntes Ableitungsverfahren in ANON-AES256-2.");
       }
       if (!obj.hmac || typeof obj.hmac !== "string") {
         throw new Error("Fehlender HMAC in ANON-AES256-2.");
@@ -2880,7 +2894,7 @@
       if (salt.length < 8 || iv.length !== 16) {
         throw new Error("Ungültiges Salt oder IV in ANON-AES256-2.");
       }
-      const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations);
+      const { aesKey, macKey } = await deriveAes256V2Subkeys(password, salt, iterations, kdf);
       const macInput = buildAes256V2MacInput(iterations, salt, iv, cipher);
       const actualMac = new Uint8Array(await crypto.subtle.sign("HMAC", macKey, macInput));
       let diff = 0;
@@ -2903,9 +2917,7 @@
 
     const iterProp = obj.iterations !== undefined ? obj.iterations : obj.iterationen;
     const iterations = iterProp !== undefined ? Number(iterProp) : PBKDF2_LEGACY_ITERATIONS;
-    if (!Number.isInteger(iterations) || iterations <= 0) {
-      throw new Error("Ungültige Iterationszahl in ANON-AES256-1.");
-    }
+    checkTableIterations(iterations, "ANON-AES256-1");
     if (!obj.hmac || typeof obj.hmac !== "string") {
       throw new Error("Fehlender HMAC in ANON-AES256-1.");
     }
@@ -2972,9 +2984,7 @@
       if (!password) throw new Error("Bitte Passwort für die verschlüsselte Zuordnungstabelle eingeben.");
       const hasExplicitIter = obj.iterations !== undefined || obj.iterationen !== undefined;
       const iterations = hasExplicitIter ? Number(obj.iterations !== undefined ? obj.iterations : obj.iterationen) : PBKDF2_LEGACY_ITERATIONS;
-      if (!Number.isInteger(iterations) || iterations <= 0) {
-        throw new Error("Ungültige Iterationszahl in der verschlüsselten Zuordnungstabelle.");
-      }
+      checkTableIterations(iterations, "ANON-WEBCRYPTO-AESGCM-1");
       const enc = new TextEncoder();
       const salt = base64ToBytes(obj.salt);
       const iv = base64ToBytes(obj.iv);
@@ -5721,10 +5731,13 @@
         return;
       }
       const plain = JSON.stringify(currentState.toJSON(), null, 2);
-      const encrypted = await encryptTableWebCrypto(plain, pass);
-      triggerDownload(encrypted, "zuordnungstabelle.anon-tab", "application/json");
+      // Standardformat ANON-AES256-2 (auch von anon.ps1 lesbar)
+      const encrypted = await encryptTableAes256V2(plain, pass);
+      document.getElementById("tableSavePass").value = "";
+      document.getElementById("tableSavePassConfirm").value = "";
+      triggerDownload(encrypted, "zuordnungstabelle.anontab", "application/json");
       unsavedTableChanges = false;
-      document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (PBKDF2 600.000 Iterationen) heruntergeladen.";
+      document.getElementById("tableSaveStatus").textContent = "Verschlüsselte Tabelle (ANON-AES256-2, PBKDF2-SHA256, 600.000 Iterationen) heruntergeladen. Passwortfelder geleert.";
     });
 
     document.getElementById("btnLoadTableFile").addEventListener("click", () => document.getElementById("inputTableFile").click());

@@ -19,6 +19,9 @@ const CASES_PATH = path.join(__dirname, "faelle.json");
 const BEISPIELE_DIR = path.join(__dirname, "beispiele");
 const ERWARTET_DIR = path.join(__dirname, "erwartet");
 
+// tests/erwartet/ ist der committete Sollstand; neu erzeugen nur mit: node tests/run-tests.js --aktualisieren
+const AKTUALISIEREN = process.argv.includes("--aktualisieren");
+
 let passed = 0;
 let failed = 0;
 
@@ -83,6 +86,40 @@ assert(
   JSON.stringify(diskRules) === JSON.stringify(core.DEFAULT_RULES),
   "anon-regeln.json und DEFAULT_RULES in anonymisierer.html sind 100 % identisch"
 );
+
+// Regex-Dialekt: .NET wertet \w, \d und \b als Unicode, JavaScript als ASCII. Deshalb sind sie in
+// anon-regeln.json verboten; erlaubt sind explizite ASCII-Klassen wie [0-9] oder (?<![A-Za-z0-9_]).
+function collectRulePatterns(rules) {
+  const list = [];
+  const add = (where, arr) => (arr || []).forEach((p, i) => list.push({ where: `${where}[${i}]`, pattern: p }));
+  add("ausnahmen.versionKontext", rules.ausnahmen && rules.ausnahmen.versionKontext);
+  add("ausnahmen.musterRegex", rules.ausnahmen && rules.ausnahmen.musterRegex);
+  add("pruefung.erlaubtMuster", rules.pruefung && rules.pruefung.erlaubtMuster);
+  (rules.geheimnisMuster || []).forEach((g, i) => list.push({ where: `geheimnisMuster[${i}]`, pattern: g.suche }));
+  (rules.freitextMuster || []).forEach((f, i) => list.push({ where: `freitextMuster[${i}]`, pattern: f.suche }));
+  add("seriennummerMuster", rules.seriennummerMuster);
+  add("benutzerMuster", rules.benutzerMuster);
+  add("hostnamenMuster", rules.hostnamenMuster);
+  add("eigeneHostnamenMuster", rules.eigeneHostnamenMuster);
+  return list;
+}
+const forbiddenEscape = /(?<!\\)(?:\\\\)*\\[wWdDbB]/;
+const rulePatterns = collectRulePatterns(diskRules);
+assert(rulePatterns.length > 30, `Regex-Dialekt: ${rulePatterns.length} Muster aus anon-regeln.json geprüft`);
+for (const rp of rulePatterns) {
+  assert(!forbiddenEscape.test(rp.pattern), `Regex-Dialekt: ${rp.where} enthält kein \\w, \\d oder \\b`);
+}
+assert(forbiddenEscape.test("(?i)\\bhost\\d+") && !forbiddenEscape.test("C:\\\\bin"), "Regex-Dialekt: Prüfregel erkennt \\b/\\d und ignoriert maskierte Backslashes");
+
+// Ersetzungstexte der Geheimnismuster: nur $1..$9 und nur vorhandene Gruppen
+for (const [i, g] of (diskRules.geheimnisMuster || []).entries()) {
+  const rep = String(g.ersetzen);
+  const dollarRefs = rep.match(/\$[^\s]?/g) || [];
+  assert(dollarRefs.every(r => /^\$[1-9]$/.test(r)), `Ersetzungstext geheimnisMuster[${i}] nutzt nur $1..$9 ('${rep}')`);
+  const groupCount = new RegExp(g.suche.replace(/^\(\?[ims]+\)/, "") + "|").exec("").length - 1;
+  const maxRef = Math.max(0, ...dollarRefs.map(r => parseInt(r.slice(1), 10) || 0));
+  assert(maxRef <= groupCount, `Ersetzungstext geheimnisMuster[${i}] verweist nur auf vorhandene Gruppen ($${maxRef} <= ${groupCount})`);
+}
 
 console.log("=== 3. Führe Testkorpus tests/faelle.json aus (LF und CRLF) ===");
 const cases = JSON.parse(fs.readFileSync(CASES_PATH, "utf8"));
@@ -166,7 +203,7 @@ for (const tc of cases) {
 }
 
 console.log("=== 4. Prüfe Mehrdateien-Konsistenz auf tests/beispiele/ (LF + CRLF) ===");
-if (!fs.existsSync(ERWARTET_DIR)) fs.mkdirSync(ERWARTET_DIR, { recursive: true });
+if (AKTUALISIEREN && !fs.existsSync(ERWARTET_DIR)) fs.mkdirSync(ERWARTET_DIR, { recursive: true });
 const sampleFiles = fs.readdirSync(BEISPIELE_DIR).filter(f => !f.startsWith(".")).sort();
 const multiState = new core.AnonState();
 const multiCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
@@ -179,8 +216,15 @@ for (const sf of sampleFiles) {
   assert(findings.length === 0, `Beispieldatei ${sf} ist nach Anonymisierung SAUBER (0 Restfunde)`);
 
   const expPath = path.join(ERWARTET_DIR, sf);
-  fs.writeFileSync(expPath, anon, "utf8");
-  const expContent = fs.readFileSync(expPath, "utf8");
+  if (AKTUALISIEREN) {
+    fs.writeFileSync(expPath, anon, "utf8");
+    console.log(`  tests/erwartet/${sf} neu geschrieben (--aktualisieren)`);
+  }
+  assert(fs.existsSync(expPath), `Referenz tests/erwartet/${sf} vorhanden`);
+  const expContent = fs.existsSync(expPath) ? fs.readFileSync(expPath, "utf8") : "";
+  if (anon !== expContent) {
+    console.error(`  [${sf}] weicht vom Sollstand ab. Bei gewollter Änderung: node tests/run-tests.js --aktualisieren`);
+  }
   assert(anon === expContent, `Beispieldatei ${sf} stimmt mit Referenz in tests/erwartet/${sf} überein`);
 }
 
@@ -294,7 +338,27 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   const encV2Default = await core.encryptTableAes256V2(sampleTableJson, validPass);
   const hdrV2Default = JSON.parse(encV2Default);
   assert(hdrV2Default.format === "ANON-AES256-2", "Befund 4: Neues Format ist ANON-AES256-2");
-  assert(hdrV2Default.kdf === "PBKDF2-SHA1", "Befund 4: kdf im Kopf ist PBKDF2-SHA1");
+  assert(hdrV2Default.kdf === "PBKDF2-SHA256", "Befund 4: kdf im Kopf ist PBKDF2-SHA256 (Standard der Browser-Variante)");
+  const encV2Sha1 = await core.encryptTableAes256V2(sampleTableJson, validPass, 10000, "PBKDF2-SHA1");
+  assert(JSON.parse(encV2Sha1).kdf === "PBKDF2-SHA1", "Befund 4: ANON-AES256-2 mit PBKDF2-SHA1 weiterhin erzeugbar");
+  const decV2Sha1 = await core.decryptTableAes256V2(encV2Sha1, validPass);
+  delete decV2Sha1._protectionMode;
+  delete decV2Sha1._loadedFormat;
+  assert(JSON.stringify(decV2Sha1) === sampleTableJson, "Befund 4: ANON-AES256-2 mit PBKDF2-SHA1 (ältere anon.ps1-Tabellen) ladbar");
+  // Obergrenze 5.000.000 Iterationen beim Laden
+  const tooManyIter = JSON.parse(encV2Sha1);
+  tooManyIter.iterations = 5000001;
+  await assertRejects(() => core.decryptTableAes256V2(JSON.stringify(tooManyIter), validPass), "Iterationen > 5.000.000 werden beim Laden abgelehnt (ANON-AES256-2)");
+  const gcmTooMany = JSON.parse(await core.encryptTableWebCrypto(sampleTableJson, validPass, 1000));
+  gcmTooMany.iterations = 6000000;
+  await assertRejects(() => core.decryptTableWebCrypto(JSON.stringify(gcmTooMany), validPass), "Iterationen > 5.000.000 werden beim Laden abgelehnt (AES-GCM)");
+  const badKdf = JSON.parse(encV2Sha1);
+  badKdf.kdf = "PBKDF2-MD5";
+  await assertRejects(() => core.decryptTableAes256V2(JSON.stringify(badKdf), validPass), "Unbekanntes Ableitungsverfahren wird abgelehnt");
+  // UI speichert standardmäßig ANON-AES256-2 und leert die Passwortfelder
+  const exportHandler = htmlContent.slice(htmlContent.indexOf('getElementById("btnExportEncryptedTable")'), htmlContent.indexOf('getElementById("btnLoadTableFile")'));
+  assert(exportHandler.includes("encryptTableAes256V2(") && !exportHandler.includes("encryptTableWebCrypto("), "UI: Tabellen-Export nutzt ANON-AES256-2");
+  assert(exportHandler.includes('getElementById("tableSavePass").value = ""') && exportHandler.includes('getElementById("tableSavePassConfirm").value = ""'), "UI: Passwortfelder werden nach dem Export geleert");
   assert(hdrV2Default.iterations === 600000, "Befund 4: Standard-Iterationen sind 600000");
 
   const decV2Default = await core.decryptTableAes256V2(encV2Default, validPass);
@@ -1166,6 +1230,27 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       assert(psMusterOut === jsMusterOut, "Parität: Lokale Muster liefern in anonymisierer.html und anon.ps1 identische Ausgabe");
       fs.rmSync(tmpMusterDir, { recursive: true, force: true });
     }
+  }
+
+  // 17.9 Tabellen-Austausch: In der Browser-Variante gespeicherte Tabelle (ANON-AES256-2) wird von anon.ps1 gelesen
+  if (pwshCheck.status === 0) {
+    const tmpXDir = fs.mkdtempSync(path.join(os.tmpdir(), "anon-tab-austausch-"));
+    const xCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
+    const xState = new core.AnonState();
+    const xAnon = core.processText("hostname sw-core-x01\nip address 192.0.2.5/24", xCfg, xState);
+    const xTab = await core.encryptTableAes256V2(JSON.stringify(xState.toJSON()), "AustauschPasswort#2026");
+    const xTabPath = path.join(tmpXDir, "tabelle.anontab");
+    const xKiPath = path.join(tmpXDir, "ki.txt");
+    const xOutPath = path.join(tmpXDir, "ki-echt.txt");
+    fs.writeFileSync(xTabPath, xTab, "utf8");
+    fs.writeFileSync(xKiPath, "Pruefe " + xAnon.replace(/\n/g, " / "), "utf8");
+    const esc = (p) => p.replace(/\\/g, "\\\\");
+    const xCmd = `$pw = ConvertTo-SecureString "AustauschPasswort#2026" -AsPlainText -Force; & "${esc(PS1_PATH)}" -Zurueck -Eingabe "${esc(xKiPath)}" -Ausgabe "${esc(xOutPath)}" -TabellenPfad "${esc(xTabPath)}" -PasswortSecure $pw > $null; exit $LASTEXITCODE`;
+    const xRun = spawnSync("pwsh", ["-NoProfile", "-Command", xCmd], { encoding: "utf8" });
+    assert(xRun.status === 0, `Tabellen-Austausch: anon.ps1 lädt Browser-Tabelle ANON-AES256-2/PBKDF2-SHA256 (${xRun.status})`);
+    const xRestored = fs.existsSync(xOutPath) ? fs.readFileSync(xOutPath, "utf8") : "";
+    assert(xRestored === "Pruefe hostname sw-core-x01 / ip address 192.0.2.5/24", `Tabellen-Austausch: Rückübersetzung in anon.ps1 korrekt (${xRestored})`);
+    fs.rmSync(tmpXDir, { recursive: true, force: true });
   }
 
   // --- 18. Prüfe Text-Pseudonymisierungs-Engine (core/text) ---
