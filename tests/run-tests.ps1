@@ -1088,6 +1088,51 @@ if ($hatNachpruefung) {
     }
 }
 
+# ----------------------------------------------------------------------------
+# 11. Kategoriegebundene Freigaben (ausnahmen.freigegeben)
+# ----------------------------------------------------------------------------
+Write-Host "=== 11. Kategoriegebundene Freigaben (ausnahmen.freigegeben) ===" -ForegroundColor Cyan
+$frText = "<Data Name=`"TargetUserName`">jdoe7</Data>`nhostname jdoe7`n"
+$hatDetail = $null -ne [AnonTool.AnonEngine].GetMethod("AuditTextDetail", [Type[]]@([string], [string], [AnonTool.EngineConfig], [AnonTool.AnonState]))
+Assert-True $hatDetail "Freigaben: AnonEngine.AuditTextDetail vorhanden"
+if ($hatDetail) {
+    $frCfg = New-TestConfig -RulesObj $rulesObj
+    $ohne = [AnonTool.AnonEngine]::AuditTextDetail($frText, "f.txt", $frCfg, $null)
+    $frCfg.Freigegeben.Add("Benutzer" + [char]0 + "jdoe7") | Out-Null
+    $mit = [AnonTool.AnonEngine]::AuditTextDetail($frText, "f.txt", $frCfg, $null)
+    $ohneBenutzer = @($ohne.Funde | Where-Object { $_.Kategorie -like "*Benutzer*" }).Count
+    Assert-True ($ohneBenutzer -gt 0 -and $ohne.Freigegeben -eq 0) "Freigaben: ohne Freigabe wird der Benutzer gemeldet"
+    Assert-True (@($mit.Funde | Where-Object { $_.Kategorie -like "*Benutzer*" }).Count -eq 0) "Freigaben: freigegebener Benutzer wird in Kategorie Benutzer nicht gemeldet"
+    Assert-True (@($mit.Funde | Where-Object { $_.Kategorie -like "*Hostname*" }).Count -gt 0) "Freigaben: derselbe Wert als Hostname wird weiter gemeldet"
+    Assert-True ($mit.Freigegeben -eq $ohneBenutzer) "Freigaben: bewusst freigegebene Funde werden gezählt ($($mit.Freigegeben))"
+    Assert-True (@([AnonTool.AnonEngine]::AuditText($frText, "f.txt", $frCfg, $null)).Count -eq $mit.Funde.Count) "Freigaben: AuditText liefert dieselben Funde wie AuditTextDetail"
+    $grossCfg = New-TestConfig -RulesObj $rulesObj
+    $grossCfg.Freigegeben.Add("Benutzer" + [char]0 + "JDOE7") | Out-Null
+    Assert-True ([AnonTool.AnonEngine]::AuditTextDetail($frText, "f.txt", $grossCfg, $null).Freigegeben -eq 0) "Freigaben: Wert wird exakt verglichen (Groß-/Kleinschreibung zählt)"
+    $gCfg = New-TestConfig -RulesObj $rulesObj
+    $gCfg.Freigegeben.Add("Geheimnis" + [char]0 + "Geheim77x") | Out-Null
+    $g = [AnonTool.AnonEngine]::AuditTextDetail("password Geheim77x`n", "f.txt", $gCfg, $null)
+    Assert-True ($g.Freigegeben -eq 0 -and $g.Funde.Count -gt 0) "Freigaben: Geheimnisse sind nicht freigebbar"
+}
+# Ungültige Freigaben in anon-regeln.lokal.json brechen ab, Meldung ohne Werte
+$frDir = Join-Path $tempRunRoot "freigabe"
+New-Item -ItemType Directory -Path $frDir -Force | Out-Null
+$frEin = Join-Path $frDir "ein.txt"
+[System.IO.File]::WriteAllText($frEin, "<Data Name=`"TargetUserName`">jdoe7</Data>`n", (New-Object System.Text.UTF8Encoding($false)))
+$frLok = Join-Path $frDir "ungueltig.lokal.json"
+[System.IO.File]::WriteAllText($frLok, '{ "ausnahmen": { "freigegeben": [ { "kategorie": "Geheimnis", "wert": "x1geheim" } ] } }', (New-Object System.Text.UTF8Encoding($false)))
+$frMeldung = ""
+try { & $anonScript -Eingabe $frEin -Ausgabe (Join-Path $frDir "aus-u") -Regeln $rulesPath -LokaleRegeln $frLok -TabellenPfad (Join-Path $frDir "tab-u.json") -Unverschluesselt *> $null } catch { $frMeldung = $_.Exception.Message }
+Assert-True ($frMeldung -like "*Freigabe*" -and -not $frMeldung.Contains("x1geheim")) "Freigaben: ungültige Freigabe in anon-regeln.lokal.json bricht ab, Meldung ohne Wert ($frMeldung)"
+$frLok2 = Join-Path $frDir "benutzer.lokal.json"
+[System.IO.File]::WriteAllText($frLok2, '{ "ausnahmen": { "freigegeben": [ { "kategorie": "Benutzer", "wert": "jdoe7" } ] } }', (New-Object System.Text.UTF8Encoding($false)))
+& $anonScript -Eingabe $frEin -Ausgabe (Join-Path $frDir "aus-b") -Regeln $rulesPath -LokaleRegeln $frLok2 -TabellenPfad (Join-Path $frDir "tab-b.json") -Unverschluesselt *> $null
+$frCode = $LASTEXITCODE
+$frBericht = $null
+$frBerichtPfad = Join-Path (Join-Path $frDir "aus-b") "bericht.json"
+if (Test-Path -LiteralPath $frBerichtPfad) { $frBericht = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($frBerichtPfad, [System.Text.Encoding]::UTF8)) }
+Assert-True ($frCode -eq 0 -and $null -ne $frBericht -and [int]$frBericht.bewusstFreigegeben -ge 1) "Freigaben: anon.ps1 ohne Restfunde, Bericht zählt bewusstFreigegeben ($frCode)"
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

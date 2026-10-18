@@ -1548,6 +1548,65 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 23. Bedienoberfläche: kategoriegebundene Freigaben (ausnahmen.freigegeben) ---
+  console.log("--- 23. Kategoriegebundene Freigaben (ausnahmen.freigegeben) ---");
+  {
+    const frText = '<Data Name="TargetUserName">jdoe7</Data>\nhostname jdoe7\n';
+    const mitFreigabe = (liste) => {
+      const r = JSON.parse(JSON.stringify(diskRules));
+      r.ausnahmen.freigegeben = liste;
+      return core.buildEngineConfig(r, {});
+    };
+    const hatDetail = typeof core.auditTextDetail === "function";
+    assert(hatDetail, "Freigaben: core.auditTextDetail vorhanden");
+    if (hatDetail) {
+      const ohne = core.auditTextDetail(frText, "f.txt", core.buildEngineConfig(diskRules, {}));
+      assert(ohne.funde.some(f => f.kategorie === "Nachpruefung-Benutzer") && ohne.freigegeben === 0, `Freigaben: ohne Freigabe wird der Benutzer gemeldet (${ohne.funde.length})`);
+      const mit = core.auditTextDetail(frText, "f.txt", mitFreigabe([{ kategorie: "Benutzer", wert: "jdoe7" }]));
+      assert(!mit.funde.some(f => /Benutzer/.test(f.kategorie)), "Freigaben: freigegebener Benutzer wird in Kategorie Benutzer nicht gemeldet");
+      assert(mit.funde.some(f => /Hostname/.test(f.kategorie)), "Freigaben: derselbe Wert als Hostname wird weiter gemeldet");
+      assert(mit.freigegeben === ohne.funde.filter(f => /Benutzer/.test(f.kategorie)).length && mit.freigegeben > 0, `Freigaben: bewusst freigegebene Funde werden gezählt (${mit.freigegeben})`);
+      assert(core.auditText(frText, "f.txt", mitFreigabe([{ kategorie: "Benutzer", wert: "jdoe7" }])).length === mit.funde.length, "Freigaben: auditText liefert dieselben Funde wie auditTextDetail");
+      const gross = core.auditTextDetail(frText, "f.txt", mitFreigabe([{ kategorie: "Benutzer", wert: "JDOE7" }]));
+      assert(gross.freigegeben === 0, "Freigaben: Wert wird exakt verglichen (Groß-/Kleinschreibung zählt)");
+      const geheim = core.auditTextDetail("password Geheim77x\n", "f.txt", mitFreigabe([{ kategorie: "Geheimnis", wert: "Geheim77x" }]));
+      assert(geheim.freigegeben === 0 && geheim.funde.length > 0, "Freigaben: Geheimnisse sind nicht freigebbar");
+    }
+    const ungueltig = core.validateAndMergeEigeneBegriffe(diskRules, { muster: { "ausnahmen.freigegeben": [{ kategorie: "Geheimnis", wert: "x1" }, { kategorie: "Benutzer", wert: "" }] } });
+    assert(!ungueltig.valid && ungueltig.errors.length === 2, `Freigaben: ungültige Einträge werden abgelehnt (${ungueltig.errors.length})`);
+    assert(ungueltig.errors.every(e => !e.includes("x1")), "Freigaben: Fehlermeldungen enthalten keine Werte");
+    const lokal = core.validateAndMergeEigeneBegriffe(diskRules, { muster: { "ausnahmen.freigegeben": [{ kategorie: "Benutzer", wert: "jdoe7" }] } });
+    assert(lokal.valid && (lokal.mergedRules.ausnahmen.freigegeben || []).length === 1, "Freigaben: Einträge aus anon-regeln.lokal.json werden übernommen");
+    const exportiert = JSON.parse(core.exportLokaleBegriffeJson({ muster: { "ausnahmen.freigegeben": [{ kategorie: "Benutzer", wert: "jdoe7" }] } }, diskRules));
+    assert(exportiert.ausnahmen && Array.isArray(exportiert.ausnahmen.freigegeben) && exportiert.ausnahmen.freigegeben[0].wert === "jdoe7", "Freigaben: Export nach anon-regeln.lokal.json enthält ausnahmen.freigegeben");
+    const wieder = core.importLokaleBegriffeJson(JSON.stringify(exportiert));
+    assert(wieder.muster["ausnahmen.freigegeben"] && wieder.muster["ausnahmen.freigegeben"].length === 1, "Freigaben: Import aus anon-regeln.lokal.json liest ausnahmen.freigegeben");
+
+    // Parität: anon.ps1 wertet ausnahmen.freigegeben aus und zählt sie im Bericht (ohne Werte)
+    if (pwshCheck.status === 0) {
+      const frDir = fs.mkdtempSync(path.join(os.tmpdir(), "anon-freigabe-"));
+      fs.writeFileSync(path.join(frDir, "ein.txt"), frText.split("\n")[0] + "\n", "utf8");
+      const esc = (p) => p.replace(/\\/g, "\\\\");
+      const lauf = (liste, name) => {
+        const lok = path.join(frDir, name + ".lokal.json");
+        fs.writeFileSync(lok, JSON.stringify({ ausnahmen: { freigegeben: liste } }), "utf8");
+        const aus = path.join(frDir, "aus-" + name);
+        const cmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(path.join(frDir, "ein.txt"))}" -Ausgabe "${esc(aus)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lok)}" -TabellenPfad "${esc(path.join(frDir, "tab-" + name + ".json"))}" -Unverschluesselt; exit $LASTEXITCODE`;
+        const r = spawnSync("pwsh", ["-NoProfile", "-Command", cmd], { encoding: "utf8" });
+        const berPfad = path.join(aus, "bericht.json");
+        return { code: r.status, bericht: fs.existsSync(berPfad) ? JSON.parse(fs.readFileSync(berPfad, "utf8")) : null, konsole: r.stdout || "" };
+      };
+      const lb = lauf([{ kategorie: "Benutzer", wert: "jdoe7" }], "benutzer");
+      assert(lb.code === 0 && lb.bericht && lb.bericht.bewusstFreigegeben >= 1, `Parität: anon.ps1 mit Freigabe (Benutzer) ohne Restfunde, Bericht zählt bewusstFreigegeben (${lb.code}, ${lb.bericht && lb.bericht.bewusstFreigegeben})`);
+      assert(!JSON.stringify(lb.bericht || {}).includes("jdoe7") && !lb.konsole.includes("jdoe7"), "Parität: Bericht und Konsole enthalten den freigegebenen Wert nicht");
+      const lh = lauf([{ kategorie: "Hostname", wert: "jdoe7" }], "hostname");
+      assert(lh.code === 2, `Parität: Freigabe als Hostname gibt den Benutzer nicht frei (${lh.code})`);
+      const js = core.reprocessFilesWithState([{ path: "ein.txt", text: frText.split("\n")[0] + "\n" }], diskRules, { muster: { "ausnahmen.freigegeben": [{ kategorie: "Benutzer", wert: "jdoe7" }] } }, new core.AnonState(), {});
+      assert(js.ok && js.findings.length === 0 && js.freigegeben === (lb.bericht && lb.bericht.bewusstFreigegeben), `Parität: anonymisierer.html zählt gleich viele freigegebene Funde (${js.freigegeben})`);
+      fs.rmSync(frDir, { recursive: true, force: true });
+    }
+  }
+
   // --- 18. Gemeinsamer Kern & Aufteilung der Seiten (Freitext: tests/run-tests-text.js) ---
   console.log("--- 18. Prüfe gemeinsamen Kern (core/) und Aufteilung der Seiten ---");
   const einbetten = require(path.join(ROOT, "tools", "einbetten.js"));
