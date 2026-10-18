@@ -849,8 +849,11 @@ $pfadIn = Join-Path $p2Dir "pfad_eingabe"
 [System.IO.File]::WriteAllText((Join-Path $pfadIn "privatehost01-backup.txt"), "hostname privatehost01`n", (New-Object System.Text.UTF8Encoding($false)))
 [System.IO.File]::WriteAllText((Join-Path $pfadIn "privatehost01.old.log"), "uptime 3 days`n", (New-Object System.Text.UTF8Encoding($false)))
 & $anonScript -Eingabe $pfadIn -Ausgabe (Join-Path $p2Dir "aus-pfad") -Regeln $rulesPath -TabellenPfad (Join-Path $p2Dir "tab-pfad.json") -Unverschluesselt *> $null
-$pfadNamen = @(Get-ChildItem -LiteralPath (Join-Path (Join-Path $p2Dir "aus-pfad") "anonym") -File | ForEach-Object { $_.Name } | Sort-Object)
-Assert-True (($pfadNamen -join ",") -eq "HOST-1-backup.txt,HOST-1.old.log") "A4: bekannter Host im Dateinamen an '-' und '.' ersetzt ($($pfadNamen -join ', '))"
+# Reihenfolgeunabhängig: Sort-Object sortiert unter PS 5.1 und PS 7 kulturabhängig verschieden ("-" vs ".")
+$pfadNamen = @(Get-ChildItem -LiteralPath (Join-Path (Join-Path $p2Dir "aus-pfad") "anonym") -File | ForEach-Object { $_.Name })
+$pfadErwartet = @("HOST-1-backup.txt", "HOST-1.old.log")
+$pfadAlleDa = @($pfadErwartet | Where-Object { $pfadNamen -ccontains $_ }).Count -eq $pfadErwartet.Count
+Assert-True ($pfadNamen.Count -eq 2 -and $pfadAlleDa) "A4: bekannter Host im Dateinamen an '-' und '.' ersetzt, genau zwei Dateien ($($pfadNamen -join ', '))"
 
 # 9.10 Paket A5: Kollision zwischen geladener Tabelle und festeZuordnung -> Abbruch, Tabelle unverändert
 $kollTab = Join-Path $p2Dir "tab-kollision.json"
