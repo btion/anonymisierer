@@ -1063,9 +1063,15 @@ if ($hatNachpruefung) {
     foreach ($q in $quellen) {
         foreach ($nf in [AnonTool.AnonEngine]::Nachpruefen([string]$q[1], [string]$q[0], $kCfg)) { $zeilenNach.Add("$($q[0])|$($nf.Zeile)|$($nf.Kategorie)|$($nf.Fund)") }
     }
-    $sollNach = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "nachpruefung-erwartet.json"), [System.Text.Encoding]::UTF8)))
+    # Windows PowerShell 5.1 gibt ein JSON-Array aus ConvertFrom-Json als EIN Objekt aus (keine Aufzählung);
+    # @(ConvertFrom-Json ...) ergäbe dort ein Element. Erst zuweisen, dann mit foreach aufzählen (5.1 und 7 gleich).
+    $sollText = [System.IO.File]::ReadAllText((Join-Path $testDir "nachpruefung-erwartet.json"), [System.Text.Encoding]::UTF8)
+    $sollNach = ConvertFrom-Json -InputObject $sollText
     $sollListe = New-Object 'System.Collections.Generic.List[object]'
     foreach ($e in $sollNach) { $sollListe.Add((ConvertTo-FundEintrag ([string]$e))) }
+    # Unabhängige Gegenprobe: ein Eintrag je Zeile der Soll-Datei
+    $sollZeilen = [regex]::Matches($sollText, '(?m)^  "').Count
+    Assert-True ($sollListe.Count -eq $sollZeilen -and $sollZeilen -gt 0) "Parität: Soll-Datei vollständig geladen ($($sollListe.Count) von $sollZeilen Einträgen)"
     $istListe = New-Object 'System.Collections.Generic.List[object]'
     foreach ($e in $zeilenNach) { $istListe.Add((ConvertTo-FundEintrag $e)) }
     $diagNach = @(Compare-FundMultimenge $sollListe $istListe)
