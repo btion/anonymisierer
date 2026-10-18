@@ -1233,7 +1233,7 @@
       {
         "name": "LLDP / CDP System Description & Port Description",
         "kategorie": "TEXT",
-        "suche": "(?im)^([ \\t]*(?:System Description|Port Description)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
+        "suche": "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Description|Port[ -]Desc(?:ription)?)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
       },
       {
         "name": "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \\-Fortsetzung)",
@@ -1283,7 +1283,7 @@
     ],
     "hostnamenMuster": [
       "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
-      "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
+      "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
       "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
       "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
@@ -1291,13 +1291,9 @@
     ],
     "tabellenSpalten": [
       {
-        "name": "Aruba AOS-CX show interface brief (letzte Spalte Description)",
+        "name": "Aruba AOS-CX show interface brief (letzte Spalte Description; auch ohne Spalten Mode/Enabled)",
         "kopf": [
           "Port",
-          "Mode",
-          "Type",
-          "Enabled",
-          "Status",
           "Description"
         ],
         "spalten": [
@@ -2579,6 +2575,23 @@
         if (rule.kopf.length === 0 || rule.spalten.length === 0) continue;
         if (!rule.kopf.every(w => findHeaderWord(line, w) >= 0)) continue;
         const newCols = [];
+        // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
+        if (line.indexOf("\t") >= 0) {
+          const felder = line.split("\t").map(x => x.trim());
+          for (const sp of rule.spalten) {
+            let n = 0;
+            for (let fi = 0; fi < felder.length; fi++) {
+              if (felder[fi] === sp.name && ++n === Math.max(1, sp.vorkommen || 1)) {
+                newCols.push({ start: -1, end: -1, feld: fi, kategorie: sp.kategorie });
+                break;
+              }
+            }
+          }
+          newCols.sort((a, b) => a.feld - b.feld);
+          cols = newCols;
+          isHeader = true;
+          break;
+        }
         for (const sp of rule.spalten) {
           const s = findHeaderWordNth(line, sp.name, sp.vorkommen);
           if (s < 0) continue;
@@ -2588,7 +2601,7 @@
           }
           let ins = 0;
           while (ins < newCols.length && newCols[ins].start <= s) ins++;
-          newCols.splice(ins, 0, { start: s, end: e, kategorie: sp.kategorie });
+          newCols.splice(ins, 0, { start: s, end: e, feld: -1, kategorie: sp.kategorie });
         }
         cols = newCols;
         isHeader = true;
@@ -2599,6 +2612,20 @@
         const trimmed = line.trim();
         if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("total")) {
           cols = null;
+        } else if (cols.length > 0 && cols[0].feld >= 0) {
+          if (line.indexOf("\t") >= 0) {
+            const teile = line.split("\t");
+            for (const col of cols) {
+              if (col.feld >= teile.length) continue;
+              let s = 0;
+              for (let fi = 0; fi < col.feld; fi++) s += teile[fi].length + 1;
+              let e = s + teile[col.feld].length;
+              while (s < e && isBlankCh(line[s])) s++;
+              while (e > s && isBlankCh(line[e - 1])) e--;
+              if (e <= s) continue;
+              result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: col.kategorie ? col.kategorie : "TEXT", wert: line.slice(s, e) });
+            }
+          }
         } else if (!isTableSeparatorLine(line)) {
           let lastEnd = 0;
           for (const col of cols) {
@@ -3440,10 +3467,16 @@
   // Identisch zu AnonEngine.Nachpruefen in anon.ps1.
   // --------------------------------------------------------------------------
   const RxNachPlatzhalter = /^(?:NET-[0-9]+(?:\.H[0-9]+)?(?:\/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN)-[0-9]+)$/;
-  const NACH_KATEGORIE = { B: "Nachpruefung-Benutzer", H: "Nachpruefung-Hostname", D: "Nachpruefung-Domaene", S: "Nachpruefung-Seriennummer", G: "Nachpruefung-Geheimnis" };
+  const NACH_KATEGORIE = { B: "Nachpruefung-Benutzer", H: "Nachpruefung-Hostname", D: "Nachpruefung-Domaene", S: "Nachpruefung-Seriennummer", G: "Nachpruefung-Geheimnis", T: "Nachpruefung-Beschreibung" };
   // Feldnamen mit Trennzeichen ":" / "=" oder Leerzeichen; Feldnamen, die ein ":" / "=" verlangen
   const RxNachFeldFrei = /(?<![A-Za-z0-9_.\/-])"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)"?(?![A-Za-z0-9_-])(?:[ \t]*[:=][ \t]*|[ \t]+)/gi;
-  const RxNachFeldDoppelpunkt = /(?<![A-Za-z0-9_.\/-])"?(System[ \t]+Name|Device[ \t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \t]+|System[ \t]+|Board[ \t]+)?Serial(?:[ \t_-]*(?:Number|Nbr|No|Num)\.?)?|SN|Service[ \t]+Tag|Asset[ \t]+Tag|Authorization)"?(?![A-Za-z0-9_-])[ \t]*[:=][ \t]*/gi;
+  const RxNachFeldDoppelpunkt = /(?<![A-Za-z0-9_.\/-])"?(System[ \t-]+Name|Device[ \t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \t]+|System[ \t]+|Board[ \t]+)?Serial(?:[ \t_-]*(?:Number|Nbr|No|Num)\.?)?|SN|Service[ \t]+Tag|Asset[ \t]+Tag|Authorization)"?(?![A-Za-z0-9_-])[ \t]*[:=][ \t]*/gi;
+  // Beschreibungen am Zeilenanfang: "Description: X", "Port Description : X", "Neighbor Port-Desc : X", "description X";
+  // in JSON "description": "X"
+  const RxNachBeschreibung = /^[ \t]*(?:(?:Neighbor[ \t]+)?(?:Port[ \t-]+Desc(?:ription)?|Description|PORT-DESC)[ \t]*[:=][ \t]*|(?:description|alias)[ \t]+)(.*)$|"(?:description|alias)"[ \t]*:[ \t]*("(?:[^"\\\r\n]|\\.)*")/i;
+  // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
+  const NACH_TABELLEN_SPALTEN = { "Description": "T", "DESCRIPTION": "T", "PORT-DESC": "T", "Port-Desc": "T", "Port Description": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H" };
+  const RxNachSchnittstellenKopf = /^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$/i;
   const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
   const NACH_STRUKTURWOERTER = new Set(["chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
   const RxNachSid = /(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])/g;
@@ -3502,6 +3535,12 @@
       } else if (nachErlaubt(wert, cfg)) return;
       melde(ln, art, wert);
     };
+    // Beschreibung/Name: leer, "--" und Werte ohne Buchstaben sind kein Fund; erlaubt, wenn jedes Wort erlaubt ist
+    const pruefeBeschreibung = (ln, art, wert) => {
+      if (!wert || !/[A-Za-z]/.test(wert) || /^-+$/.test(wert)) return;
+      if (nachErlaubt(wert, cfg) || wert.split(/[ \t]+/).every(t => !/[A-Za-z]/.test(t) || nachErlaubt(t, cfg))) return;
+      melde(ln, art, wert);
+    };
     const feldWert = (ln, zeile, ab, art, name) => {
       let rest = zeile.slice(ab);
       for (let i = 0; i < 4; i++) {
@@ -3546,6 +3585,12 @@
         pruefeWert(ln, "G", m[2]);
       }
       for (const m of zeile.matchAll(RxNachSid)) melde(ln, "", m[0], "Nachpruefung-SID");
+      const bm = RxNachBeschreibung.exec(zeile);
+      if (bm) {
+        const roh = (bm[1] !== undefined ? bm[1] : bm[2]).trim();
+        const w = roh.startsWith('"') ? nachWert(roh) : null;
+        pruefeBeschreibung(ln, "T", w ? w.wert : roh.replace(/[",]+$/, "").trim());
+      }
     });
     // Tabellen mit Spalte "Serial": Wert unter dem Spaltenkopf (Zeilen bis zur nächsten Leerzeile)
     for (let i = 0; i < zeilen.length; i++) {
@@ -3574,6 +3619,52 @@
         while (b < z.length && !/[ \t]/.test(z[b])) b++;
         const wert = z.slice(a, b);
         if (/[0-9]/.test(wert) && /[A-Za-z]/.test(wert) && !/^-+$/.test(wert)) pruefeWert(j + 1, "S", wert);
+      }
+    }
+    // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info):
+    // Kopfzeile ohne ":" / "=" mit mindestens drei Zellen; Daten bis zur nächsten Leerzeile
+    for (let i = 0; i < zeilen.length; i++) {
+      const kopf = zeilen[i];
+      if (/[:=]/.test(kopf)) continue;
+      const tab = kopf.indexOf("\t") >= 0;
+      const zellen = [];
+      if (tab) {
+        let ab = 0;
+        for (const z of kopf.split("\t")) { zellen.push({ text: z.trim(), start: ab }); ab += z.length + 1; }
+      } else {
+        const rx = /[^ \t]+(?: [^ \t]+)*/g;
+        for (const m of kopf.matchAll(rx)) zellen.push({ text: m[0], start: m.index });
+      }
+      if (zellen.filter(z => z.text).length < 3) continue;
+      const spalten = [];
+      // Beschreibungsspalten nur in Schnittstellentabellen (show module: "Description" ist die Hardwarebezeichnung)
+      const schnittstelle = zellen.some(z => RxNachSchnittstellenKopf.test(z.text));
+      zellen.forEach((z, zi) => {
+        const art = NACH_TABELLEN_SPALTEN[z.text];
+        if (art && (art === "H" || schnittstelle)) spalten.push({ zi, art });
+      });
+      if (spalten.length === 0) continue;
+      for (let j = i + 1; j < zeilen.length && j < i + 500 && zeilen[j].trim() !== ""; j++) {
+        const z = zeilen[j];
+        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z) || /^[ \t]*Total/i.test(z)) continue;
+        for (const sp of spalten) {
+          let wert = "";
+          if (tab) {
+            if (z.indexOf("\t") < 0) continue;
+            wert = (z.split("\t")[sp.zi] || "").trim();
+          } else {
+            let a = zellen[sp.zi].start;
+            if (a >= z.length) continue;
+            while (a > 0 && !/[ \t]/.test(z[a - 1])) a--;
+            while (a < z.length && /[ \t]/.test(z[a])) a++;
+            const naechste = sp.zi + 1 < zellen.length ? zellen[sp.zi + 1].start : z.length;
+            if (a >= naechste) continue;
+            let b = Math.min(naechste, z.length);
+            while (b < z.length && !/[ \t]/.test(z[b]) && !/[ \t]/.test(z[b - 1])) b++;
+            wert = z.slice(a, b).trim();
+          }
+          if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else pruefeBeschreibung(j + 1, "T", wert);
+        }
       }
     }
     return funde;

@@ -344,7 +344,7 @@
     {
       "name": "LLDP / CDP System Description & Port Description",
       "kategorie": "TEXT",
-      "suche": "(?im)^([ \\t]*(?:System Description|Port Description)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
+      "suche": "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Description|Port[ -]Desc(?:ription)?)[ \\t]*:[ \\t]*)([^\\r\\n]+)(?=\\r?$)"
     },
     {
       "name": "MikroTik comment= (in Anführungszeichen, inkl. Leerzeichen und mehrzeiliger \\-Fortsetzung)",
@@ -394,7 +394,7 @@
   ],
   "hostnamenMuster": [
     "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
-    "(?im)^([ \\t]*(?:System Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
+    "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
     "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
     "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
@@ -402,13 +402,9 @@
   ],
   "tabellenSpalten": [
     {
-      "name": "Aruba AOS-CX show interface brief (letzte Spalte Description)",
+      "name": "Aruba AOS-CX show interface brief (letzte Spalte Description; auch ohne Spalten Mode/Enabled)",
       "kopf": [
         "Port",
-        "Mode",
-        "Type",
-        "Enabled",
-        "Status",
         "Description"
       ],
       "spalten": [

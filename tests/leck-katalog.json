@@ -8,7 +8,8 @@
     "Passwort": "Nachpruefung-Geheimnis",
     "Token": "Nachpruefung-Geheimnis",
     "Schlüssel": "Nachpruefung-Geheimnis",
-    "Community": "Nachpruefung-Geheimnis"
+    "Community": "Nachpruefung-Geheimnis",
+    "Beschreibung": "Nachpruefung-Beschreibung"
   },
   "faelle": [
     {
@@ -307,6 +308,84 @@
           "wert": "GeheimRadius10",
           "kategorie": "Schlüssel",
           "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K16",
+      "quelle": "Praxistest Bedienoberfläche / AOS-CX show interface brief (Standardformat)",
+      "eingabe": "----------------------------------------------------------------------------------------------------\nPort      Native  Mode   Type           Enabled Status  Reason                  Speed   Description\n          VLAN                                                                  (Mb/s)\n----------------------------------------------------------------------------------------------------\n1/1/1     1       access 1GbT           yes     up                              1000    Uplink-Weber\n1/1/2     10      trunk  10G-SFP+       yes     up                              10000   Zum Lager Schulz\n1/1/3     1       access 1GbT           yes     down    Waiting for link        --      --\n",
+      "ziele": [
+        {
+          "wert": "Uplink-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Schulz",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K17",
+      "quelle": "Praxistest Bedienoberfläche / show interface brief ohne Spalten Mode und Enabled",
+      "eingabe": "Port      Native  Type           Status  Reason                  Speed   Description\n1/1/1     1       1GbT           up                              1000    Uplink-Weber\n1/1/2     1       1GbT           up                              1000    Drucker-Etage2-Weber\n",
+      "ziele": [
+        {
+          "wert": "Uplink-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Drucker-Etage2-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K18",
+      "quelle": "Praxistest Bedienoberfläche / show interface brief tabulatorgetrennt",
+      "eingabe": "Port\tNative\tMode\tType\tEnabled\tStatus\tReason\tSpeed\tDescription\n1/1/1\t1\taccess\t1GbT\tyes\tup\t\t1000\tUplink-Weber\n",
+      "ziele": [
+        {
+          "wert": "Uplink-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K19",
+      "quelle": "Praxistest Bedienoberfläche / show interface und show lldp neighbor-info (Tabelle und Detail)",
+      "eingabe": "Interface 1/1/1 is up\n Description: Kern-Uplink-Weber\n\nLOCAL-PORT  CHASSIS-ID         PORT-ID   PORT-DESC          TTL  SYS-NAME\n----------------------------------------------------------------------------------------------------\n1/1/49      00:00:5e:00:53:01  1/1/52    Port-Weber-Kern    120  kern-weber01\n\nPort                           : 1/1/50\nNeighbor System-Name           : verteiler-weber02\nNeighbor Port-Desc             : Verteiler-Port-Weber\n",
+      "ziele": [
+        {
+          "wert": "Kern-Uplink-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Port-Weber-Kern",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "kern-weber01",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "verteiler-weber02",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Verteiler-Port-Weber",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
         }
       ]
     }

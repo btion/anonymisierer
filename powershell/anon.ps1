@@ -852,6 +852,30 @@ namespace AnonTool
 
                     List<int[]> newCols = new List<int[]>();
                     List<string> newKats = new List<string>();
+                    // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
+                    if (line.IndexOf('\t') >= 0)
+                    {
+                        string[] felder = line.Split('\t');
+                        foreach (TableColumnSpec sp in rule.Spalten)
+                        {
+                            int n = 0;
+                            for (int fi = 0; fi < felder.Length; fi++)
+                            {
+                                if (felder[fi].Trim() == sp.Name && ++n == Math.Max(1, sp.Vorkommen))
+                                {
+                                    int ins = 0;
+                                    while (ins < newCols.Count && newCols[ins][2] <= fi) ins++;
+                                    newCols.Insert(ins, new int[] { -1, -1, fi });
+                                    newKats.Insert(ins, sp.Kategorie);
+                                    break;
+                                }
+                            }
+                        }
+                        cols = newCols;
+                        kats = newKats;
+                        isHeader = true;
+                        break;
+                    }
                     foreach (TableColumnSpec sp in rule.Spalten)
                     {
                         int s = FindHeaderWordNth(line, sp.Name, sp.Vorkommen);
@@ -864,7 +888,7 @@ namespace AnonTool
                         // aufsteigend nach Spaltenbeginn einsortieren
                         int ins = 0;
                         while (ins < newCols.Count && newCols[ins][0] <= s) ins++;
-                        newCols.Insert(ins, new int[] { s, e });
+                        newCols.Insert(ins, new int[] { s, e, -1 });
                         newKats.Insert(ins, sp.Kategorie);
                     }
                     cols = newCols;
@@ -880,6 +904,31 @@ namespace AnonTool
                     {
                         cols = null;
                         kats = null;
+                    }
+                    else if (cols.Count > 0 && cols[0][2] >= 0)
+                    {
+                        if (line.IndexOf('\t') >= 0)
+                        {
+                            string[] teile = line.Split('\t');
+                            for (int ci = 0; ci < cols.Count; ci++)
+                            {
+                                int feld = cols[ci][2];
+                                if (feld >= teile.Length) continue;
+                                int s = 0;
+                                for (int fi = 0; fi < feld; fi++) s += teile[fi].Length + 1;
+                                int e = s + teile[feld].Length;
+                                while (s < e && IsBlank(line[s])) s++;
+                                while (e > s && IsBlank(line[e - 1])) e--;
+                                if (e <= s) continue;
+                                TableField f = new TableField();
+                                f.Start = pos + s;
+                                f.Length = e - s;
+                                f.Zeile = lineNo;
+                                f.Kategorie = string.IsNullOrEmpty(kats[ci]) ? "TEXT" : kats[ci];
+                                f.Wert = line.Substring(s, e - s);
+                                result.Add(f);
+                            }
+                        }
                     }
                     else if (!IsTableSeparatorLine(line))
                     {
@@ -2551,7 +2600,7 @@ namespace AnonTool
         private const RegexOptions NachOpt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
         private static readonly Regex RxNachPlatzhalter = new Regex("^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN)-[0-9]+)$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachFeldFrei = new Regex("(?<![A-Za-z0-9_./-])\"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)\"?(?![A-Za-z0-9_-])(?:[ \\t]*[:=][ \\t]*|[ \\t]+)", NachOpt, RxTimeout);
-        private static readonly Regex RxNachFeldDoppelpunkt = new Regex("(?<![A-Za-z0-9_./-])\"?(System[ \\t]+Name|Device[ \\t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \\t]+|System[ \\t]+|Board[ \\t]+)?Serial(?:[ \\t_-]*(?:Number|Nbr|No|Num)\\.?)?|SN|Service[ \\t]+Tag|Asset[ \\t]+Tag|Authorization)\"?(?![A-Za-z0-9_-])[ \\t]*[:=][ \\t]*", NachOpt, RxTimeout);
+        private static readonly Regex RxNachFeldDoppelpunkt = new Regex("(?<![A-Za-z0-9_./-])\"?(System[ \\t-]+Name|Device[ \\t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \\t]+|System[ \\t]+|Board[ \\t]+)?Serial(?:[ \\t_-]*(?:Number|Nbr|No|Num)\\.?)?|SN|Service[ \\t]+Tag|Asset[ \\t]+Tag|Authorization)\"?(?![A-Za-z0-9_-])[ \\t]*[:=][ \\t]*", NachOpt, RxTimeout);
         private static readonly HashSet<string> NachTypwoerter = new HashSet<string>(new string[] { "0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure" }, StringComparer.Ordinal);
         private static readonly HashSet<string> NachStrukturwoerter = new HashSet<string>(new string[] { "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication" }, StringComparer.Ordinal);
         private static readonly Regex RxNachSid = new Regex("(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
@@ -2561,6 +2610,16 @@ namespace AnonTool
         private static readonly Regex RxNachXmlComputer = new Regex("<Computer>([^<\\r\\n]*)</Computer>", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachWert = new Regex("^(?:\"((?:[^\"\\\\\\r\\n]|\\\\.)*)\"|'([^'\\r\\n]*)'|([^\\s\"',;\\])<>{}]+))", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachSerialKopf = new Regex("(?<![A-Za-z0-9-])(?:Serial|SERIAL|serial)(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
+        // Beschreibungen am Zeilenanfang: "Description: X", "Port Description : X", "Neighbor Port-Desc : X", "description X";
+        // in JSON "description": "X"
+        private static readonly Regex RxNachBeschreibung = new Regex("^[ \\t]*(?:(?:Neighbor[ \\t]+)?(?:Port[ \\t-]+Desc(?:ription)?|Description|PORT-DESC)[ \\t]*[:=][ \\t]*|(?:description|alias)[ \\t]+)(.*)$|\"(?:description|alias)\"[ \\t]*:[ \\t]*(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\")", NachOpt, RxTimeout);
+        // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
+        private static readonly Dictionary<string, string> NachTabellenSpalten = new Dictionary<string, string>(StringComparer.Ordinal) {
+            { "Description", "T" }, { "DESCRIPTION", "T" }, { "PORT-DESC", "T" }, { "Port-Desc", "T" }, { "Port Description", "T" },
+            { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" } };
+        private static readonly Regex RxNachSchnittstellenKopf = new Regex("^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$", NachOpt, RxTimeout);
+        private static readonly Regex RxNachKopfZelle = new Regex("[^ \\t]+(?: [^ \\t]+)*", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachTabellenTrenner = new Regex("^[ \\t]*[-=+|]{3,}[-=+| \\t]*$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachTrennlinie = new Regex("^[ \\t]*[-=+]{3,}[-=+ \\t]*$", RegexOptions.CultureInvariant, RxTimeout);
 
         private static string NachFeldart(string name)
@@ -2581,6 +2640,7 @@ namespace AnonTool
                 case "H": return "Nachpruefung-Hostname";
                 case "D": return "Nachpruefung-Domaene";
                 case "S": return "Nachpruefung-Seriennummer";
+                case "T": return "Nachpruefung-Beschreibung";
                 default: return "Nachpruefung-Geheimnis";
             }
         }
@@ -2626,6 +2686,19 @@ namespace AnonTool
                     if (feld == "community" && (Regex.IsMatch(wert, "^[0-9]+:[0-9]+$") || Regex.IsMatch(wert, "^(?:no-export|no-advertise|internet|local-as|additive)$", RegexOptions.IgnoreCase))) return;
                 }
                 else if (NachErlaubt(wert, cfg, fest)) return;
+                melde(ln, art, wert, null);
+            };
+            // Beschreibung/Name: leer, "--" und Werte ohne Buchstaben sind kein Fund; erlaubt, wenn jedes Wort erlaubt ist
+            Action<int, string, string> pruefeBeschreibung = (ln, art, wert) =>
+            {
+                if (string.IsNullOrEmpty(wert) || !Regex.IsMatch(wert, "[A-Za-z]") || Regex.IsMatch(wert, "^-+$")) return;
+                if (NachErlaubt(wert, cfg, fest)) return;
+                bool alleErlaubt = true;
+                foreach (string t in Regex.Split(wert, "[ \\t]+"))
+                {
+                    if (Regex.IsMatch(t, "[A-Za-z]") && !NachErlaubt(t, cfg, fest)) { alleErlaubt = false; break; }
+                }
+                if (alleErlaubt) return;
                 melde(ln, art, wert, null);
             };
             Action<int, string, int, string, string> feldWert = (ln, zeile, ab, art, name) =>
@@ -2683,6 +2756,16 @@ namespace AnonTool
                     pruefeWert(ln, "G", m.Groups[2].Value, null);
                 }
                 foreach (Match m in RxNachSid.Matches(zeile)) melde(ln, "", m.Value, "Nachpruefung-SID");
+                Match bm = RxNachBeschreibung.Match(zeile);
+                if (bm.Success)
+                {
+                    string roh = (bm.Groups[1].Success ? bm.Groups[1].Value : bm.Groups[2].Value).Trim();
+                    string bw;
+                    Match wq = roh.StartsWith("\"", StringComparison.Ordinal) ? RxNachWert.Match(roh) : null;
+                    if (wq != null && wq.Success) bw = wq.Groups[1].Success ? Regex.Replace(wq.Groups[1].Value, "\\\\([\"\\\\])", "$1") : (wq.Groups[2].Success ? wq.Groups[2].Value : wq.Groups[3].Value.TrimEnd('.', ':'));
+                    else bw = Regex.Replace(roh, "[\",]+$", "").Trim();
+                    pruefeBeschreibung(ln, "T", bw);
+                }
             }
 
             // Tabellen mit Spalte "Serial": Wert unter dem Spaltenkopf (Zeilen bis zur nächsten Leerzeile)
@@ -2716,6 +2799,70 @@ namespace AnonTool
                     while (b < z.Length && z[b] != ' ' && z[b] != '\t') b++;
                     string wert = z.Substring(a, b - a);
                     if (Regex.IsMatch(wert, "[0-9]") && Regex.IsMatch(wert, "[A-Za-z]") && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "S", wert, null);
+                }
+            }
+
+            // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info):
+            // Kopfzeile ohne ":" / "=" mit mindestens drei Zellen; Daten bis zur nächsten Leerzeile
+            for (int i = 0; i < zeilen.Length; i++)
+            {
+                string kopf = zeilen[i];
+                if (kopf.IndexOf(':') >= 0 || kopf.IndexOf('=') >= 0) continue;
+                bool tab = kopf.IndexOf('\t') >= 0;
+                List<string> zText = new List<string>();
+                List<int> zStart = new List<int>();
+                if (tab)
+                {
+                    int ab = 0;
+                    foreach (string z in kopf.Split('\t')) { zText.Add(z.Trim()); zStart.Add(ab); ab += z.Length + 1; }
+                }
+                else
+                {
+                    foreach (Match m in RxNachKopfZelle.Matches(kopf)) { zText.Add(m.Value); zStart.Add(m.Index); }
+                }
+                int belegt = 0;
+                foreach (string zt in zText) if (zt.Length > 0) belegt++;
+                if (belegt < 3) continue;
+                // Beschreibungsspalten nur in Schnittstellentabellen (show module: "Description" ist die Hardwarebezeichnung)
+                bool schnittstelle = false;
+                foreach (string zt in zText) if (RxNachSchnittstellenKopf.IsMatch(zt)) { schnittstelle = true; break; }
+                List<int> spZi = new List<int>();
+                List<string> spArt = new List<string>();
+                for (int zi = 0; zi < zText.Count; zi++)
+                {
+                    string art;
+                    if (NachTabellenSpalten.TryGetValue(zText[zi], out art) && (art == "H" || schnittstelle)) { spZi.Add(zi); spArt.Add(art); }
+                }
+                if (spZi.Count == 0) continue;
+                for (int j = i + 1; j < zeilen.Length && j < i + 500 && zeilen[j].Trim() != ""; j++)
+                {
+                    string z = zeilen[j];
+                    if (RxNachTabellenTrenner.IsMatch(z) || Regex.IsMatch(z, "^[ \\t]*Total", RegexOptions.IgnoreCase)) continue;
+                    for (int k = 0; k < spZi.Count; k++)
+                    {
+                        int zi = spZi[k];
+                        string wert = "";
+                        if (tab)
+                        {
+                            if (z.IndexOf('\t') < 0) continue;
+                            string[] teile = z.Split('\t');
+                            wert = zi < teile.Length ? teile[zi].Trim() : "";
+                        }
+                        else
+                        {
+                            int a = zStart[zi];
+                            if (a >= z.Length) continue;
+                            while (a > 0 && z[a - 1] != ' ' && z[a - 1] != '\t') a--;
+                            while (a < z.Length && (z[a] == ' ' || z[a] == '\t')) a++;
+                            int naechste = zi + 1 < zStart.Count ? zStart[zi + 1] : z.Length;
+                            if (a >= naechste) continue;
+                            int b = Math.Min(naechste, z.Length);
+                            while (b < z.Length && z[b] != ' ' && z[b] != '\t' && z[b - 1] != ' ' && z[b - 1] != '\t') b++;
+                            wert = z.Substring(a, b - a).Trim();
+                        }
+                        if (spArt[k] == "H") { if (wert.Length > 0 && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "H", wert, null); }
+                        else pruefeBeschreibung(j + 1, "T", wert);
+                    }
                 }
             }
             return funde;
