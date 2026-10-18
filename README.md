@@ -2,9 +2,13 @@
 
 Offline-Werkzeug zum konsistenten Anonymisieren von Netzwerk-Logs, Show-Techs, Konfigurationsdateien und JSON-Dumps (Aruba AOS-CX/AOS-S, HPE Comware, Dell Enterprise SONiC, Dell OS10, MikroTik RouterOS v6/v7, Cisco IOS/NX-OS, FortiGate, Sophos XG/SFOS, Linux-Syslog, Windows-Eventlogs), bevor diese an eine KI oder externe Experten übergeben werden.
 
-Beide Anonymisierer-Varianten verwenden exakt dasselbe Regelschema ([`anon-regeln.json`](./anon-regeln.json)) und liefern identische Ausgaben (sowohl bei LF- als auch bei CRLF-Dateien):
-1. **Variante A – PowerShell-CLI ([`anon.ps1`](./anon.ps1)):** Läuft auf Windows (Admin-VM) unter Windows PowerShell 5.1 (sowie PowerShell 7+) ohne Python, ohne externe Module und ohne Internetverbindung. Dank eingebetteter C#-Engine (mit 5-Sekunden-Regex-Timeout je Ausdruck) werden auch große Dateien (bis 50 MB) und Show-Tech-Archive mit tausenden Dateien schnell verarbeitet.
-2. **Variante B – Eigenständige Browser-App ([`anonymisierer.html`](./anonymisierer.html)):** Eine einzige HTML-Datei (HTML, CSS, JS inkl. eingebettetem ZIP/TAR.GZ-Codec), die per Doppelklick in Edge oder Chrome komplett offline im Arbeitsspeicher (RAM) läuft und durch eine strikte `Content-Security-Policy` (`default-src 'none'; connect-src 'none'`) jeglichen Netzwerkverkehr unterbindet.
+Beide Anonymisierer-Varianten verwenden exakt dasselbe Regelschema ([`regeln/anon-regeln.json`](./regeln/anon-regeln.json)) und liefern identische Ausgaben (sowohl bei LF- als auch bei CRLF-Dateien):
+1. **Variante A – PowerShell-CLI ([`powershell/anon.ps1`](./powershell/anon.ps1)):** Läuft auf Windows (Admin-VM) unter Windows PowerShell 5.1 (sowie PowerShell 7+) ohne Python, ohne externe Module und ohne Internetverbindung. Dank eingebetteter C#-Engine (mit 5-Sekunden-Regex-Timeout je Ausdruck) werden auch große Dateien (bis 50 MB) und Show-Tech-Archive mit tausenden Dateien schnell verarbeitet.
+2. **Variante B – Eigenständige Browser-App ([`web/anonymisierer.html`](./web/anonymisierer.html)):** Eine einzige HTML-Datei (HTML, CSS, JS inkl. eingebettetem ZIP/TAR.GZ-Codec), die per Doppelklick in Edge oder Chrome komplett offline im Arbeitsspeicher (RAM) läuft und durch eine strikte `Content-Security-Policy` (`default-src 'none'; connect-src 'none'`) jeglichen Netzwerkverkehr unterbindet.
+
+Zusätzlich gibt es den **Text-Anonymisierer** ([`web/text/text-anonymisierer.html`](./web/text/text-anonymisierer.html)) für Freitext (E-Mails, Briefe, Notizen), eine eigene Offline-Seite mit demselben Tabellenformat (siehe Abschnitt 5b).
+
+> **English summary:** see [README.en.md](./README.en.md).
 
 ---
 
@@ -14,19 +18,24 @@ Beide Anonymisierer-Varianten verwenden exakt dasselbe Regelschema ([`anon-regel
 3. [Sammler: eigenes Projekt](#3-sammler-eigenes-projekt)
 4. [Bedienung Variante A: PowerShell (`anon.ps1`)](#4-bedienung-variante-a-powershell-anonps1)
 5. [Bedienung Variante B: Offline-Browser-App (`anonymisierer.html`)](#5-bedienung-variante-b-offline-browser-app-anonymisiererhtml)
+   - [5b. Text-Anonymisierer (`text-anonymisierer.html`)](#5b-text-anonymisierer-text-anonymisiererhtml)
 6. [Lokale Regeldatei (`anon-regeln.lokal.json`) auf der Admin-VM pflegen](#6-lokale-regeldatei-anon-regelnlokaljson-auf-der-admin-vm-pflegen)
 7. [Sicherheitskonzept & Grenzen des Werkzeugs](#7-sicherheitskonzept--grenzen-des-werkzeugs)
 8. [Tests ausführen](#8-tests-ausführen)
 9. [Eingebettete Komponenten & Lizenzen](#9-eingebettete-komponenten--lizenzen)
+10. [Repository-Struktur](#10-repository-struktur)
 
 ---
 
 ## 1. Installation & Bereitstellung
 
-Kopieren Sie die Hauptdateien auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisierer\`):
-- `anon.ps1`
-- `anonymisierer.html`
-- `anon-regeln.json` (Beispiel- und Basisregelwerk ohne echte Infrastrukturdaten)
+Kopieren Sie den Projektordner auf Ihre Admin-VM (z. B. nach `C:\Tools\anonymisierer\`). Benötigt werden:
+- `powershell\anon.ps1`
+- `regeln\anon-regeln.json` (Basisregelwerk ohne echte Infrastrukturdaten)
+- `web\anonymisierer.html` und `web\text\text-anonymisierer.html` (eigenständige Offline-Seiten)
+- `tests\` (für den Prüfbefehl in Abschnitt 8)
+
+Alternativ können `anon.ps1` und `anon-regeln.json` flach im selben Ordner liegen; `anon.ps1` sucht die Regeldatei zuerst neben sich, dann unter `..\regeln\`.
 
 Es wird keine Installation, kein Internetzugang und kein zusätzliches PowerShell-Modul benötigt.
 
@@ -77,7 +86,7 @@ Der Read-Only Switch-Sammler (`switch-sammler.ps1`, `sammler-befehle.json`) wird
 ### Standardlauf (Ordner, Einzeldateien oder `.zip` / `.tar.gz`)
 Unter Windows schützt `anon.ps1` neue Zuordnungstabellen standardmäßig mit **Windows DPAPI (`CurrentUser`)** plus NTFS-ACL:
 ```powershell
-cd C:\Tools\anonymisierer
+cd C:\Tools\anonymisierer\powershell
 
 # Einzelne Datei oder ganzen Show-Tech-Ordner / Archiv anonymisieren:
 .\anon.ps1 -Eingabe "C:\Faelle\Eingang\show-tech.tar.gz" `
@@ -142,7 +151,7 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
 
 ## 5. Bedienung Variante B: Offline-Browser-App (`anonymisierer.html`)
 
-1. Öffnen Sie `anonymisierer.html` per Doppelklick in Microsoft Edge oder Google Chrome.
+1. Öffnen Sie `web\anonymisierer.html` per Doppelklick in Microsoft Edge oder Google Chrome.
 2. **Reiter „2. Regeldatei (JSON)“:**
    - Laden Sie vor dem Lauf Ihre lokale `anon-regeln.lokal.json` von der Festplatte.
 3. **Reiter „1. Anonymisieren & Prüfen“:**
@@ -154,20 +163,25 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
    - Geben Sie ein Passwort mit **mindestens 12 Zeichen** zweimal ein, um die Zuordnungstabelle verschlüsselt als `zuordnungstabelle.anontab` (Format `ANON-AES256-2`, PBKDF2-SHA256, auch in `anon.ps1` ladbar) herunterzuladen. Die Passwortfelder werden danach geleert.
    - Ältere Browser-Tabellen im Format `ANON-WEBCRYPTO-AESGCM-1` bleiben hier ladbar; speichern Sie sie einmal neu, um sie in `anon.ps1` nutzen zu können.
    - Zum Laden einer verschlüsselten Tabelle tragen Sie das Passwort **vor** dem Auswählen der Datei in das verdeckte Passwortfeld (`type="password"`) ein (es wird kein `prompt()`-Dialog verwendet, damit das Passwort nicht im Klartext auf dem Bildschirm erscheint).
-5. **Reiter „4. Text (Datenschutz)“ (Nur Web / Browser):**
-   > **Wichtiger Hinweis:** Text-Reiter nur Web, in `anon.ps1` nicht enthalten. Die Parität zwischen PowerShell und Web gilt für diesen Reiter nicht.
-   - Dient der offlinebasierten Pseudonymisierung beliebiger Texte (E-Mails, Briefe, Notizen, Berichte, Tickets).
-   - **Dreistufiges Modell:**
-     - **ROT (automatisch aktiv):** E-Mail-Adressen, IBAN (Mod 97), Steuer-ID (Mod 11,10), KVNR (Mod 10), Telefon mit Vorwahl, Geburtsdatum mit Signalwort, IPv4/IPv6/URL, Personalausweis (Mod 10).
-     - **GELB (Kandidaten zur Sichtprüfung):** Namen (Anrede, Listen, Grußzeilen), Straße+Nr, PLZ+Ort, Kfz-Kennzeichen, übrige Daten, RVNR (§ 147 SGB VI), LANR (KBV-Prüfziffer), BSNR (Signalwort), Fall-/Patientennummern, Station/Zimmer.
-     - **Interaktive Farbvorschau:** Klick auf einen Treffer schaltet ihn aus bzw. an.
-   - **Mechanismus pro Kategorie** (Auswahl im Reiter, „Vorgabe“ folgt dem Ersetzungs-Modus Token bzw. Schwärzung):
-     - `Platzhalter`: `[NAME-1]`, `[IBAN-1]`, rückführbar über die Zuordnungstabelle; die Nummerierung läuft über mehrere Texte weiter.
-     - `Entfernen`: Schwärzung `████████`, nicht rückführbar.
-     - `Generalisieren`: vergröberter Wert, nicht rückführbar. Regeln: Datum/Geburtsdatum → Jahr, PLZ + Ort → `12xxx`, Straße + Nr. → Straße, Telefon → Vorwahl `030 …`, E-Mail → `…@domain`, IPv4 → `192.0.2.x`. Kategorien ohne Regel erhalten einen Platzhalter.
-   - **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein unkritisches `SAUBER`).
-6. **Reiter „5. Rückübersetzen“:**
+5. **Reiter „4. Rückübersetzen“:**
    - Fügen Sie die Antwort der KI ein und klicken Sie auf **„Jetzt rückübersetzen“**. Alles bleibt ausschließlich im RAM des Browsers.
+
+### 5b. Text-Anonymisierer (`text-anonymisierer.html`)
+
+Eigene Offline-Seite `web\text\text-anonymisierer.html` (gleiche CSP, kein Netz, nur RAM). Sie nutzt denselben Kern (`core\tabelle\`) wie `anonymisierer.html`: Die Zuordnungstabelle wird als `ANON-AES256-2` gespeichert und ist in beiden Seiten und in `anon.ps1` ladbar; Text-Platzhalter wie `[NAME-1]` werden überall zurückübersetzt.
+
+> **Wichtiger Hinweis:** Text-Reiter nur Web, in `anon.ps1` nicht enthalten. Die Parität zwischen PowerShell und Web gilt für den Text-Anonymisierer nicht.
+- Dient der offlinebasierten Pseudonymisierung beliebiger Texte (E-Mails, Briefe, Notizen, Berichte, Tickets).
+- **Dreistufiges Modell:**
+  - **ROT (automatisch aktiv):** E-Mail-Adressen, IBAN (Mod 97), Steuer-ID (Mod 11,10), KVNR (Mod 10), Telefon mit Vorwahl, Geburtsdatum mit Signalwort, IPv4/IPv6/URL, Personalausweis (Mod 10).
+  - **GELB (Kandidaten zur Sichtprüfung):** Namen (Anrede, Listen, Grußzeilen), Straße+Nr, PLZ+Ort, Kfz-Kennzeichen, übrige Daten, RVNR (§ 147 SGB VI), LANR (KBV-Prüfziffer), BSNR (Signalwort), Fall-/Patientennummern, Station/Zimmer.
+  - **Interaktive Farbvorschau:** Klick auf einen Treffer schaltet ihn aus bzw. an.
+- **Mechanismus pro Kategorie** (Auswahl auf der Seite, „Vorgabe“ folgt dem Ersetzungs-Modus Token bzw. Schwärzung):
+  - `Platzhalter`: `[NAME-1]`, `[IBAN-1]`, rückführbar über die Zuordnungstabelle; die Nummerierung läuft über mehrere Texte weiter.
+  - `Entfernen`: Schwärzung `████████`, nicht rückführbar.
+  - `Generalisieren`: vergröberter Wert, nicht rückführbar. Regeln: Datum/Geburtsdatum → Jahr, PLZ + Ort → `12xxx`, Straße + Nr. → Straße, Telefon → Vorwahl `030 …`, E-Mail → `…@domain`, IPv4 → `192.0.2.x`. Kategorien ohne Regel erhalten einen Platzhalter.
+- **Wortwahl & Rechtsstatus:** Rückführbar über die Zuordnungstabelle. Ersetzt keine fachliche Sichtprüfung und keine Rechtsgrundlage. Ergebnis: *„Geprüft, n Treffer ersetzt, Sichtprüfung erforderlich“* (kein unkritisches `SAUBER`).
+- **Zuordnungstabelle & Rückübersetzen** befinden sich unten auf derselben Seite (Passwortfelder werden nach dem Export und Laden geleert).
 
 ---
 
@@ -279,7 +293,7 @@ Prüft, dass die C#-Engine unter PS 5.1 kompiliert, und zeigt die .NET-Version (
 ```powershell
 cd C:\Tools\anonymisierer
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$PSVersionTable.PSVersion.ToString(); (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full').Release"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\anon.ps1 -Pruefen -Eingabe .\tests\erwartet
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\powershell\anon.ps1 -Pruefen -Eingabe .\tests\erwartet
 ```
 Erwartet: Version `5.1.x`, eine Release-Nummer und `Prüfergebnis: SAUBER (0 Treffer)` mit Exit-Code `0`. Ein Kompilierfehler der Engine erscheint als `Add-Type`-Fehler.
 
@@ -293,7 +307,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 - In `anon-regeln.json` sind `\w`, `\d` und `\b` verboten (in .NET Unicode, in JavaScript nur ASCII). Stattdessen `[0-9]`, `[A-Za-z0-9_]`, `(?<![A-Za-z0-9_])` / `(?![A-Za-z0-9_])`. Ersetzungstexte dürfen nur `$1` bis `$9` verwenden.
 - Alle `.ps1`-Dateien sind UTF-8 **mit BOM** gespeichert (sonst liest PS 5.1 sie als ANSI) und enthalten keine Gedankenstriche.
 
-Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits-, Sammler- und Randfälle.
+Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
 
 - **PowerShell-Testsuite starten:**
   ```powershell
@@ -303,12 +317,17 @@ Der Ordner `tests\` enthält **74 synthetische Test- und Grenzfälle** (`tests\f
   ```bash
   node tests/run-tests.js
   ```
+- **Text-Anonymisierer (`text-anonymisierer.html`, `core/text`):**
+  ```bash
+  node tests/run-tests-text.js
+  ```
+- **Gemeinsamer Kern:** `core/` und `regeln/anon-regeln.json` werden mit `node tools/einbetten.js` in beide HTML-Seiten eingebettet; `node tools/einbetten.js --pruefen` (und die Testsuite) meldet Abweichungen.
 
 ---
 
 ## 9. Eingebettete Komponenten & Lizenzen
 
-- **Lizenz des Projekts (`anon.ps1`, `anonymisierer.html`, `anon-regeln.json`):** noch offen.
+- **Lizenz des Projekts:** In [`LICENSE`](./LICENSE) ist **Apache-2.0 als Platzhalter** eingetragen. Die Entscheidung über die endgültige Lizenz ist noch **offen**.
 - **ZIP- und TAR/GZIP-Verarbeitung in `anonymisierer.html`:** Direkt eingebetteter Minimal-Codec auf Basis der standardisierten Browser-APIs (`DecompressionStream`, `DataView`, `Uint8Array`, `WebCrypto API`) ohne externe Fremdbibliotheken.
 
 ### Inspiriert von
@@ -317,3 +336,20 @@ Konzepte (kein Code) wurden übernommen aus:
 - [Presidio](https://github.com/data-privacy-stack/presidio) (ursprünglich Microsoft, MIT): Erkenner mit Grundwert, Prüfziffer-Validierung, Kontextwörter und getrennte Operatoren pro Kategorie für den Reiter „Text (Datenschutz)“.
 
 Details: [`docs/lese-auftrag-netconan-presidio.md`](./docs/lese-auftrag-netconan-presidio.md)
+
+---
+
+## 10. Repository-Struktur
+
+| Ordner | Inhalt |
+|---|---|
+| `core/` | gemeinsamer Kern für die Browser-Seiten: `text/text-engine.js`, `tabelle/zuordnung.js` (Zuordnungstabelle, Rückübersetzung), `tabelle/krypto.js` (ANON-AES256-2) |
+| `web/` | `anonymisierer.html` (Netzwerkdaten) und `text/text-anonymisierer.html` (Freitext), jeweils eine eigenständige Datei |
+| `powershell/` | `anon.ps1` (Variante A, Windows PowerShell 5.1 und PowerShell 7) |
+| `regeln/` | `anon-regeln.json` (Basisregelwerk, nur Beispielwerte) |
+| `api/` | geplant: Docker-Dienst für n8n (Teil D) |
+| `tests/` | `faelle.json`, `faelle-text.json`, Beispiele, Sollstand `erwartet/`, `run-tests.js`, `run-tests-text.js`, `run-tests.ps1` |
+| `tools/` | `einbetten.js` (Kern und Regelwerk in die HTML-Seiten einbetten) |
+| `docs/` | Lese-Auftrag netconan/Presidio, Datenlizenzen |
+
+Der Sammler (`switch-sammler.ps1`) ist ein eigenes Projekt, siehe Abschnitt 3.

@@ -21,7 +21,7 @@
     Zielordner. Die anonymisierten Dateien landen in <Ausgabe>\anonym\, der Bericht in <Ausgabe>\bericht.json.
 
 .PARAMETER Regeln
-    Pfad zur Regeldatei (Standard: .\anon-regeln.json im Skriptordner).
+    Pfad zur Regeldatei (Standard: anon-regeln.json im Skriptordner, sonst ..\regeln\anon-regeln.json).
 
 .PARAMETER TabellenPfad
     Pfad zur Zuordnungstabelle zum Weiterverwenden oder Speichern.
@@ -2657,7 +2657,12 @@ function Export-AnonState {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrEmpty($Regeln)) {
+    # Admin-VM: anon-regeln.json liegt neben anon.ps1; im Repository unter ..\regeln\
     $Regeln = Join-Path $scriptDir "anon-regeln.json"
+    $repoRegeln = Join-Path (Join-Path (Split-Path -Parent $scriptDir) "regeln") "anon-regeln.json"
+    if (-not (Test-Path -LiteralPath $Regeln) -and (Test-Path -LiteralPath $repoRegeln)) {
+        $Regeln = $repoRegeln
+    }
 }
 
 if ($Netzerhaltend -and $NichtNetzerhaltend) {

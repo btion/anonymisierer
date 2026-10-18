@@ -14,8 +14,8 @@ $ErrorActionPreference = "Stop"
 
 $testDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $testDir
-$anonScript = Join-Path $rootDir "anon.ps1"
-$rulesPath = Join-Path $rootDir "anon-regeln.json"
+$anonScript = Join-Path (Join-Path $rootDir "powershell") "anon.ps1"
+$rulesPath = Join-Path (Join-Path $rootDir "regeln") "anon-regeln.json"
 $casesPath = Join-Path $testDir "faelle.json"
 $beispieleDir = Join-Path $testDir "beispiele"
 $erwartetDir = Join-Path $testDir "erwartet"
@@ -598,7 +598,7 @@ foreach ($eol in @("`n", "`r`n")) {
 }
 
 # 7.4 Statische Prüfung für anonymisierer.html (keine Verwendung von localStorage/sessionStorage/indexedDB)
-$htmlRawContent = [System.IO.File]::ReadAllText((Join-Path $rootDir "anonymisierer.html"), [System.Text.Encoding]::UTF8)
+$htmlRawContent = [System.IO.File]::ReadAllText((Join-Path (Join-Path $rootDir "web") "anonymisierer.html"), [System.Text.Encoding]::UTF8)
 Assert-True (-not [regex]::IsMatch($htmlRawContent, '(?i)\b(?:localStorage|sessionStorage|indexedDB)\b')) "Statischer Check (PowerShell): anonymisierer.html enthält kein localStorage, sessionStorage oder indexedDB"
 
 Write-Host "=== 8. Prüfe editierbare Zuordnungstabelle & anon-regeln.lokal.json (ausnahmen.exakteWoerter) ===" -ForegroundColor Cyan
@@ -792,6 +792,10 @@ $klartextDateien = @(Get-ChildItem -LiteralPath $klartextDir -File -ErrorAction 
 Assert-True ($klartextDateien.Count -eq 1) "-Zurueck ohne -Ausgabe: Klartext landet in <Basis>\klartext\"
 Assert-True ($klartextDateien.Count -eq 1 -and [System.IO.File]::ReadAllText($klartextDateien[0].FullName).Contains("edge7")) "-Zurueck ohne -Ausgabe: Datei enthält den rückübersetzten Text"
 Assert-True (-not $rueckKonsole.Contains("edge7")) "-Zurueck: Klartext erscheint nicht auf der Konsole"
+
+# 9.6c Standard-Regeldatei: neben anon.ps1 (Admin-VM) oder ..\regeln\ (Repository)
+$ohneRegeln = (& $anonScript -Pruefen -Eingabe $erwartetDir *>&1 | Out-String)
+Assert-True ($LASTEXITCODE -eq 0 -and $ohneRegeln.Contains("SAUBER")) "Ohne -Regeln wird regeln\anon-regeln.json gefunden (Repository-Struktur)"
 
 # 9.7 Prüfung der Quelldateien: UTF-8 mit BOM, keine Gedankenstriche (PS 5.1 liest .ps1 ohne BOM als ANSI)
 foreach ($ps1 in @($anonScript, (Join-Path $testDir "run-tests.ps1"))) {
