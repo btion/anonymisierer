@@ -531,7 +531,9 @@ $largeAnon = [AnonTool.AnonEngine]::ProcessText($largeShowTech, $perfCfg, $perfS
 $largeFindings = [AnonTool.AnonEngine]::AuditText($largeAnon, "aruba-show-tech-large.txt", $perfCfg)
 $sw.Stop()
 Write-Host ("  Großer Show-Tech ({0:N2} MB) verarbeitet + geprüft in {1} ms" -f ($largeShowTech.Length / 1MB), $sw.ElapsedMilliseconds) -ForegroundColor Gray
-Assert-True ($sw.ElapsedMilliseconds -lt 8000) "Performance-Ziel erreicht: $($sw.ElapsedMilliseconds) ms (< 8000 ms)"
+# Grenze: lokal 8000 ms; Windows PowerShell 5.1 (Desktop) und CI-Runner sind deutlich langsamer, dort 30000 ms
+$perfGrenze = if ($PSVersionTable.PSEdition -eq "Desktop" -or -not [string]::IsNullOrEmpty($env:CI)) { 30000 } else { 8000 }
+Assert-True ($sw.ElapsedMilliseconds -lt $perfGrenze) "Performance-Ziel erreicht: $($sw.ElapsedMilliseconds) ms (< $perfGrenze ms)"
 Assert-True ($largeFindings.Count -eq 0) "Großer Aruba Show-Tech ist nach Anonymisierung SAUBER (0 Restfunde)"
 Assert-True (-not $largeAnon.Contains([string][char]2 + "PROT_")) "Alle Schutz-Marker vollständig aufgelöst"
 
