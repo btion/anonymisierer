@@ -367,7 +367,7 @@ const BRIEF = [SEP, "Port      Native  Type           Status  Reason            
 window.addEventListener("load", async () => {
   try {
     // a) Verdachtsfund (Build-ID) ist keine Sackgasse: Bestätigung -> Unverändert lassen -> Download frei
-    await dateien([["brw-sw07.txt", "ArubaOS-CX build id " + BUILD + "\\nhostname brw-sw07\\n"]]);
+    await dateien([["brw-sw07.txt", "ArubaOS-CX build id " + BUILD + "\\nhostname brw-sw07\\n<Data Name=\\"TargetUserName\\">jdoe7</Data>\\n"]]);
     pruefe("Dateiliste: vor dem Verarbeiten verdeckt ('Datei n'), kein Originalname", /^Datei [0-9]+$/.test(document.querySelector("#dateiListeBody td").textContent) && $("dateiListeBody").textContent.indexOf("brw-sw07") < 0, document.querySelector("#dateiListeBody td").textContent);
     $("btnDateinamenOriginale").click();
     pruefe("Dateiliste: Original nur nach 'Originale anzeigen'", document.querySelector("#dateiListeBody td").textContent === "brw-sw07.txt");
@@ -382,9 +382,11 @@ window.addEventListener("load", async () => {
     const best = kV.querySelector("input[data-bestaetigung]");
     best.checked = true; best.dispatchEvent(new Event("change"));
     pruefe("a: nach Bestätigung freigebbar", !bU.disabled);
-    bU.click();
+    karte("jdoe7").querySelector('button[data-aktion="ersetzen"]').click();
     await warte(50);
-    karte("brw-sw07") && karte("brw-sw07").querySelector('button[data-aktion="ersetzen"]').click();
+    const kV2 = karte(BUILD);
+    pruefe("Fix 4: Häkchen 'kein Geheimnis' bleibt nach Entscheidung einer anderen Fundgruppe erhalten", kV2.querySelector("input[data-bestaetigung]").checked && !kV2.querySelector('button[data-aktion="unveraendert"]').disabled);
+    kV2.querySelector('button[data-aktion="unveraendert"]').click();
     await warte(50);
     pruefe("Layout: Getroffene Entscheidungen aufgeklappt, sobald vorhanden", $("entscheidungenDetails").open && $("entscheidungenAnzahl").textContent !== "0", $("entscheidungenAnzahl").textContent);
     $("btnApplyFindingDecisions").click();
@@ -529,7 +531,7 @@ function probeAusfuehren(skript, budgetMs) {
     assert(daten.fehler.length === 0, `Korrektur-Test: keine JavaScript-Fehler (${daten.fehler.join(" | ")})`);
     assert(daten.alerts === 0, `Korrektur-Test: keine alert()-Dialoge (${daten.alerts})`);
     for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
-    assert(daten.pruefungen.length >= 27, `Korrektur-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
+    assert(daten.pruefungen.length >= 28, `Korrektur-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
   }
 }
 

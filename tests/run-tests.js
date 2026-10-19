@@ -646,7 +646,8 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     "MikroTik comment= (ohne Anführungszeichen)": "set [ find default-name=ether1 ] comment=Kunde Mustermann Ethernet1/1/1",
     "MikroTik SNMP Location (location=)": "/snmp set location=\"Kunde Mustermann Ethernet1/1/1\"",
     "MikroTik SNMP Contact (contact=)": "/snmp set contact=\"Kunde Mustermann Ethernet1/1/1\"",
-    "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)": "/interface vlan add interface=bridge1 name=\"Kunde Mustermann Ethernet1/1/1\" vlan-id=10"
+    "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)": "/interface vlan add interface=bridge1 name=\"Kunde Mustermann Ethernet1/1/1\" vlan-id=10",
+    "Port-Name / Display-String (Ruckus ICX port-name, Extreme EXOS display-string)": " port-name Kunde Mustermann Ethernet1/1/1"
   };
   assert(
     diskRules.freitextMuster.length === Object.keys(freitextSamplesByRule).length,
@@ -1533,6 +1534,43 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       for (const d of diagNach) console.error("    [Parität Nachprüfung] " + d);
       assert(diagNach.length === 0, `Parität: Nachprüfung auf den Roheingaben entspricht tests/nachpruefung-erwartet.json (Soll ${sollNach.length}, Ist ${zeilenNach.length}, Abweichungen ${diagNach.length})`);
     }
+    // Fix Spaltenerkennung: Tabelle endet an Befehlszeile, Trennlinie nach Daten oder Zeile außerhalb des Spaltenrasters
+    {
+      const sep = "-".repeat(110);
+      const tabelleText = ["show interface brief", sep,
+        "Port      Native  Mode   Type           Enabled Status  Reason                  Speed   Description",
+        "          VLAN                                                                  (Mb/s)", sep,
+        "1/1/1     1       access 1GbT           yes     up                              1000    Uplink-Weber",
+        "1/1/2     1       access 1GbT           yes     down    Waiting for link        --      --",
+        "show logging",
+        "2024-01-15T10:00:00.000+00:00 hpe-sshd[1234]: login failed for user bwagner from 198.51.100.4 port 22",
+        "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC",
+        "show vlan", sep,
+        "VLAN  Name                              Status  Reason          Type      Interfaces                           Description", sep,
+        "1     DEFAULT_VLAN_1                    up      ok              default   1/1/1-1/1/2                          Standard", ""].join("\n");
+      const tNach = core.nachpruefen(tabelleText, "t.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
+      assert(JSON.stringify(tNach) === '["Uplink-Weber"]', `Fix 1: Nachprüfung meldet nur die Description der Brief-Tabelle (${JSON.stringify(tNach)})`);
+      const tAus = core.processText(tabelleText, kCfg, new core.AnonState());
+      const tZeilen = tAus.split("\n");
+      assert(/1000    TEXT-1$/.test(tZeilen[5]) && tAus.indexOf("Uplink-Weber") < 0, "Fix 1: Description der Brief-Tabelle ersetzt");
+      assert(/login failed for user USER-1 from NET-1\.H1 port 22$/.test(tZeilen[8]), `Fix 1: Benutzer und IP nach Benutzer-/IP-Regel, nicht als Spaltenwert (${tZeilen[8]})`);
+      assert(tZeilen[9] === "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC", "Fix 1: 'UTC' bleibt stehen");
+      assert(/Interfaces {27}Description$/.test(tZeilen[12]) && /Standard$/.test(tZeilen[14]), `Fix 1: VLAN-Kopfzeile und VLAN-Tabelle bleiben (${tZeilen[12].slice(-30)})`);
+      const tTab = core.processText("Port\tNative\tDescription\n1/1/1\t1\tUplink-Weber\nshow logging ohne Tabulator\n1/1/2\t1\tLog-Zeile\n", kCfg, new core.AnonState());
+      assert(tTab.indexOf("Uplink-Weber") < 0 && tTab.indexOf("Log-Zeile") >= 0, `Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator (${JSON.stringify(tTab)})`);
+      const tTrenn = core.processText(["Port      Native  Type   Description", sep, "1/1/1     1       1GbT   Uplink-Weber", sep, "1/1/9     1       1GbT   Nach-Trennlinie", ""].join("\n"), kCfg, new core.AnonState());
+      assert(tTrenn.indexOf("Uplink-Weber") < 0 && tTrenn.indexOf("Nach-Trennlinie") >= 0, "Fix 1: Trennlinie nach Datenzeilen beendet die Tabelle");
+      const tPrompt = core.nachpruefen(["Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", ""].join("\n"), "p.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
+      assert(JSON.stringify(tPrompt) === '["Uplink-Weber"]', `Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle (${JSON.stringify(tPrompt)})`);
+    }
+    // Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
+    {
+      const pText = "description Uplink zu (HOST-1), siehe TEXT-2;\n Port Description : [USER-1]\nhostname HOST-1.\nuser USER-3,\nPort      Native  Type   Description\n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)\n";
+      const pFunde = core.nachpruefen("description (HOST-1), TEXT-2;\n Port Description : [USER-1]\nhostname HOST-1.\nuser USER-3,\nPort      Native  Type   Description\n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)\n", "p.txt", kCfg);
+      assert(pFunde.length === 0, `Fix 2: Nachprüfung meldet keine eigenen Platzhalter (${JSON.stringify(pFunde.map(f => f.kategorie + ":" + f.fund))})`);
+      assert(core.nachpruefen(pText, "p.txt", kCfg).length === 1, "Fix 2: echter Freitext neben Platzhaltern wird weiter gemeldet");
+    }
+
     // Rückwirkend und dateiübergreifend: mehrdeutige Benutzer nur im Feldkontext
     const mState = new core.AnonState();
     const mLauf = core.reprocessFilesWithState([
@@ -1665,6 +1703,26 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(eV.freigegeben.length === 1 && eV.freigegeben[0].kategorie === "Verdacht", "Entscheidung 'Unverändert lassen' bei Verdacht: Freigabe in Kategorie Verdacht");
     const eM = core.entscheidungsEintraege(gV, "maskieren");
     assert(eM.geheimnisMuster.length === 1 && eM.geheimnisMuster[0].ersetzen === "*****" && eM.festeZuordnung.length === 0, "Entscheidung 'Als Geheimnis maskieren': Muster mit *****, keine Zuordnung");
+    // Fix 3: ein Wert ergibt höchstens eine Fundgruppe; die strengste Aktion gilt
+    const BID = "9f8e7d6c5b4a39281706f5e4d3c2b1a0";
+    const fg3 = core.bildeFundgruppen([
+      { datei: "c.txt", zeile: 1, kategorie: "Verdacht-Geheimnis-Blob", fund: BID, kontext: "build id " + BID },
+      { datei: "c.txt", zeile: 1, kategorie: "Nachpruefung-Seriennummer", fund: BID, kontext: "Serial Number: " + BID },
+      { datei: "d.txt", zeile: 3, kategorie: "Rest-Tabellenfeld", fund: BID, kontext: "1/1/1 " + BID }
+    ], null);
+    assert(fg3.length === 1 && fg3[0].anzahl === 3 && fg3[0].verdacht && fg3[0].bestaetigung && JSON.stringify(fg3[0].aktionen) === '["unveraendert","maskieren"]', `Fix 3: Build-ID in drei Kategorien ergibt eine Fundgruppe (Verdacht) (${fg3.length}, ${fg3.map(g => g.art).join(",")})`);
+    const e3 = core.entscheidungsEintraege(fg3[0], "unveraendert");
+    assert(JSON.stringify(e3.freigegeben.map(f => f.kategorie).sort()) === '["Seriennummer","Tabellenfeld","Verdacht"]', `Fix 3: Freigabe gilt für alle Kategorien der Gruppe (${JSON.stringify(e3.freigegeben)})`);
+    const fg3s = core.bildeFundgruppen([
+      { datei: "c.txt", zeile: 1, kategorie: "Rest-Hostname", fund: "Geheim9z", kontext: "x Geheim9z" },
+      { datei: "c.txt", zeile: 2, kategorie: "Rest-Geheimnis", fund: "Geheim9z", kontext: "password Geheim9z" }
+    ], null);
+    assert(fg3s.length === 1 && fg3s[0].sicheresGeheimnis && fg3s[0].aktionen.indexOf("unveraendert") < 0 && core.entscheidungsEintraege(fg3s[0], "ersetzen").geheimnisMuster.length === 1, "Fix 3: mit sicherem Geheimnis gilt die strengste Aktion (nur maskieren)");
+    const fg3d = core.bildeFundgruppen([
+      { datei: "c.txt", zeile: 1, kategorie: "Rest-Hostname", fund: "werk-nord7", kontext: "werk-nord7" },
+      { datei: "c.txt", zeile: 2, kategorie: "Sperrbegriff", fund: "werk-nord7", kontext: "werk-nord7" }
+    ], null);
+    assert(fg3d.length === 1 && !fg3d[0].kannUnveraendert && fg3d[0].aktionen[0] === "ersetzen", "Fix 3: Sperrbegriff macht die ganze Gruppe nicht freigebbar");
     assert(fg.every(g => g.aktionen.length >= 2), `Fundgruppen: jede Gruppe hat mindestens zwei Aktionen (${fg.map(g => g.art + ":" + g.aktionen.length).join(",")})`);
     const vLauf = core.reprocessFilesWithState([{ path: "b.txt", text: "ArubaOS-CX build id 9f8e7d6c5b4a39281706f5e4d3c2b1a0\n" }], diskRules, core.fuegeEintraegeHinzu({}, eV), new core.AnonState(), {});
     assert(vLauf.ok && vLauf.findings.length === 0 && vLauf.freigegeben === 1, `Verdacht freigegeben: Lauf ohne Restfunde, Freigabe gezählt (${vLauf.findings.length}/${vLauf.freigegeben})`);

@@ -388,6 +388,35 @@
           "art": "identitaet"
         }
       ]
+    },
+    {
+      "id": "K20",
+      "quelle": "Fix Spaltenerkennung / Huawei-H3C-Prompt <name> ohne sysname",
+      "eingabe": "<brw-core07>display version\nHuawei Versatile Routing Platform Software\n<brw-core07>display interface brief\n",
+      "ziele": [
+        {
+          "wert": "brw-core07",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K21",
+      "quelle": "Fix Spaltenerkennung / display-string (Extreme EXOS) und port-name (Ruckus ICX)",
+      "eingabe": "configure ports 1:1 display-string Uplink-Weber-Kern\ninterface ethernet 1/1/1\n port-name Drucker-Weber-Etage2\n",
+      "ziele": [
+        {
+          "wert": "Uplink-Weber-Kern",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Drucker-Weber-Etage2",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
     }
   ]
 }

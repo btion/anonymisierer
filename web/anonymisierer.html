@@ -987,6 +987,8 @@
         "md5",
         "hmac",
         "Aruba",
+        "Huawei",
+        "H3C",
         "Cisco",
         "Dell",
         "SONiC",
@@ -1300,6 +1302,11 @@
         "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
         "kategorie": "TEXT",
         "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))(?![A-Za-z0-9_])[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
+      },
+      {
+        "name": "Port-Name / Display-String (Ruckus ICX port-name, Extreme EXOS display-string)",
+        "kategorie": "TEXT",
+        "suche": "(?im)((?<![A-Za-z0-9_-])(?:port-name|display-string)[ \\t]+\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]*\\r?$)"
       }
     ],
     "seriennummerMuster": [
@@ -1326,6 +1333,7 @@
       "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
       "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
       "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
+      "(?m)^(<)([A-Za-z0-9._-]{2,64})(>[ \\t]*)(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))",
       "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
       "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"
@@ -2597,12 +2605,46 @@
     return any;
   }
 
+  // Tabellenende: neue Befehlszeile (show/display, Prompt "name#", "name>", "<name>", "[name]")
+  const RxBefehlszeile = /^(?:[ \t]*(?:show|display|disp|dis)[ \t]+[A-Za-z]|[A-Za-z0-9][A-Za-z0-9._\/:-]*(?:\([^)\r\n]*\))?[#>]|[ \t]*<[^<>\s\/]{1,64}>|[ \t]*\[[~*]?[^\[\]\s]{1,64}\])/i;
+  function istBefehlszeile(line) {
+    return RxBefehlszeile.test(line);
+  }
+  // Spaltenraster: Beginn jeder Kopfzelle (Zellen durch mindestens zwei Leerzeichen getrennt)
+  function kopfRaster(line) {
+    const starts = [];
+    for (const m of line.matchAll(/[^ \t]+(?: [^ \t]+)*/g)) starts.push(m.index);
+    return starts;
+  }
+  // Eine Zeile passt zum Raster, wenn höchstens ein Wort über eine Spaltengrenze reicht
+  function passtZumRaster(line, raster) {
+    let verstoesse = 0;
+    for (const g of raster) {
+      if (g <= 0 || g >= line.length) continue;
+      if (!isBlankCh(line[g - 1]) && !isBlankCh(line[g])) verstoesse++;
+    }
+    return verstoesse <= 1;
+  }
+  // Folgt innerhalb von drei Zeilen nach dem Kopf eine Trennlinie? (Zeilen davor gehören zum Kopf)
+  function trennlinieFolgt(zeilen, kopfIndex) {
+    for (let t = kopfIndex + 1; t <= kopfIndex + 3 && t < zeilen.length; t++) {
+      if (isTableSeparatorLine(zeilen[t])) return true;
+      if (zeilen[t].trim() === "") return false;
+    }
+    return false;
+  }
+
   function findTableFields(text, cfg) {
     const result = [];
     if (!text || !cfg.tabellenSpalten || cfg.tabellenSpalten.length === 0) return result;
     let cols = null;
     let pos = 0;
     let lineNo = 0;
+    // Tabellenende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
+    let raster = [];
+    let trennErwartet = false;
+    let daten = false;
+    const alleZeilen = text.split("\n").map(z => z.endsWith("\r") ? z.slice(0, -1) : z);
     while (pos <= text.length) {
       const nl = text.indexOf("\n", pos);
       const lineEnd = nl < 0 ? text.length : nl;
@@ -2630,6 +2672,9 @@
           }
           newCols.sort((a, b) => a.feld - b.feld);
           cols = newCols;
+          raster = [];
+          trennErwartet = trennlinieFolgt(alleZeilen, lineNo - 1);
+          daten = false;
           isHeader = true;
           break;
         }
@@ -2645,29 +2690,38 @@
           newCols.splice(ins, 0, { start: s, end: e, feld: -1, kategorie: sp.kategorie });
         }
         cols = newCols;
+        raster = kopfRaster(line);
+        trennErwartet = trennlinieFolgt(alleZeilen, lineNo - 1);
+        daten = false;
         isHeader = true;
         break;
       }
 
       if (!isHeader && cols) {
         const trimmed = line.trim();
-        if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("total")) {
+        const tabModus = cols.length > 0 && cols[0].feld >= 0;
+        if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("total") || istBefehlszeile(line)) {
           cols = null;
-        } else if (cols.length > 0 && cols[0].feld >= 0) {
-          if (line.indexOf("\t") >= 0) {
-            const teile = line.split("\t");
-            for (const col of cols) {
-              if (col.feld >= teile.length) continue;
-              let s = 0;
-              for (let fi = 0; fi < col.feld; fi++) s += teile[fi].length + 1;
-              let e = s + teile[col.feld].length;
-              while (s < e && isBlankCh(line[s])) s++;
-              while (e > s && isBlankCh(line[e - 1])) e--;
-              if (e <= s) continue;
-              result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: col.kategorie ? col.kategorie : "TEXT", wert: line.slice(s, e) });
-            }
+        } else if (isTableSeparatorLine(line)) {
+          if (daten) cols = null;
+          else trennErwartet = false;
+        } else if (tabModus ? line.indexOf("\t") < 0 : !passtZumRaster(line, raster)) {
+          cols = null;
+        } else if (tabModus) {
+          if (!trennErwartet) daten = true;
+          const teile = line.split("\t");
+          for (const col of cols) {
+            if (col.feld >= teile.length) continue;
+            let s = 0;
+            for (let fi = 0; fi < col.feld; fi++) s += teile[fi].length + 1;
+            let e = s + teile[col.feld].length;
+            while (s < e && isBlankCh(line[s])) s++;
+            while (e > s && isBlankCh(line[e - 1])) e--;
+            if (e <= s) continue;
+            result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: col.kategorie ? col.kategorie : "TEXT", wert: line.slice(s, e) });
           }
-        } else if (!isTableSeparatorLine(line)) {
+        } else {
+          if (!trennErwartet) daten = true;
           let lastEnd = 0;
           for (const col of cols) {
             let s = col.start;
@@ -3513,10 +3567,12 @@
   const RxNachFeldFrei = /(?<![A-Za-z0-9_.\/-])"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)"?(?![A-Za-z0-9_-])(?:[ \t]*[:=][ \t]*|[ \t]+)/gi;
   const RxNachFeldDoppelpunkt = /(?<![A-Za-z0-9_.\/-])"?(System[ \t-]+Name|Device[ \t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \t]+|System[ \t]+|Board[ \t]+)?Serial(?:[ \t_-]*(?:Number|Nbr|No|Num)\.?)?|SN|Service[ \t]+Tag|Asset[ \t]+Tag|Authorization)"?(?![A-Za-z0-9_-])[ \t]*[:=][ \t]*/gi;
   // Beschreibungen am Zeilenanfang: "Description: X", "Port Description : X", "Neighbor Port-Desc : X", "description X";
-  // in JSON "description": "X"
-  const RxNachBeschreibung = /^[ \t]*(?:(?:Neighbor[ \t]+)?(?:Port[ \t-]+Desc(?:ription)?|Description|PORT-DESC)[ \t]*[:=][ \t]*|(?:description|alias)[ \t]+)(.*)$|"(?:description|alias)"[ \t]*:[ \t]*("(?:[^"\\\r\n]|\\.)*")/i;
+  // in JSON "description": "X"; "port-name X" (Ruckus ICX), "display-string X" (Extreme EXOS)
+  const RxNachBeschreibung = /^[ \t]*(?:(?:Neighbor[ \t]+)?(?:Port[ \t-]+Desc(?:ription)?|Description|PORT-DESC)[ \t]*[:=][ \t]*|(?:description|alias)[ \t]+)(.*)$|"(?:description|alias)"[ \t]*:[ \t]*("(?:[^"\\\r\n]|\\.)*")|(?<![A-Za-z0-9_-])(?:port-name|display-string)[ \t]+(.*)$/i;
   // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
   const NACH_TABELLEN_SPALTEN = { "Description": "T", "DESCRIPTION": "T", "PORT-DESC": "T", "Port-Desc": "T", "Port Description": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H" };
+  // Huawei/H3C-Prompt "<name>" gefolgt von einem Befehl (auch ohne sysname-Zeile)
+  const RxNachPrompt = /^<([A-Za-z0-9._-]{2,64})>[ \t]*(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))/i;
   const RxNachSchnittstellenKopf = /^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$/i;
   const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
   const NACH_STRUKTURWOERTER = new Set(["chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
@@ -3537,12 +3593,24 @@
 
   function nachErlaubt(v, cfg) {
     if (!v || v === "*****") return true;
+    // Satzzeichen am Rand gehören nicht zum Wert ("(HOST-1),", "[USER-1]", "TEXT-2;")
+    v = String(v).replace(/^[(\[{<"'`]+|[)\]}>"'`,;:.!?]+$/g, "");
+    if (!v) return true;
     const low = v.toLowerCase();
     if (cfg.exakteAusnahmen.has(low) || cfg.pruefungErlaubtListe.has(low)) return true;
     const fest = new Set(Object.values(cfg.festeZuordnung).map(x => String(x).toLowerCase()));
     if (fest.has(low)) return true;
     // Aus Platzhaltern zusammengesetzt (HOST-1.DOMAIN-2, DOMAIN-1\USER-3, USER-1@DOMAIN-1)
     return v.split(/[.\\@]/).every(t => t.length > 0 && (RxNachPlatzhalter.test(t) || fest.has(t.toLowerCase())));
+  }
+
+  // Höchstens ein Wort reicht über eine Spaltengrenze der Kopfzeile
+  function nachPasstZumRaster(z, raster) {
+    let v = 0;
+    for (const g of raster) {
+      if (g > 0 && g < z.length && !/[ \t]/.test(z[g - 1]) && !/[ \t]/.test(z[g])) v++;
+    }
+    return v <= 1;
   }
 
   // Nächster Wert nach einem Feldnamen: Wert in Anführungszeichen oder ein Wort
@@ -3579,7 +3647,7 @@
     // Beschreibung/Name: leer, "--" und Werte ohne Buchstaben sind kein Fund; erlaubt, wenn jedes Wort erlaubt ist
     const pruefeBeschreibung = (ln, art, wert) => {
       if (!wert || !/[A-Za-z]/.test(wert) || /^-+$/.test(wert)) return;
-      if (nachErlaubt(wert, cfg) || wert.split(/[ \t]+/).every(t => !/[A-Za-z]/.test(t) || nachErlaubt(t, cfg))) return;
+      if (nachErlaubt(wert, cfg) || wert.split(/[ \t,;]+/).every(t => !/[A-Za-z]/.test(t) || nachErlaubt(t, cfg))) return;
       melde(ln, art, wert);
     };
     const feldWert = (ln, zeile, ab, art, name) => {
@@ -3626,9 +3694,11 @@
         pruefeWert(ln, "G", m[2]);
       }
       for (const m of zeile.matchAll(RxNachSid)) melde(ln, "", m[0], "Nachpruefung-SID");
+      const pm = RxNachPrompt.exec(zeile);
+      if (pm) pruefeWert(ln, "H", pm[1]);
       const bm = RxNachBeschreibung.exec(zeile);
       if (bm) {
-        const roh = (bm[1] !== undefined ? bm[1] : bm[2]).trim();
+        const roh = (bm[1] !== undefined ? bm[1] : (bm[2] !== undefined ? bm[2] : bm[3])).trim();
         const w = roh.startsWith('"') ? nachWert(roh) : null;
         pruefeBeschreibung(ln, "T", w ? w.wert : roh.replace(/[",]+$/, "").trim());
       }
@@ -3685,9 +3755,23 @@
         if (art && (art === "H" || schnittstelle)) spalten.push({ zi, art });
       });
       if (spalten.length === 0) continue;
+      // Ende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
+      const raster = zellen.map(z => z.start);
+      let trennErwartet = false;
+      for (let t = i + 1; t <= i + 3 && t < zeilen.length && zeilen[t].trim() !== ""; t++) {
+        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(zeilen[t])) { trennErwartet = true; break; }
+      }
+      let daten = false;
       for (let j = i + 1; j < zeilen.length && j < i + 500 && zeilen[j].trim() !== ""; j++) {
         const z = zeilen[j];
-        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z) || /^[ \t]*Total/i.test(z)) continue;
+        if (/^[ \t]*Total/i.test(z) || RxBefehlszeile.test(z)) break;
+        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z)) {
+          if (daten) break;
+          trennErwartet = false;
+          continue;
+        }
+        if (tab ? z.indexOf("\t") < 0 : !nachPasstZumRaster(z, raster)) break;
+        if (!trennErwartet) daten = true;
         for (const sp of spalten) {
           let wert = "";
           if (tab) {
@@ -5587,28 +5671,30 @@
     return GEHEIMNIS_FUNDKATEGORIEN.indexOf(kategorie) >= 0;
   }
 
-  // Fundgruppen für die Fundkarten: gleiche Bedeutung (z. B. Rest-Benutzer und Nachpruefung-Benutzer) und gleicher Wert
-  // ergeben eine Karte. Jede Gruppe kennt ihre Fundorte (Datei, Zeile) und welche Entscheidungen möglich sind.
+  // Fundgruppen für die Fundkarten: ein Wert ergibt höchstens eine Karte, auch wenn er in mehreren Kategorien gemeldet
+  // wird (z. B. Build-ID als Hex-Wert, Seriennummer und Tabelleneintrag). Die strengste Kategorie bestimmt die Aktionen:
+  // sicher erkanntes Geheimnis > nicht freigebbar (eigener Begriff, interne Domain) > Verdacht > freigebbar.
+  // Jede Gruppe kennt ihre Fundorte (Datei, Zeile) und welche Entscheidungen möglich sind.
   function bildeFundgruppen(findings, state) {
     const map = new Map();
     for (const f of (findings || [])) {
       const fund = String(f.fund == null ? "" : f.fund).trim();
       const freigabe = freigabeKategorie(f.kategorie, fund, state);
-      const geheimnis = istGeheimnisFund(f.kategorie);
-      const art = freigabe || (geheimnis ? "Geheimnis" : f.kategorie);
-      const key = art + "|" + fund.toLowerCase();
+      const key = fund ? fund.toLowerCase() : "|" + f.kategorie;
       if (!map.has(key)) {
-        const text = freigabe === "Verdacht" ? "Verdacht auf Passwort oder Schlüssel (" + fundKategorieText(f.kategorie) + ")"
-          : (geheimnis ? "Passwort oder Schlüssel (sicher erkannt)" : (freigabe ? fundKategorieText(f.kategorie).replace(/ im Dateinamen$/, "") : fundKategorieText(f.kategorie)));
         map.set(key, {
-          schluessel: key, art, text,
-          kategorien: [], fund, werte: [], woerter: [], orte: [], dateien: [], anzahl: 0,
-          freigabeKategorie: freigabe, geheimnis, kontext: String(f.kontext || ""), kontextWert: fund
+          schluessel: key, fund, kategorien: [], werte: [], woerter: [], orte: [], dateien: [], anzahl: 0,
+          freigabeKategorien: [], nichtFreigebbar: false, sicher: [], verdachtFunde: [], erste: f,
+          kontext: String(f.kontext || ""), kontextWert: fund
         });
       }
       const g = map.get(key);
       g.anzahl++;
       if (g.kategorien.indexOf(f.kategorie) < 0) g.kategorien.push(f.kategorie);
+      if (freigabe) { if (g.freigabeKategorien.indexOf(freigabe) < 0) g.freigabeKategorien.push(freigabe); }
+      else g.nichtFreigebbar = true;
+      if (istGeheimnisFund(f.kategorie) && freigabe !== "Verdacht") g.sicher.push(f.kategorie);
+      if (freigabe === "Verdacht") g.verdachtFunde.push(f.kategorie);
       if (g.werte.indexOf(fund) < 0) g.werte.push(fund);
       if (g.dateien.indexOf(f.datei) < 0) g.dateien.push(f.datei);
       if (!g.orte.some(o => o.datei === f.datei && o.zeile === f.zeile)) g.orte.push({ datei: f.datei, zeile: f.zeile });
@@ -5621,24 +5707,43 @@
     }
     const gruppen = Array.from(map.values());
     for (const g of gruppen) {
+      g.sicheresGeheimnis = g.sicher.length > 0;
+      g.verdacht = !g.sicheresGeheimnis && g.verdachtFunde.length > 0;
+      g.geheimnis = g.sicheresGeheimnis || g.verdacht;
+      const ersteNichtFrei = g.kategorien.find(k => !freigabeKategorie(k, g.fund, state));
+      if (g.sicheresGeheimnis) {
+        g.art = "Geheimnis";
+        g.text = "Passwort oder Schlüssel (sicher erkannt)";
+      } else if (g.nichtFreigebbar) {
+        g.art = ersteNichtFrei || g.erste.kategorie;
+        g.text = fundKategorieText(g.art);
+      } else if (g.verdacht) {
+        g.art = "Verdacht";
+        g.text = "Verdacht auf Passwort oder Schlüssel (" + fundKategorieText(g.verdachtFunde[0]) + ")";
+      } else {
+        g.art = g.freigabeKategorien[0] || g.erste.kategorie;
+        g.text = fundKategorieText(g.erste.kategorie).replace(/ im Dateinamen$/, "");
+      }
+      const weitere = g.kategorien.map(k => fundKategorieText(k).replace(/ im Dateinamen$/, "")).filter((t, i, a) => a.indexOf(t) === i && g.text.indexOf(t) < 0);
+      if (weitere.length > 0) g.text += " – auch als " + weitere.join(", ");
+      g.freigabeKategorie = g.nichtFreigebbar ? null : (g.verdacht ? "Verdacht" : (g.freigabeKategorien[0] || null));
+      delete g.erste; delete g.sicher; delete g.verdachtFunde;
       // Ersetzen ist möglich, wenn ein Wert vorhanden ist; Doppelte Ausgabepfade lassen sich nur durch Umbenennen lösen
       g.kannErsetzen = g.fund.length > 0 && g.kategorien.indexOf("Ausgabepfad-Kollision") < 0;
-      g.kannUnveraendert = Boolean(g.freigabeKategorie);
+      g.kannUnveraendert = !g.nichtFreigebbar && g.freigabeKategorien.length > 0;
       // Sicher erkannte Geheimnisse nur maskieren; Verdachtsfunde nach Bestätigung freigeben oder maskieren.
       // Jede Fundgruppe hat mindestens zwei Aktionen (nie eine Sackgasse); letzte Möglichkeit: Datei entfernen.
-      g.verdacht = g.freigabeKategorie === "Verdacht";
-      g.sicheresGeheimnis = g.geheimnis && !g.verdacht;
       const aktionen = [];
-      if (g.verdacht) {
+      if (g.verdacht && g.kannUnveraendert) {
         aktionen.push("unveraendert");
         if (g.kannErsetzen) aktionen.push("maskieren");
       } else {
         if (g.kannErsetzen) aktionen.push("ersetzen");
-        if (g.kannUnveraendert && !g.sicheresGeheimnis) aktionen.push("unveraendert");
+        if (g.kannUnveraendert && !g.geheimnis) aktionen.push("unveraendert");
       }
       if (aktionen.length < 2 && g.dateien.length > 0) aktionen.push("datei-entfernen");
       g.aktionen = aktionen;
-      g.bestaetigung = g.verdacht ? "Ich habe geprüft: kein Geheimnis" : "";
+      g.bestaetigung = g.verdacht && g.kannUnveraendert ? "Ich habe geprüft: kein Geheimnis" : "";
     }
     return gruppen;
   }
@@ -5669,7 +5774,9 @@
         for (const w of (gruppe.woerter.length > 0 ? gruppe.woerter : gruppe.werte)) ergebnis.festeZuordnung.push({ original: w, placeholder: "" });
       }
     } else if (aktion === "unveraendert" && gruppe.kannUnveraendert) {
-      for (const w of gruppe.werte) ergebnis.freigegeben.push({ kategorie: gruppe.freigabeKategorie, wert: w });
+      // Freigabe für jede Kategorie, in der der Wert gemeldet wurde
+      const kategorien = gruppe.freigabeKategorien && gruppe.freigabeKategorien.length > 0 ? gruppe.freigabeKategorien : [gruppe.freigabeKategorie];
+      for (const k of kategorien) for (const w of gruppe.werte) ergebnis.freigegeben.push({ kategorie: k, wert: w });
     }
     return ergebnis;
   }
@@ -5878,6 +5985,7 @@
       markiereGeaendert("eigeneBegriffe");
     }
     let findingGroups = [];          // Fundgruppen des letzten Laufs (bildeFundgruppen)
+    let bestaetigteGruppen = new Set(); // Verdachtsfunde mit Häkchen "Ich habe geprüft: kein Geheimnis" (bis zum nächsten Lauf)
     let findingDecisions = {};       // schluessel -> { aktion: "ersetzen" | "unveraendert", umfang: "auftrag" | "dauerhaft", eintraege }
     let auftragsEntscheidungen = []; // Entscheidungen "nur für diesen Auftrag": [{ schluessel, aktion, text, werte, eintraege }]
     let dauerhafteEntscheidungen = []; // zum Rückgängigmachen dauerhafter Entscheidungen
@@ -7108,6 +7216,7 @@
         const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
         findingGroups = bildeFundgruppen(allFindings, runState);
         findingDecisions = {};
+        bestaetigteGruppen = new Set();
         fundZeiger = -1;
 
         const banner = $("auditBanner");
@@ -7236,6 +7345,7 @@
       ergebnisVeraltet = false;
       findingGroups = [];
       findingDecisions = {};
+      bestaetigteGruppen = new Set();
       auftragsEntscheidungen = [];
       unsavedTableChanges = false;
       lastReportObj = null;
@@ -7456,6 +7566,10 @@
             bestaetigt = document.createElement("input");
             bestaetigt.type = "checkbox";
             bestaetigt.dataset.bestaetigung = "1";
+            // Bestätigung bleibt erhalten, wenn die Karten neu gezeichnet werden (z. B. nach anderen Entscheidungen)
+            bestaetigt.checked = bestaetigteGruppen.has(g.schluessel);
+            const cb = bestaetigt;
+            cb.addEventListener("change", () => { if (cb.checked) bestaetigteGruppen.add(g.schluessel); else bestaetigteGruppen.delete(g.schluessel); });
             lab.append(bestaetigt, document.createTextNode(" " + g.bestaetigung));
             card.appendChild(lab);
           }
@@ -7466,7 +7580,7 @@
             b.dataset.aktion = aktion;
             b.textContent = aktionText(g, aktion);
             if (aktion === "unveraendert" && bestaetigt) {
-              b.disabled = true;
+              b.disabled = !bestaetigt.checked;
               bestaetigt.addEventListener("change", () => { b.disabled = !bestaetigt.checked; });
             }
             b.addEventListener("click", () => {

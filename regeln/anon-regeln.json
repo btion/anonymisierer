@@ -57,6 +57,8 @@
       "md5",
       "hmac",
       "Aruba",
+      "Huawei",
+      "H3C",
       "Cisco",
       "Dell",
       "SONiC",
@@ -370,6 +372,11 @@
       "name": "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)",
       "kategorie": "TEXT",
       "suche": "(?im)(?<!/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+)(?<!/user(?:[ \\t]+(?:add|set)|[ \\t]*\\r?\\n[ \\t]*(?:add|set))(?![A-Za-z0-9_])[^\\r\\n]*)(?<![A-Za-z0-9-])((?:interface|name)=\"?)((?<=\")[^\"\\r\\n]{2,64}(?=\")|(?<!\")[A-Za-z0-9._\\-\\u0002\\u0003]{2,64})(\"?)(?=[ \\t]|\\r?$)"
+    },
+    {
+      "name": "Port-Name / Display-String (Ruckus ICX port-name, Extreme EXOS display-string)",
+      "kategorie": "TEXT",
+      "suche": "(?im)((?<![A-Za-z0-9_-])(?:port-name|display-string)[ \\t]+\"?)([^\"\\r\\n]+?)(\"?)(?=[ \\t]*\\r?$)"
     }
   ],
   "seriennummerMuster": [
@@ -396,6 +403,7 @@
     "(?im)^([ \\t]*(?:hostname|sysname|switchname|prompt)[ \\t]+)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
     "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
     "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
+    "(?m)^(<)([A-Za-z0-9._-]{2,64})(>[ \\t]*)(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))",
     "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
     "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"

@@ -582,6 +582,7 @@ $freitextSamplesByRule = @{
     "MikroTik SNMP Location (location=)"                                                    = '/snmp set location="Kunde Mustermann Ethernet1/1/1"'
     "MikroTik SNMP Contact (contact=)"                                                      = '/snmp set contact="Kunde Mustermann Ethernet1/1/1"'
     "MikroTik Interface-/VLAN-/Bridge-Namen (name= und interface= konsistent)"              = '/interface vlan add interface=bridge1 name="Kunde Mustermann Ethernet1/1/1" vlan-id=10'
+    "Port-Name / Display-String (Ruckus ICX port-name, Extreme EXOS display-string)"         = ' port-name Kunde Mustermann Ethernet1/1/1'
 }
 Assert-Equal $rulesObj.freitextMuster.Count $freitextSamplesByRule.Count "Alle $($rulesObj.freitextMuster.Count) freitextMuster-Regeln sind im Mustermann+Ethernet1/1/1-Test abgedeckt"
 
@@ -1087,6 +1088,38 @@ if ($hatNachpruefung) {
         Assert-True ($nf.Count -eq 0) "Nachprüfung: keine Fehlalarme in tests\erwartet\$($f.Name) ($(@($nf | ForEach-Object { $_.Kategorie + ':' + $_.Zeile }) -join ', '))"
     }
 }
+
+# Fix Spaltenerkennung: Tabelle endet an Befehlszeile, Trennlinie nach Daten oder Zeile außerhalb des Spaltenrasters
+$sep = "-" * 110
+$tabelleText = (@("show interface brief", $sep,
+    "Port      Native  Mode   Type           Enabled Status  Reason                  Speed   Description",
+    "          VLAN                                                                  (Mb/s)", $sep,
+    "1/1/1     1       access 1GbT           yes     up                              1000    Uplink-Weber",
+    "1/1/2     1       access 1GbT           yes     down    Waiting for link        --      --",
+    "show logging",
+    "2024-01-15T10:00:00.000+00:00 hpe-sshd[1234]: login failed for user bwagner from 198.51.100.4 port 22",
+    "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC",
+    "show vlan", $sep,
+    "VLAN  Name                              Status  Reason          Type      Interfaces                           Description", $sep,
+    "1     DEFAULT_VLAN_1                    up      ok              default   1/1/1-1/1/2                          Standard", "") -join "`n")
+$tNach = @([AnonTool.AnonEngine]::Nachpruefen($tabelleText, "t.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
+Assert-True ($tNach.Count -eq 1 -and $tNach[0] -ceq "Uplink-Weber") "Fix 1: Nachprüfung meldet nur die Description der Brief-Tabelle ($($tNach -join ' | '))"
+$tZeilen = [AnonTool.AnonEngine]::ProcessText($tabelleText, $kCfg, (New-Object AnonTool.AnonState)).Split("`n")
+Assert-True ($tZeilen[5] -match "1000    TEXT-1$") "Fix 1: Description der Brief-Tabelle ersetzt"
+Assert-True ($tZeilen[8] -cmatch "login failed for user USER-1 from NET-1\.H1 port 22$") "Fix 1: Benutzer und IP nach Benutzer-/IP-Regel, nicht als Spaltenwert ($($tZeilen[8]))"
+Assert-True ($tZeilen[9] -ceq "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC") "Fix 1: 'UTC' bleibt stehen"
+Assert-True ($tZeilen[12] -cmatch "Interfaces {27}Description$" -and $tZeilen[14] -cmatch "Standard$") "Fix 1: VLAN-Kopfzeile und VLAN-Tabelle bleiben"
+$tTab = [AnonTool.AnonEngine]::ProcessText("Port`tNative`tDescription`n1/1/1`t1`tUplink-Weber`nshow logging ohne Tabulator`n1/1/2`t1`tLog-Zeile`n", $kCfg, (New-Object AnonTool.AnonState))
+Assert-True (-not $tTab.Contains("Uplink-Weber") -and $tTab.Contains("Log-Zeile")) "Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator"
+$tTrenn = [AnonTool.AnonEngine]::ProcessText((@("Port      Native  Type   Description", $sep, "1/1/1     1       1GbT   Uplink-Weber", $sep, "1/1/9     1       1GbT   Nach-Trennlinie", "") -join "`n"), $kCfg, (New-Object AnonTool.AnonState))
+Assert-True (-not $tTrenn.Contains("Uplink-Weber") -and $tTrenn.Contains("Nach-Trennlinie")) "Fix 1: Trennlinie nach Datenzeilen beendet die Tabelle"
+$tPrompt = @([AnonTool.AnonEngine]::Nachpruefen((@("Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", "") -join "`n"), "p.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
+Assert-True ($tPrompt.Count -eq 1 -and $tPrompt[0] -ceq "Uplink-Weber") "Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle ($($tPrompt -join ' | '))"
+# Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
+$pFunde = @([AnonTool.AnonEngine]::Nachpruefen("description (HOST-1), TEXT-2;`n Port Description : [USER-1]`nhostname HOST-1.`nuser USER-3,`nPort      Native  Type   Description`n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)`n", "p.txt", $kCfg))
+Assert-True ($pFunde.Count -eq 0) "Fix 2: Nachprüfung meldet keine eigenen Platzhalter ($(@($pFunde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"
+$pText = "description Uplink zu (HOST-1), siehe TEXT-2;`n Port Description : [USER-1]`nhostname HOST-1.`nuser USER-3,`nPort      Native  Type   Description`n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)`n"
+Assert-True (@([AnonTool.AnonEngine]::Nachpruefen($pText, "p.txt", $kCfg)).Count -eq 1) "Fix 2: echter Freitext neben Platzhaltern wird weiter gemeldet"
 
 # ----------------------------------------------------------------------------
 # 11. Kategoriegebundene Freigaben (ausnahmen.freigegeben)
