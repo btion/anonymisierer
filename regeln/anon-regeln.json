@@ -296,6 +296,12 @@
       "ersetzen": "$1*****"
     },
     {
+      "name": "Session-IDs, Tokens und Cookies (Base64/Hex ab 16 Zeichen, mit Ziffer)",
+      "hersteller": "Alle",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:session|token|sid|cookie)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?)(?!S-1-)(?=[A-Za-z0-9+/_-]*[0-9])([A-Za-z0-9+/_-]{16,}={0,2})",
+      "ersetzen": "$1*****"
+    },
+    {
       "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
       "hersteller": "Alle",
       "suche": "\\$(?:1|2[abxy]|5|6|8|9|y)\\$[a-zA-Z0-9./=$]{10,128}",

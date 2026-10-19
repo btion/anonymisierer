@@ -1147,6 +1147,35 @@ Assert-True ($d[1].EndsWith("Gig 1/0/1         150             R S I  C9300-48P 
 Assert-True (-not $d[2].Contains("brw-core12")) "Namensspalten: umbrochene Device ID ersetzt"
 $nAlle = @([AnonTool.AnonEngine]::Nachpruefen("ID  Desc             Status`n1   Lager-Engel      up`n2   --               down`n`nIdx Alias        Port-Name      Speed`n1   Halle-Ost    Tor-Seidel     1000`n", "n.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
 Assert-True (($nAlle -join "|") -ceq "Lager-Engel|Halle-Ost|Tor-Seidel") "Nachprüfung: Spalten Name/Desc/Alias/Port-Name in beliebiger Position ($($nAlle -join ' | '))"
+# Fix Praxistest 2: Befehls- und Logzeilen ohne Wert sind kein sicheres Geheimnis; Zeitstempel, Versionen und Kopfzeilen sind keine Benutzer
+$pt = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "praxistest2.json"), [System.Text.Encoding]::UTF8))
+function Invoke-PtLauf([string]$Text) {
+    $st = New-Object AnonTool.AnonState
+    [void][AnonTool.AnonEngine]::ProcessText($Text, $kCfg, $st)
+    $aus = [AnonTool.AnonEngine]::ProcessText($Text, $kCfg, $st)
+    return [pscustomobject]@{ Aus = $aus; Funde = @([AnonTool.AnonEngine]::AuditTextDetail($aus, "p.txt", $kCfg, $st, [int[]]$st.UnsichereTabellenzeilen.ToArray()).Funde) }
+}
+$geheimKat = @("Rest-Geheimnis", "Nachpruefung-Geheimnis", "Verdacht-Zugangsdaten", "Verdacht-Teilmaskierung", "Nachpruefung-Teilmaskierung", "Verdacht-Hash", "Verdacht-Geheimnis-Blob")
+$bLauf = Invoke-PtLauf ((@($pt.befehle) -join "`n") + "`n")
+$bSicher = @($bLauf.Funde | Where-Object { $geheimKat -contains $_.Kategorie -and $null -eq [AnonTool.AnonEngine]::FreigabeKategorie($_.Kategorie, $_.Fund, $null) })
+Assert-True ($bSicher.Count -eq 0) "Praxistest 2: 30 Befehlszeilen ohne Wert ergeben keinen sicheren Fund ($(@($bSicher | ForEach-Object { $_.Fund }) -join ' | '))"
+$aaa = @($bLauf.Funde | Where-Object { $_.Kontext -match "^(?:no )?aaa " })
+Assert-True ($aaa.Count -eq 0) "Praxistest 2: AAA-Befehlszeilen sind kein Fund"
+$lLauf = Invoke-PtLauf ((@($pt.logzeilen) -join "`n") + "`n")
+Assert-True ($lLauf.Funde.Count -eq 0) "Praxistest 2: 15 Logzeilen ohne Wert ergeben keinen Fund ($(@($lLauf.Funde | ForEach-Object { $_.Kategorie + ':' + $_.Zeile }) -join ','))"
+Assert-True ($null -eq [AnonTool.AnonEngine]::FreigabeKategorie("Verdacht-Zugangsdaten", "password Abc12345", $null) -and [AnonTool.AnonEngine]::FreigabeKategorie("Verdacht-Zugangsdaten", "password allow-fail-through", $null) -eq "Verdacht") "Praxistest 2: sicher nur mit Schlüsselwort und typischem Wert"
+$cp = "Checkpoint name  Type     Writer  Date(YYYY/MM/DD)       Image Version`n---------------  -------  ------  ---------------------  -------------`nstartup-config   startup  User    2026-07-02T18:42:25Z   GL.10.13.1020`nckpt-20260702    latest   User    2026/07/02 18:42:25    GL.10.13.1020`n"
+$cpLauf = Invoke-PtLauf $cp
+Assert-True ($cpLauf.Aus -ceq $cp -and $cpLauf.Funde.Count -eq 0) "Praxistest 2: Zeitstempel und Firmware-Versionen sind kein Benutzername ($(@($cpLauf.Funde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"
+$kopfText = "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND`n 1234 root      20   0  123456  12345   1234 S   0.0   0.1   0:00.12 hpe-restd`nUSER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND`nroot         1  0.0  0.1 167000 11000 ?        Ss   10:00   0:01 /sbin/init`n    Line       User       Host(s)              Idle       Location`n"
+$kLauf = Invoke-PtLauf $kopfText
+Assert-True ($kLauf.Funde.Count -eq 0 -and $kLauf.Aus -ceq $kopfText) "Praxistest 2: Kopfzeilen (top, ps, show users) liefern keinen Benutzernamen ($(@($kLauf.Funde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"
+$ssh = [string](@($katalog.faelle | Where-Object { $_.id -eq "K30" })[0].eingabe)
+$sState = New-Object AnonTool.AnonState
+$sAus = [AnonTool.AnonEngine]::ProcessText($ssh, $kCfg, $sState)
+Assert-True ($sAus -cmatch "(?m)^user admin authorized-key SSHKEY-1$" -and $sAus -cmatch "(?m)^SSHKEY-2$") "Praxistest 2: SSH Public Keys werden SSHKEY-n"
+Assert-Equal ([AnonTool.AnonEngine]::DeanonymizeText($sAus, $sState.Reverse)) $ssh "Praxistest 2: SSH Public Keys über die Tabelle rückübersetzbar"
+Assert-True (@([AnonTool.AnonEngine]::Nachpruefen($sAus, "s.txt", $kCfg)).Count -eq 0) "Praxistest 2: SSHKEY-n ist kein Restfund"
 # Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
 $pFunde = @([AnonTool.AnonEngine]::Nachpruefen("description (HOST-1), TEXT-2;`n Port Description : [USER-1]`nhostname HOST-1.`nuser USER-3,`nPort      Native  Type   Description`n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)`n", "p.txt", $kCfg))
 Assert-True ($pFunde.Count -eq 0) "Fix 2: Nachprüfung meldet keine eigenen Platzhalter ($(@($pFunde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"

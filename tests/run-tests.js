@@ -1599,6 +1599,33 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       const nAlle = core.nachpruefen("ID  Desc             Status\n1   Lager-Engel      up\n2   --               down\n\nIdx Alias        Port-Name      Speed\n1   Halle-Ost    Tor-Seidel     1000\n", "n.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
       assert(JSON.stringify(nAlle) === '["Lager-Engel","Halle-Ost","Tor-Seidel"]', `Nachprüfung: Spalten Name/Desc/Alias/Port-Name in beliebiger Position (${JSON.stringify(nAlle)})`);
     }
+    // Fix Praxistest 2: Befehls- und Logzeilen ohne Wert sind kein sicheres Geheimnis; Zeitstempel, Versionen und Kopfzeilen sind keine Benutzer
+    {
+      const pt = JSON.parse(fs.readFileSync(path.join(__dirname, "praxistest2.json"), "utf8"));
+      assert(pt.befehle.length === 30 && pt.logzeilen.length === 15, "Praxistest 2: 30 Befehlszeilen, 15 Logzeilen");
+      const lauf = (text) => core.reprocessFilesWithState([{ path: "p.txt", text }], diskRules, {}, new core.AnonState(), { overrides: { netzerhaltend: true } });
+      const bLauf = lauf(pt.befehle.join("\n") + "\n");
+      const bSicher = core.bildeFundgruppen(bLauf.findings, null).filter(g => g.sicheresGeheimnis);
+      assert(bSicher.length === 0, `Praxistest 2: 30 Befehlszeilen ohne Wert ergeben keinen sicheren Fund (${bSicher.map(g => g.fund).join(" | ")})`);
+      const aaa = bLauf.findings.filter(f => /^(?:no )?aaa /.test(f.kontext));
+      assert(aaa.length === 0, `Praxistest 2: AAA-Befehlszeilen sind kein Fund (${aaa.map(f => f.kategorie).join(",")})`);
+      const lLauf = lauf(pt.logzeilen.join("\n") + "\n");
+      assert(lLauf.findings.length === 0, `Praxistest 2: 15 Logzeilen ohne Wert ergeben keinen Fund (${lLauf.findings.map(f => f.kategorie + ":" + f.zeile).join(",")})`);
+      assert(core.freigabeKategorie("Verdacht-Zugangsdaten", "password Abc12345") === null && core.freigabeKategorie("Verdacht-Zugangsdaten", "password allow-fail-through") === "Verdacht", "Praxistest 2: sicher nur mit Schlüsselwort und typischem Wert");
+      const cp = "Checkpoint name  Type     Writer  Date(YYYY/MM/DD)       Image Version\n---------------  -------  ------  ---------------------  -------------\nstartup-config   startup  User    2026-07-02T18:42:25Z   GL.10.13.1020\nckpt-20260702    latest   User    2026/07/02 18:42:25    GL.10.13.1020\n";
+      const cpLauf = lauf(cp);
+      assert(cpLauf.results[0].anonText === cp && cpLauf.findings.length === 0, `Praxistest 2: Zeitstempel und Firmware-Versionen sind kein Benutzername (${cpLauf.findings.map(f => f.kategorie + ":" + f.fund).join(" | ")})`);
+      const kopf = "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n 1234 root      20   0  123456  12345   1234 S   0.0   0.1   0:00.12 hpe-restd\nUSER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\nroot         1  0.0  0.1 167000 11000 ?        Ss   10:00   0:01 /sbin/init\n    Line       User       Host(s)              Idle       Location\n";
+      const kLauf = lauf(kopf);
+      assert(kLauf.findings.length === 0 && kLauf.results[0].anonText === kopf, `Praxistest 2: Kopfzeilen (top, ps, show users) liefern keinen Benutzernamen (${kLauf.findings.map(f => f.kategorie + ":" + f.fund).join(" | ")})`);
+      // SSH Public Keys: Platzhalter SSHKEY-n, rückübersetzbar über die Tabelle
+      const ssh = katalog.faelle.find(f => f.id === "K30").eingabe;
+      const sState = new core.AnonState();
+      const sAus = core.processText(ssh, kCfg, sState);
+      assert(/^user admin authorized-key SSHKEY-1$/m.test(sAus) && /^SSHKEY-2$/m.test(sAus), `Praxistest 2: SSH Public Keys werden SSHKEY-n (${JSON.stringify(sAus)})`);
+      assert(core.deanonymizeText(sAus, sState) === ssh, "Praxistest 2: SSH Public Keys über die Tabelle rückübersetzbar");
+      assert(core.nachpruefen(sAus, "s.txt", kCfg).length === 0, "Praxistest 2: SSHKEY-n ist kein Restfund");
+    }
     // Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
     {
       const pText = "description Uplink zu (HOST-1), siehe TEXT-2;\n Port Description : [USER-1]\nhostname HOST-1.\nuser USER-3,\nPort      Native  Type   Description\n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)\n";

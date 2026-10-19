@@ -1225,10 +1225,14 @@ namespace AnonTool
             return IsLearnable(category, value, cfg, false);
         }
 
+        // Zeitstempel (ISO 8601), Datum, Uhrzeit und Firmware-Versionen sind nie Benutzer, Gerätename oder Seriennummer
+        private static readonly Regex RxZeitOderVersion = new Regex("^(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}(?:[T ][0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?|[0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?|(?:[A-Z]{1,4}\\.)?[0-9]+(?:\\.[0-9]+){2,4}[A-Za-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
+
         public static bool IsLearnable(string category, string value, EngineConfig cfg, bool kontextgebunden)
         {
             string v = (value ?? "").Trim();
             if (v.Length == 0) return false;
+            if (RxZeitOderVersion.IsMatch(v)) return false;
             if (cfg.LernStoppwoerter.Contains(v.ToLowerInvariant())) return false;
             // Nur aus Schlüsselwörtern mit "-" oder Leerzeichen zusammengesetzt (z.B. PORT-DESC, Local Intf): Tabellenkopf
             bool allStop = true;
@@ -1460,6 +1464,15 @@ namespace AnonTool
                 }
                 return true;
             };
+
+            // ----------------------------------------------------------------
+            // STUFE 0a: SSH Public Keys (ssh-rsa, ssh-ed25519, ecdsa-sha2-*, sk-*) samt Kommentar -> SSHKEY-n (rückübersetzbar)
+            // ----------------------------------------------------------------
+            text = RxSshPublicKey.Replace(text, (Match sm) =>
+            {
+                state.AddStat("sshKeys", 1);
+                return protect(state.GetOrCreateToken("SSHKEY", sm.Value, "SSHKEY"));
+            });
 
             // ----------------------------------------------------------------
             // STUFE 0: Tabellenspalten (Beschreibungen, LLDP-Nachbarn) über Spaltenpositionen der Kopfzeile
@@ -2214,9 +2227,25 @@ namespace AnonTool
         }
 
         // Platzhalter in der Ausgabe (für die Suche nach bekannten Originalwerten ausblenden)
-        private static readonly Regex RxPlaceholder = new Regex(@"(?<![A-Za-z0-9_-])(?:NET-[0-9]+(?:\.H[0-9]+)?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON)-[0-9]+)(?![A-Za-z0-9_])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxPlaceholder = new Regex(@"(?<![A-Za-z0-9_-])(?:NET-[0-9]+(?:\.H[0-9]+)?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SSHKEY)-[0-9]+)(?![A-Za-z0-9_])", RegexOptions.Compiled, RxTimeout);
         private static readonly Regex RxCredentialSuspect = new Regex("(?i)(?<![A-Za-z0-9_-])(password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token|authorization)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?([^ \\t\\r\\n\"',;]+)", RegexOptions.Compiled, RxTimeout);
+        // SSH Public Key mit optionalem Kommentar bis zum Zeilenende bzw. bis zum Anführungszeichen (identisch zu anonymisierer.html)
+        private static readonly Regex RxSshPublicKey = new Regex("(?<![A-Za-z0-9_-])(?:ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh\\.com|sk-ecdsa-sha2-nistp256@openssh\\.com)[ \\t]+AAAA[A-Za-z0-9+/]{16,}={0,3}(?:[ \\t]+[^\\r\\n\"]*[^\\s\"])?", RegexOptions.CultureInvariant, RxTimeout);
+        // AAA-Befehlszeilen und Logmeldungen mit Ergebniswort enthalten keine Zugangsdaten
+        private static readonly Regex RxAaaZeile = new Regex("^[ \\t]*(?:no[ \\t]+)?aaa[ \\t]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxLogErgebnis = new Regex("(?<![A-Za-z])(?:succeeded|successful(?:ly)?|failed|failure|changed|expired|timeout|timed[ \\t]+out|rejected|denied|accepted|invalid|incorrect|mismatch|updated|required|error)(?![A-Za-z])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+
+        // Sicher erkannt nur mit eindeutigem Schlüsselwort UND typischem Wert (Ziffer, Großbuchstabe oder Sonderzeichen, ab 4 Zeichen)
+        private static bool TypischerGeheimwert(string v)
+        {
+            string w = v ?? "";
+            return w.Length >= 4 && (Regex.IsMatch(w, "[0-9A-Z]") || Regex.IsMatch(w, "[^A-Za-z0-9-]"));
+        }
+
         private static readonly HashSet<string> CredentialStopWords = new HashSet<string>(new string[] {
+            "succeeded", "successful", "success", "failure", "error", "timeout", "timed", "rejected", "denied", "mismatch", "updated", "reset",
+            "validation", "verification", "rotation", "refresh", "renewal", "complexity", "recovery", "history", "lockout", "aging", "expiry", "expiration",
+            "minimum-length", "min-length", "length", "manager", "operator", "prompt-change", "change", "encryption", "commands", "exec", "console", "login", "default", "local",
             "for", "from", "is", "was", "has", "of", "to", "required", "expired", "changed", "incorrect", "invalid", "accepted", "failed",
             "authentication", "policy", "prompt", "plaintext", "ciphertext", "cipher", "simple", "hash", "encrypted", "level", "basic", "bearer",
             "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }, StringComparer.Ordinal);
@@ -2274,7 +2303,12 @@ namespace AnonTool
                 case "Nachpruefung-Beschreibung": return "Freitext";
                 case "Nachpruefung-SID": return "SID";
                 case "Verdacht-Geheimnis-Blob": case "Nachpruefung-Geheimnis": case "Nachpruefung-Teilmaskierung": return "Verdacht";
-                case "Verdacht-Zugangsdaten": return RxVerdachtSchluesselwort.IsMatch((fund ?? "").Trim()) ? "Verdacht" : null;
+                case "Verdacht-Zugangsdaten":
+                {
+                    // Sicher nur mit eindeutigem Schlüsselwort und typischem Wert ("password Abc123"), sonst Verdacht
+                    Match zm = Regex.Match((fund ?? "").Trim(), "^(\\S+?)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?(.+)$");
+                    return zm.Success && !RxVerdachtSchluesselwort.IsMatch(zm.Groups[1].Value) && TypischerGeheimwert(zm.Groups[2].Value) ? null : "Verdacht";
+                }
                 case "Rest-Bekannt":
                 case "Pfad-Bekannt":
                     if (state == null) return null;
@@ -2629,6 +2663,9 @@ namespace AnonTool
                 // Modifikator vor einem bereits maskierten Wert (z.B. "password ENC *****")
                 if (Regex.IsMatch(cleanText.Substring(m.Index + m.Length), "^[ \t]+\\*{5}", RegexOptions.None, RxTimeout)) continue;
                 int ln = GetLineNumber(lineStarts, m.Index);
+                // AAA-Befehlszeilen; Logmeldungen mit Ergebniswort, wenn kein typischer Wert folgt
+                string zeileText = getLineCtx(ln);
+                if (RxAaaZeile.IsMatch(zeileText) || (RxLogErgebnis.IsMatch(zeileText) && !TypischerGeheimwert(val))) continue;
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Verdacht-Zugangsdaten", Fund = m.Value, Kontext = getLineCtx(ln) });
             }
 
@@ -2754,11 +2791,12 @@ namespace AnonTool
         // Identisch zu nachpruefen() in anonymisierer.html.
         // ----------------------------------------------------------------
         private const RegexOptions NachOpt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-        private static readonly Regex RxNachPlatzhalter = new Regex("^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN)-[0-9]+)$", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachPlatzhalter = new Regex("^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN|SSHKEY)-[0-9]+)$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachFeldFrei = new Regex("(?<![A-Za-z0-9_./-])\"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)\"?(?![A-Za-z0-9_-])(?:[ \\t]*[:=][ \\t]*|[ \\t]+)", NachOpt, RxTimeout);
         private static readonly Regex RxNachFeldDoppelpunkt = new Regex("(?<![A-Za-z0-9_./-])\"?(System[ \\t-]+Name|Device[ \\t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \\t]+|System[ \\t]+|Board[ \\t]+)?Serial(?:[ \\t_-]*(?:Number|Nbr|No|Num)\\.?)?|SN|Service[ \\t]+Tag|Asset[ \\t]+Tag|Authorization)\"?(?![A-Za-z0-9_-])[ \\t]*[:=][ \\t]*", NachOpt, RxTimeout);
         private static readonly HashSet<string> NachTypwoerter = new HashSet<string>(new string[] { "0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure" }, StringComparer.Ordinal);
-        private static readonly HashSet<string> NachStrukturwoerter = new HashSet<string>(new string[] { "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> NachStrukturwoerter = new HashSet<string>(new string[] { "changed", "expired", "incorrect", "succeeded", "successful", "failed", "denied", "rejected", "accepted", "invalid", "updated",
+            "required", "timeout", "validation", "verification", "rotation", "refresh", "mismatch", "error", "reset", "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication" }, StringComparer.Ordinal);
         private static readonly Regex RxNachSid = new Regex("(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachUrlZugang = new Regex("(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+.-]*://([^\\s/:@\"'<>]+):([^\\s/@\"'<>]+)@", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachSnmpHost = new Regex("(?<![A-Za-z0-9-])snmp-server[ \\t]+host[ \\t]+[^ \\t\\r\\n]+(?:[ \\t]+(?:informs|traps))?(?:[ \\t]+version[ \\t]+(?:1|2c|3(?:[ \\t]+(?:auth|noauth|priv))?))?[ \\t]+([^ \\t\\r\\n]+)", NachOpt, RxTimeout);
@@ -2780,6 +2818,22 @@ namespace AnonTool
         private static readonly Regex RxNachModellnummer = new Regex("^(?:[0-9]+[a-z]{0,4}|[a-z]{1,3}[0-9][a-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly HashSet<string> NachTechnikwoerter = new HashSet<string>(new string[] { "module", "mgmt", "management", "fabric", "fan", "fans", "tray", "power", "supply", "psu", "line", "card", "linecard",
             "chassis", "slot", "port", "ports", "transceiver", "sfp", "sfp+", "qsfp", "qsfp+", "gbic", "stack", "member", "controller", "supervisor" }, StringComparer.Ordinal);
+        // SSH Public Keys und Session-IDs/Tokens/Cookies (eigene Muster der Nachprüfung)
+        private static readonly Regex RxNachSshKey = new Regex("(?<![A-Za-z0-9_-])(?:ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp[0-9]{3}|sk-ssh-ed25519@openssh\\.com|sk-ecdsa-sha2-nistp256@openssh\\.com)[ \\t]+AAAA[A-Za-z0-9+/]{16,}={0,3}(?:[ \\t]+[^\\r\\n\"]*[^\\s\"])?", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachSitzung = new Regex("(?<![A-Za-z0-9_-])(?:session|token|sid|cookie)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?((?!S-1-)(?=[A-Za-z0-9+/_-]*[0-9])[A-Za-z0-9+/_-]{16,}={0,2})", NachOpt, RxTimeout);
+        // Zeitstempel, Datum, Uhrzeit und Firmware-Versionen sind kein Benutzer, Gerätename oder Seriennummer
+        private static readonly Regex RxNachZeitOderVersion = new Regex("^(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}(?:[T ][0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?|[0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?|(?:[A-Z]{1,4}\\.)?[0-9]+(?:\\.[0-9]+){2,4}[A-Za-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
+        // Kopfzeile einer Prozess- oder Benutzertabelle (top, ps, show users): mindestens vier Wörter, alle groß beginnend, ohne ":"
+        private static readonly Regex RxNachKopfWort = new Regex("^[A-Z%][A-Za-z0-9%+()/._-]*$", RegexOptions.CultureInvariant, RxTimeout);
+
+        private static bool NachIstKopfzeile(string zeile)
+        {
+            string[] w = Regex.Split(zeile.Trim(), "[ \\t]+");
+            if (w.Length < 4) return false;
+            foreach (string t in w) if (!RxNachKopfWort.IsMatch(t)) return false;
+            return true;
+        }
+
         // Prompt "user@host>" / "user@host#" (Juniper und andere)
         private static readonly Regex RxNachPromptUserHost = new Regex("^[A-Za-z0-9._-]{1,32}@([A-Za-z0-9._-]{2,64})(?:\\([^)]*\\))?[#>](?=[ \\t]|$)", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachSchnittstellenKopf = new Regex("^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$", NachOpt, RxTimeout);
@@ -2932,6 +2986,7 @@ namespace AnonTool
             Action<int, string, string, string> pruefeWert = (ln, art, wert, feld) =>
             {
                 if (string.IsNullOrEmpty(wert)) return;
+                if ((art == "B" || art == "H" || art == "S") && RxNachZeitOderVersion.IsMatch(wert)) return;
                 if (art == "G")
                 {
                     if (wert == "*****") return;
@@ -2994,7 +3049,7 @@ namespace AnonTool
             {
                 string zeile = zeilen[i];
                 int ln = i + 1;
-                foreach (Regex rx in new Regex[] { RxNachFeldFrei, RxNachFeldDoppelpunkt })
+                foreach (Regex rx in (NachIstKopfzeile(zeile) ? new Regex[0] : new Regex[] { RxNachFeldFrei, RxNachFeldDoppelpunkt }))
                 {
                     foreach (Match m in rx.Matches(zeile)) feldWert(ln, zeile, m.Index + m.Length, NachFeldart(m.Groups[1].Value), m.Groups[1].Value);
                 }
@@ -3022,6 +3077,8 @@ namespace AnonTool
                 if (pm.Success) pruefeWert(ln, "H", pm.Groups[1].Value, null);
                 Match pu = RxNachPromptUserHost.Match(zeile);
                 if (pu.Success) pruefeWert(ln, "H", pu.Groups[1].Value, null);
+                foreach (Match m in RxNachSshKey.Matches(zeile)) pruefeWert(ln, "G", m.Value, null);
+                foreach (Match m in RxNachSitzung.Matches(zeile)) pruefeWert(ln, "G", m.Groups[1].Value, null);
                 Match bm = NachTabellenKopf(zeile) != null ? Match.Empty : RxNachBeschreibung.Match(zeile);
                 if (bm.Success)
                 {

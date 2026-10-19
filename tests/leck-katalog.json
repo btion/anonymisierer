@@ -613,6 +613,55 @@
           "art": "identitaet"
         }
       ]
+    },
+    {
+      "id": "K30",
+      "quelle": "Fix Praxistest 2 / SSH Public Keys (authorized-key, ssh-ed25519) inkl. Kommentar",
+      "eingabe": "user admin authorized-key ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxQ7fErfundenX1234567890abcdefXYZ jdoe@brw-laptop7\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErfundenSchluessel0123456789abcdefGHIJ kmeier@brw-pc12\n",
+      "ziele": [
+        {
+          "wert": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCxQ7fErfundenX1234567890abcdefXYZ",
+          "kategorie": "Schlüssel",
+          "art": "identitaet"
+        },
+        {
+          "wert": "jdoe@brw-laptop7",
+          "kategorie": "Schlüssel",
+          "art": "identitaet"
+        },
+        {
+          "wert": "AAAAC3NzaC1lZDI1NTE5AAAAIErfundenSchluessel0123456789abcdefGHIJ",
+          "kategorie": "Schlüssel",
+          "art": "identitaet"
+        },
+        {
+          "wert": "kmeier@brw-pc12",
+          "kategorie": "Schlüssel",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K31",
+      "quelle": "Fix Praxistest 2 / Session-IDs, Tokens und Cookies in Logmeldungen",
+      "eingabe": "2024-01-01T10:00:01Z hpe-restd[2662]: Authentication succeeded for user admin in session nCFqQAu33H9b9SlY6txewA==\nweb: cookie: 7f3a9c2b4d5e6f708192a3b4c5d6e7f8\napi: request accepted, token Zx81QpL0vB6nT4yR2wE9\n",
+      "ziele": [
+        {
+          "wert": "nCFqQAu33H9b9SlY6txewA==",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "7f3a9c2b4d5e6f708192a3b4c5d6e7f8",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Zx81QpL0vB6nT4yR2wE9",
+          "kategorie": "Token",
+          "art": "geheimnis"
+        }
+      ]
     }
   ]
 }
