@@ -46,6 +46,7 @@
 
 .PARAMETER Zurueck
     Rückübersetzungs-Modus: Übersetzt eine Textdatei (z.B. KI-Antwort) mithilfe von -TabellenPfad wieder in echte Werte.
+    IP-Adressen des Schlüsselmodus werden zuerst über die Tabelle, sonst über -IpSchluessel zurückübersetzt (auch ohne Tabelle).
     Ziel: -Ausgabe (Datei; bei mehreren Eingaben Ordner) oder standardmäßig %LOCALAPPDATA%\Anon\klartext\ (ACL nur Benutzer).
     Der Klartext wird nie auf der Konsole ausgegeben und nie unterhalb von anonym\ oder in einem Ausgabeordner eines Laufs gespeichert.
 
@@ -2544,27 +2545,75 @@ namespace AnonTool
 
         public static string DeanonymizeText(string input, Dictionary<string, string> reverseMap)
         {
-            if (string.IsNullOrEmpty(input) || reverseMap == null || reverseMap.Count == 0)
-                return input;
+            int a, b;
+            return DeanonymizeText(input, reverseMap, null, out a, out b);
+        }
 
-            string text = input;
-            // Längste Platzhalter zuerst ersetzen (damit NET-1.H12 vor NET-1 und IP-PRIV-10 vor IP-PRIV-1 ersetzt wird!)
-            var sortedTokens = reverseMap.Keys.Where(k => !string.IsNullOrEmpty(k)).OrderByDescending(k => k.Length).ToList();
-            if (sortedTokens.Count == 0) return text;
-
-            var escapedTokens = sortedTokens.Select(t => Regex.Escape(t)).ToArray();
-            string combinedPat = @"(?<![A-Za-z0-9])(?:" + string.Join("|", escapedTokens) + @")(?![0-9])";
-            Dictionary<string, string> ciLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string k in sortedTokens)
-                ciLookup[k] = reverseMap[k];
-
-            text = Regex.Replace(text, combinedPat, (Match m) =>
+        // Rückübersetzung: zuerst jede IP-Adresse genau einmal (Zuordnungstabelle, sonst Schlüssel ks), dann die Platzhalter.
+        // IPs werden vorab durch Marken ersetzt, damit zurückübersetzte Werte nicht ein zweites Mal umgerechnet werden.
+        // (identisch zu deanonymizeTextDetail in anonymisierer.html)
+        public static string DeanonymizeText(string input, Dictionary<string, string> reverseMap, CryptoPan ks, out int ausTabelle, out int ueberSchluessel)
+        {
+            ausTabelle = 0;
+            ueberSchluessel = 0;
+            if (string.IsNullOrEmpty(input)) return input;
+            Dictionary<string, string> ci = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (reverseMap != null)
             {
-                string orig;
-                if (ciLookup.TryGetValue(m.Value, out orig))
-                    return orig;
-                return m.Value;
-            }, RegexOptions.IgnoreCase, RxTimeout);
+                foreach (KeyValuePair<string, string> kv in reverseMap)
+                    if (!string.IsNullOrEmpty(kv.Key)) ci[kv.Key] = kv.Value;
+            }
+            List<string> werte = new List<string>();
+            int tab = 0, schl = 0;
+            Func<string, string> ipVonTabelle = k =>
+            {
+                string o;
+                if (ci.TryGetValue(k, out o) && o != null && (CryptoPan.Ip4Lesen(o) != null || CryptoPan.Ip6Lesen(o) != null)) return o;
+                return null;
+            };
+            Func<string, string> marke = v =>
+            {
+                werte.Add(v);
+                return "\u0002R" + (werte.Count - 1).ToString() + "\u0003";
+            };
+            Func<string, bool, string> zurueck = (m, v6) =>
+            {
+                int trenn = v6 ? m.IndexOf('/') : m.IndexOfAny(new char[] { '/', '-' });
+                string ip = trenn > 0 ? m.Substring(0, trenn) : m;
+                string suffix = trenn > 0 ? m.Substring(trenn) : "";
+                byte[] bytes = v6 ? CryptoPan.Ip6Lesen(ip) : CryptoPan.Ip4Lesen(ip);
+                if (bytes == null) return m;
+                string norm = v6 ? CryptoPan.Ip6Text(bytes) : ip;
+                string t = ipVonTabelle(ip) ?? ipVonTabelle(norm);
+                if (t != null) { tab++; return marke(t + suffix); }
+                int laenge;
+                if (ks == null || CryptoPan.Klasse(bytes, out laenge) == "fest") return m;
+                if (!v6 && IsSubnetMaskOrSpecialIpv4(bytes[0], bytes[1], bytes[2], bytes[3], true)) return m;
+                int praefix = suffix.StartsWith("/") ? int.Parse(suffix.Substring(1)) : -1;
+                string r = ks.TextVerfremden(norm, praefix, true);
+                if (r == null) return m;
+                schl++;
+                return marke(r + suffix);
+            };
+            string text = RxIpv6.Replace(input, (Match m) => zurueck(m.Value, true));
+            text = RxIpv4.Replace(text, (Match m) => zurueck(m.Value, false));
+            // Längste Platzhalter zuerst ersetzen (damit NET-1.H12 vor NET-1 und IP-PRIV-10 vor IP-PRIV-1 ersetzt wird!)
+            var sortedTokens = ci.Keys.Where(k => CryptoPan.Ip4Lesen(k) == null && CryptoPan.Ip6Lesen(k) == null).OrderByDescending(k => k.Length).ToList();
+            if (sortedTokens.Count > 0)
+            {
+                var escapedTokens = sortedTokens.Select(t => Regex.Escape(t)).ToArray();
+                string combinedPat = @"(?<![A-Za-z0-9])(?:" + string.Join("|", escapedTokens) + @")(?![0-9])";
+                text = Regex.Replace(text, combinedPat, (Match m) =>
+                {
+                    string orig;
+                    if (ci.TryGetValue(m.Value, out orig))
+                        return orig;
+                    return m.Value;
+                }, RegexOptions.IgnoreCase, RxTimeout);
+            }
+            text = Regex.Replace(text, "\u0002R([0-9]+)\u0003", (Match m) => werte[int.Parse(m.Groups[1].Value)]);
+            ausTabelle = tab;
+            ueberSchluessel = schl;
             return text;
         }
 
@@ -4818,14 +4867,29 @@ if ($Zurueck) {
     if ($null -eq $Eingabe -or $Eingabe.Count -eq 0) {
         throw "Bitte mit -Eingabe die zu übersetzende Datei (z.B. KI-Antwort) angeben."
     }
-    if ([string]::IsNullOrEmpty($TabellenPfad) -or -not (Test-Path -LiteralPath $TabellenPfad)) {
+    # IP-Adressen: zuerst über die Zuordnungstabelle, sonst über den IP-Schlüssel (-IpSchluessel oder -IpModus schluessel
+    # für den Arbeitsbereich-Schlüssel); bei -Zurueck wird nie ein neuer Schlüssel erzeugt
+    $hatTabelle = (-not [string]::IsNullOrEmpty($TabellenPfad)) -and (Test-Path -LiteralPath $TabellenPfad)
+    $mitIpSchluessel = (-not [string]::IsNullOrEmpty($IpSchluessel)) -or ($IpModus -eq "schluessel")
+    if (-not $hatTabelle -and -not $mitIpSchluessel) {
+        throw "Für -Zurueck muss eine gültige Zuordnungstabelle über -TabellenPfad (oder -Tabelle) oder ein IP-Schlüssel über -IpSchluessel angegeben werden."
+    }
+    if (-not [string]::IsNullOrEmpty($TabellenPfad) -and -not $hatTabelle) {
         throw "Für -Zurueck muss eine gültige Zuordnungstabelle über -TabellenPfad (oder -Tabelle) angegeben werden."
     }
     $activeSecPass = $PasswortSecure
     if ($MitPasswort -and $null -eq $activeSecPass) {
         $activeSecPass = Read-TablePasswordInteractive -ConfirmTwice:$false
     }
-    $state = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPass
+    $state = if ($hatTabelle) { Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPass } else { New-Object AnonTool.AnonState }
+    $zurueckKs = $null
+    if ($mitIpSchluessel) {
+        $zPfad = Get-IpSchluesselPfad
+        if (-not (Test-Path -LiteralPath $zPfad)) { throw "IP-Schlüssel für -Zurueck nicht gefunden (-IpSchluessel)." }
+        $zSchl = Get-IpSchluessel -Pfad $zPfad -PasswordSecure $activeSecPass
+        $zurueckKs = New-Object AnonTool.CryptoPan (,$zSchl.Bytes)
+        [AnonTool.AnonCrypto]::Zero($zSchl.Bytes)
+    }
     $einNr = 0
     foreach ($ein in $Eingabe) {
         $einNr++
@@ -4835,7 +4899,12 @@ if ($Zurueck) {
             Stop-MitNummer -Nummer $einNr -Schritt "Lesen" -Fehler $_
         }
         $rawText = [AnonTool.TarGzHelper]::DecodeTextWithBom($inBytes)
-        $restored = [AnonTool.AnonEngine]::DeanonymizeText($rawText, $state.Reverse)
+        $zAusTabelle = 0
+        $zUeberSchluessel = 0
+        $restored = [AnonTool.AnonEngine]::DeanonymizeText($rawText, $state.Reverse, $zurueckKs, [ref]$zAusTabelle, [ref]$zUeberSchluessel)
+        if ($zUeberSchluessel -gt 0) {
+            Write-Host ("Hinweis: {0} IP-Adresse(n) nur über den IP-Schlüssel zurückübersetzt (nicht in der Zuordnungstabelle). Auch Adressen, die nicht aus der Anonymisierung stammen (z. B. von der KI ergänzt), werden dabei umgerechnet." -f $zUeberSchluessel) -ForegroundColor Yellow
+        }
 
         # Zielpfad: -Ausgabe (eine Eingabe = Datei, mehrere Eingaben = Ordner) oder <Basis>\klartext\
         if (-not [string]::IsNullOrEmpty($Ausgabe)) {

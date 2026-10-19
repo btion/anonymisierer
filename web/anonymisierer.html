@@ -4046,16 +4046,52 @@
     return outParts.join("/");
   }
 
-  function deanonymizeText(input, state) {
-    if (!input || !state || !state.reverse || state.reverse.size === 0) return input;
-    const sortedUpperKeys = Array.from(state.reverse.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
-    if (sortedUpperKeys.length === 0) return input;
-    const escapedTokens = sortedUpperKeys.map(k => escapeRegExp(k));
-    const combinedRx = new RegExp(`(?<![A-Za-z0-9])(?:${escapedTokens.join("|")})(?![0-9])`, "gi");
-    return input.replace(combinedRx, (m) => {
-      const orig = state.reverse.get(m.toUpperCase());
-      return orig !== undefined ? orig : m;
-    });
+  // Rückübersetzung: zuerst jede IP-Adresse genau einmal (Zuordnungstabelle, sonst Schlüssel ks), dann die Platzhalter.
+  // IPs werden vorab durch Marken ersetzt, damit zurückübersetzte Werte nicht ein zweites Mal umgerechnet werden.
+  // Liefert { text, ausTabelle, ueberSchluessel } (identisch zu AnonEngine.DeanonymizeText in anon.ps1)
+  function deanonymizeTextDetail(input, state, ks) {
+    const erg = { text: input, ausTabelle: 0, ueberSchluessel: 0 };
+    if (!input) return erg;
+    const rev = state && state.reverse ? state.reverse : new Map();
+    const ipVonTabelle = (k) => {
+      const o = rev.get(String(k).toUpperCase());
+      return o !== undefined && (ip4Lesen(o) || ip6Lesen(o)) ? o : undefined;
+    };
+    const werte = [];
+    const marke = (v) => { werte.push(v); return "\u0002R" + (werte.length - 1) + "\u0003"; };
+    const zurueck = (m, v6) => {
+      const trenn = v6 ? m.indexOf("/") : m.search(/[/-]/);
+      const ip = trenn > 0 ? m.slice(0, trenn) : m;
+      const suffix = trenn > 0 ? m.slice(trenn) : "";
+      const bytes = v6 ? ip6Lesen(ip) : ip4Lesen(ip);
+      if (!bytes) return m;
+      const norm = v6 ? ip6Text(bytes) : ip;
+      const t = ipVonTabelle(ip) !== undefined ? ipVonTabelle(ip) : ipVonTabelle(norm);
+      if (t !== undefined) { erg.ausTabelle++; return marke(t + suffix); }
+      if (!ks || ipKlasse(bytes).art === "fest") return m;
+      if (!v6 && isSubnetMaskOrSpecialIpv4(bytes[0], bytes[1], bytes[2], bytes[3], true)) return m;
+      const praefix = suffix.startsWith("/") ? parseInt(suffix.slice(1), 10) : null;
+      const r = ipTextVerfremden(ks, norm, praefix, true);
+      if (r === null) return m;
+      erg.ueberSchluessel++;
+      return marke(r + suffix);
+    };
+    let text = input.replace(RxIpv6, (m) => zurueck(m, true));
+    text = text.replace(RxIpv4, (m) => zurueck(m, false));
+    const tokens = Array.from(rev.keys()).filter(k => k && !ip4Lesen(k) && !ip6Lesen(k)).sort((a, b) => b.length - a.length);
+    if (tokens.length > 0) {
+      const combinedRx = new RegExp(`(?<![A-Za-z0-9])(?:${tokens.map(k => escapeRegExp(k)).join("|")})(?![0-9])`, "gi");
+      text = text.replace(combinedRx, (m) => {
+        const orig = rev.get(m.toUpperCase());
+        return orig !== undefined ? orig : m;
+      });
+    }
+    erg.text = text.replace(/\u0002R([0-9]+)\u0003/g, (m, n) => werte[Number(n)]);
+    return erg;
+  }
+
+  function deanonymizeText(input, state, ks) {
+    return deanonymizeTextDetail(input, state, ks || null).text;
   }
 
   function isAllowedInAudit(candidate, cfg) {
@@ -8698,6 +8734,7 @@
       processText,
       processPath,
       deanonymizeText,
+      deanonymizeTextDetail,
       auditText,
       auditTextDetail,
       freigabeKategorie,

@@ -2179,6 +2179,48 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 19e. IP-Modell: Rückübersetzung (Zuordnungstabelle, sonst Schlüssel) ---
+  console.log("--- 19e. IP-Modell: Rückübersetzung ---");
+  {
+    const vek = JSON.parse(fs.readFileSync(path.join(__dirname, "ip-testvektoren.json"), "utf8"));
+    const kBytes = Uint8Array.from(Buffer.from(vek.engine.schluesselHex, "hex"));
+    const ks = core.cryptoPanSchluessel(kBytes);
+    const da = typeof core.deanonymizeTextDetail === "function";
+    assert(da, "IP-Modell: deanonymizeTextDetail exportiert");
+    if (da) {
+      const cfgK = core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: kBytes });
+      const ein = ["hostname sw-ip01", " ip address 172.22.0.230 255.255.255.0", "ip route 0.0.0.0 0.0.0.0 172.22.0.1", "access-list 11 permit 10.0.0.16 0.0.0.15",
+        "ip prefix-list LAN seq 5 permit 10.0.0.0/23", "ip prefix-list LAN seq 6 permit 10.0.1.255/23", "ntp server 203.0.113.9", "ipv6 address 2001:db8:0:1::10/64",
+        "ipv6 route 2001:db8:0:1::/64 Null0", "logging host 127.0.0.1", "multicast 224.0.0.5", ""].join("\n");
+      const st = new core.AnonState();
+      core.processText(ein, cfgK, st);
+      const aus = core.processText(ein, cfgK, st);
+      // Über die Zuordnungstabelle: vollständig zurück
+      const t1 = core.deanonymizeTextDetail(aus, st, null);
+      assert(t1.text === ein && t1.ueberSchluessel === 0 && t1.ausTabelle >= 8, `IP-Modell: Rückübersetzung über die Zuordnungstabelle liefert das Original (${t1.ausTabelle} aus der Tabelle)`);
+      assert(core.deanonymizeText(aus, st) === ein, "IP-Modell: deanonymizeText bleibt kompatibel");
+      // Nur über den Schlüssel (ohne Tabelle): IPs zurück, Hostname bleibt Platzhalter
+      const t2 = core.deanonymizeTextDetail(aus, new core.AnonState(), ks);
+      assert(t2.text === ein.replace("sw-ip01", "HOST-1") && t2.ueberSchluessel >= 8 && t2.ausTabelle === 0, `IP-Modell: Rückübersetzung nur über den Schlüssel liefert die Original-IPs (${t2.ueberSchluessel})`);
+      assert(t2.text.includes("permit 10.0.0.0/23") && t2.text.includes("permit 10.0.1.255/23") && t2.text.includes("2001:db8:0:1::/64"), "IP-Modell: kanonische Netzadresse und Broadcast über den Schlüssel zurück");
+      // Masken, Wildcards und Sonderadressen bleiben bei der Rückübersetzung unverändert
+      const t3 = core.deanonymizeTextDetail("mask 255.255.255.0 wc 0.0.0.15 lo 127.0.0.1 mc 224.0.0.5 any 0.0.0.0\n", new core.AnonState(), ks);
+      assert(t3.text === "mask 255.255.255.0 wc 0.0.0.15 lo 127.0.0.1 mc 224.0.0.5 any 0.0.0.0\n" && t3.ueberSchluessel === 0, "IP-Modell: Masken, Wildcards, 127/8, 224/4, 0.0.0.0 bleiben bei der Rückübersetzung");
+      // IPv6 in anderer Schreibweise (Großbuchstaben, Langform) wird über die Tabelle gefunden
+      const v6aus = core.ipTextVerfremden(ks, "2001:db8:0:1::10", null, false);
+      const lang = Array.from(core.ip6Lesen(v6aus)).reduce((a, b, i) => a + (i % 2 === 0 && i > 0 ? ":" : "") + b.toString(16).padStart(2, "0"), "").toUpperCase();
+      assert(core.deanonymizeTextDetail("x " + lang + " y", st, null).text === "x 2001:db8:0:1::10 y", "IP-Modell: IPv6 in Langform/Großbuchstaben über die Tabelle zurück");
+      // Tabelle hat Vorrang; zurückübersetzte Werte werden nicht ein zweites Mal umgerechnet
+      const ksAnders = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
+      assert(core.deanonymizeTextDetail(aus, st, ksAnders).text === ein, "IP-Modell: Zuordnungstabelle hat Vorrang vor dem Schlüssel");
+      const alt = new core.AnonState();
+      const altAus = core.processText("ntp server 192.0.2.5\n", core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "platzhalter" }), alt);
+      assert(core.deanonymizeTextDetail(altAus, alt, ks).text === "ntp server 192.0.2.5\n", "IP-Modell: alter Modus NET-n.Hm zurück, Ergebnis nicht erneut über den Schlüssel umgerechnet");
+      // Gemeinsamer Sollwert mit anon.ps1: Engine-Vektor nur über den Schlüssel zurück
+      assert(typeof vek.engine.rueckNurSchluessel === "string" && core.deanonymizeTextDetail(vek.engine.ausgabe, new core.AnonState(), ks).text === vek.engine.rueckNurSchluessel, "IP-Modell: Rückübersetzung des Engine-Vektors nur über den Schlüssel gleich Sollwert");
+    }
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

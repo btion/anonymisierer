@@ -1411,7 +1411,7 @@ Assert-True ($ipCode1 -eq 0 -and (Test-Path -LiteralPath $ipKey)) "IP-Modell: La
 Assert-True ($ipLauf1 -match "Neuer IP-Schl" -and $ipLauf1 -match "anders abgebildet") "IP-Modell: Hinweis 'neuer Schlüssel = andere Abbildung als frühere Läufe'"
 $ipKeyObj = if (Test-Path -LiteralPath $ipKey) { ConvertFrom-Json ([System.IO.File]::ReadAllText($ipKey)) } else { $null }
 Assert-True ($null -ne $ipKeyObj -and $ipKeyObj.format -eq "ANON-AES256-2") "IP-Modell: IP-Schlüssel mit Passwort geschützt (ANON-AES256-2)"
-Assert-True ($ipAus1.Length -gt 0 -and -not $ipAus1.Contains("192.0.2.10") -and -not $ipAus1.Contains("172.22.0.230") -and $ipAus1.Contains(" 255.255.255.0") -and -not $ipAus1.Contains("NET-")) "IP-Modell: Ausgabe verfremdet, ohne Platzhalter, Maske bleibt"
+Assert-True ($ipAus1.Length -gt 0 -and $ipAus1 -notmatch '(?<![0-9.])(?:192\.0\.2\.10|172\.22\.0\.230)(?![0-9])' -and $ipAus1.Contains(" 255.255.255.0") -and -not $ipAus1.Contains("NET-")) "IP-Modell: Ausgabe verfremdet, ohne Platzhalter, Maske bleibt"
 $ipBericht1 = if (Test-Path -LiteralPath (Join-Path $ipDir "aus1/bericht.json")) { ConvertFrom-Json ([System.IO.File]::ReadAllText((Join-Path $ipDir "aus1/bericht.json"))) } else { $null }
 Assert-True ($null -ne $ipBericht1 -and $ipBericht1.ipModus -eq "schluessel" -and $ipBericht1.ipHinweis -eq "IP-Adressen sind schlüsselbasiert verfremdet, Netze rechnerisch korrekt." -and $ipBericht1.ipSchluesselKennung -match '^[0-9a-f]{16}$') "IP-Modell: Bericht mit Modus, Hinweis und Schlüsselkennung"
 $ipLauf2 = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus2") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-2.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel $ipKey 6>&1 2>&1 | Out-String
@@ -1458,6 +1458,33 @@ if ($null -ne $nodeCmd) {
 } else {
     Write-Host "  [NICHT AUSGEFÜHRT] Gegenprobe .anonkey mit Node: node nicht gefunden" -ForegroundColor Yellow
 }
+
+Write-Host "=== IP-Modell: Rückübersetzung ===" -ForegroundColor Cyan
+if ($ipKernDa) {
+    $rKs = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $ipVek.engine.schluesselHex))
+    $rA = 0; $rB = 0
+    $rText = [AnonTool.AnonEngine]::DeanonymizeText([string]$ipVek.engine.ausgabe, (New-Object AnonTool.AnonState).Reverse, $rKs, [ref]$rA, [ref]$rB)
+    Assert-True ($rText -ceq [string]$ipVek.engine.rueckNurSchluessel -and $rB -eq [int]$ipVek.engine.rueckNurSchluesselAnzahl -and $rA -eq 0) "IP-Modell: Parität A == B, Rückübersetzung nur über den Schlüssel gleich JS ($rB)"
+    $rState = New-Object AnonTool.AnonState
+    $rCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+    $rCfg.IpModus = "schluessel"
+    $rCfg.IpSchluessel = $rKs
+    [void][AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $rCfg, $rState)
+    $rAus = [AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $rCfg, $rState)
+    $rText2 = [AnonTool.AnonEngine]::DeanonymizeText($rAus, $rState.Reverse, $null, [ref]$rA, [ref]$rB)
+    Assert-True ($rText2 -ceq ([string]$ipVek.engine.rueckNurSchluessel).Replace("hostname HOST-1", "hostname sw-ip01") -and $rB -eq 0 -and $rA -gt 0) "IP-Modell: Rückübersetzung über die Zuordnungstabelle liefert das Original"
+    Assert-Equal ([AnonTool.AnonEngine]::DeanonymizeText("mask 255.255.255.0 wc 0.0.0.15 lo 127.0.0.1 any 0.0.0.0`n", (New-Object AnonTool.AnonState).Reverse, $rKs, [ref]$rA, [ref]$rB)) "mask 255.255.255.0 wc 0.0.0.15 lo 127.0.0.1 any 0.0.0.0`n" "IP-Modell: Masken, Wildcards und Sonderadressen bleiben bei der Rückübersetzung"
+}
+# CLI: -Zurueck über die Zuordnungstabelle und nur über den IP-Schlüssel
+$ipOrig = [System.IO.File]::ReadAllText($ipEin)
+$zr1 = Join-Path $ipDir "rueck-tabelle.txt"
+$null = & $anonScript -Zurueck -Eingabe (Join-Path $ipDir "aus1/anonym/eingabe.txt") -Ausgabe $zr1 -TabellenPfad (Join-Path $tabDir "ip-1.json") -PasswortSecure $secPass 6>&1 2>&1
+Assert-True ((Test-Path -LiteralPath $zr1) -and [System.IO.File]::ReadAllText($zr1) -ceq $ipOrig) "IP-Modell: -Zurueck über die Zuordnungstabelle liefert das Original"
+$zr2 = Join-Path $ipDir "rueck-schluessel.txt"
+$zrLog = & $anonScript -Zurueck -Eingabe (Join-Path $ipDir "aus1/anonym/eingabe.txt") -Ausgabe $zr2 -IpSchluessel $ipKey -PasswortSecure $secPass 6>&1 2>&1 | Out-String
+Assert-True ((Test-Path -LiteralPath $zr2) -and [System.IO.File]::ReadAllText($zr2) -ceq $ipOrig -and $zrLog -match "nur über den IP-Schl") "IP-Modell: -Zurueck nur über den IP-Schlüssel liefert die Original-IPs, mit Hinweis"
+Assert-True (-not $zrLog.Contains("172.22.0.230")) "IP-Modell: -Zurueck gibt keinen Klartext auf der Konsole aus"
+Assert-Throws { & $anonScript -Zurueck -Eingabe (Join-Path $ipDir "aus1/anonym/eingabe.txt") -Ausgabe (Join-Path $ipDir "r3.txt") > $null 2>&1 } "IP-Modell: -Zurueck ohne Tabelle und ohne IP-Schlüssel wird abgelehnt"
 
 $env:LOCALAPPDATA = $origLocalAppData
 
