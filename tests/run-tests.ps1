@@ -1270,6 +1270,34 @@ $litRule.Compiled = New-Object System.Text.RegularExpressions.Regex ($litRule.Pa
 $litCfg.GeheimnisMuster.Add($litRule)
 Assert-Equal ([AnonTool.AnonEngine]::ProcessText("note Geheim9z here`n", $litCfg, (New-Object AnonTool.AnonState))) "note ***** here`n" "Entscheidung 'Alle ersetzen' bei Geheimnis: Wert wird zu ***** (Parität)"
 
+Write-Host "=== IP-Modell: Crypto-PAn-Kern und Testvektoren ===" -ForegroundColor Cyan
+$ipVek = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "ip-testvektoren.json"), [System.Text.Encoding]::UTF8))
+function ConvertFrom-TestHex { param([string]$Hex) $b = New-Object byte[] ($Hex.Length / 2); for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($Hex.Substring(2 * $i, 2), 16) }; return ,$b }
+function ConvertTo-TestHex { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { $_.ToString("x2") }) -join "") }
+function ConvertFrom-TestIp4 { param([string]$Ip) return ,([byte[]]($Ip.Split(".") | ForEach-Object { [byte]$_ })) }
+function ConvertTo-TestIp4 { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { [string]$_ }) -join ".") }
+$ipKernDa = $null -ne ("AnonTool.CryptoPan" -as [type])
+Assert-True $ipKernDa "IP-Modell: C#-Klasse AnonTool.CryptoPan vorhanden"
+if ($ipKernDa) {
+    foreach ($a in $ipVek.aes128) {
+        $ct = [AnonTool.CryptoPan]::Aes128Block((ConvertFrom-TestHex $a.schluesselHex), (ConvertFrom-TestHex $a.klartextHex))
+        Assert-Equal (ConvertTo-TestHex $ct) $a.geheimtextHex "IP-Modell: AES-128 $($a.quelle)"
+    }
+    $ipPaare = 0; $ipOk = 0; $ipRueck = 0
+    foreach ($v in $ipVek.cryptoPanStandard) {
+        $kb = if ($v.PSObject.Properties["schluesselHex"]) { ConvertFrom-TestHex $v.schluesselHex } else { [System.Text.Encoding]::UTF8.GetBytes($v.schluesselText) }
+        $ks = New-Object AnonTool.CryptoPan (,$kb)
+        foreach ($pr in $v.paare) {
+            $ipPaare++
+            $r = ConvertTo-TestIp4 ($ks.Standard((ConvertFrom-TestIp4 $pr[0]), $false))
+            if ($r -eq $pr[1]) { $ipOk++ } else { Write-Host "    Crypto-PAn $($pr[0]): erwartet $($pr[1]), erhalten $r" -ForegroundColor Yellow }
+            if ((ConvertTo-TestIp4 ($ks.Standard((ConvertFrom-TestIp4 $pr[1]), $true))) -eq $pr[0]) { $ipRueck++ }
+        }
+    }
+    Assert-True ($ipPaare -ge 25 -and $ipOk -eq $ipPaare) "IP-Modell: Crypto-PAn-Testvektoren gleich JS ($ipOk von $ipPaare)"
+    Assert-True ($ipRueck -eq $ipPaare) "IP-Modell: Umkehrung liefert bei allen Vektoren das Original ($ipRueck von $ipPaare)"
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

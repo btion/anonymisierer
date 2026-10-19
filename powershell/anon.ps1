@@ -239,6 +239,113 @@ namespace AnonTool
         }
     }
 
+    // Schlüsselbasierte, präfixerhaltende IP-Verfremdung nach Crypto-PAn (Xu, Fan, Ammar, Moon 2002), gleich core/ip/cryptopan.js.
+    // AES-128 nur zum Verschlüsseln einzelner Blöcke (ECB ohne Auffüllung); Testvektoren: tests\ip-testvektoren.json
+    public class CryptoPan : IDisposable
+    {
+        private readonly ICryptoTransform _enc;
+        private readonly SymmetricAlgorithm _aes;
+        private readonly byte[] _pad;
+
+        public CryptoPan(byte[] key32)
+        {
+            if (key32 == null || key32.Length != 32) throw new ArgumentException("Der IP-Schlüssel muss 32 Byte lang sein.");
+            byte[] k = new byte[16];
+            Array.Copy(key32, 0, k, 0, 16);
+            _aes = NeuesAes();
+            _enc = _aes.CreateEncryptor(k, new byte[16]);
+            Array.Clear(k, 0, 16);
+            byte[] p = new byte[16];
+            Array.Copy(key32, 16, p, 0, 16);
+            _pad = Block(p);
+            Array.Clear(p, 0, 16);
+        }
+
+        private static SymmetricAlgorithm NeuesAes()
+        {
+            SymmetricAlgorithm a = Aes.Create();
+            a.Mode = CipherMode.ECB;
+            a.Padding = PaddingMode.None;
+            a.KeySize = 128;
+            a.BlockSize = 128;
+            return a;
+        }
+
+        public static byte[] Aes128Block(byte[] key16, byte[] block)
+        {
+            if (key16 == null || key16.Length != 16) throw new ArgumentException("AES-128 erwartet einen Schlüssel mit 16 Byte.");
+            using (SymmetricAlgorithm a = NeuesAes())
+            using (ICryptoTransform t = a.CreateEncryptor(key16, new byte[16]))
+            {
+                byte[] o = new byte[16];
+                t.TransformBlock(block, 0, 16, o, 0);
+                return o;
+            }
+        }
+
+        private byte[] Block(byte[] input)
+        {
+            byte[] o = new byte[16];
+            _enc.TransformBlock(input, 0, 16, o, 0);
+            return o;
+        }
+
+        public static int Bit(byte[] b, int i)
+        {
+            return (b[i >> 3] >> (7 - (i & 7))) & 1;
+        }
+
+        public static void BitSetzen(byte[] b, int i, int v)
+        {
+            int m = 1 << (7 - (i & 7));
+            if (v != 0) b[i >> 3] = (byte)(b[i >> 3] | m);
+            else b[i >> 3] = (byte)(b[i >> 3] & ~m & 0xff);
+        }
+
+        // Pseudozufallsbit für die Position pos: die ersten pos Bit der Adresse, Rest aus dem Pad
+        private int PanBit(byte[] adresse, int pos)
+        {
+            byte[] inp = (byte[])_pad.Clone();
+            int voll = pos >> 3;
+            for (int j = 0; j < voll; j++) inp[j] = adresse[j];
+            int rest = pos & 7;
+            if (rest != 0)
+            {
+                int m = (0xff << (8 - rest)) & 0xff;
+                inp[voll] = (byte)((adresse[voll] & m) | (_pad[voll] & ~m & 0xff));
+            }
+            return Block(inp)[0] >> 7;
+        }
+
+        // Bits von..bis-1 abbilden; erlaubt(praefix, pos) == false erzwingt "nicht kippen"; rueck kehrt die Abbildung um
+        public byte[] Abbilden(byte[] adresse, int von, int bis, Func<byte[], int, bool> erlaubt, bool rueck)
+        {
+            byte[] ein = (byte[])adresse.Clone();
+            byte[] aus = (byte[])adresse.Clone();
+            byte[] basis = rueck ? aus : ein;
+            for (int pos = von; pos < bis; pos++)
+            {
+                int kipp = PanBit(basis, pos);
+                if (kipp != 0 && erlaubt != null && !erlaubt(basis, pos)) kipp = 0;
+                BitSetzen(aus, pos, Bit(ein, pos) ^ kipp);
+            }
+            return aus;
+        }
+
+        // Original-Crypto-PAn über alle Bits (für die veröffentlichten Testvektoren)
+        public byte[] Standard(byte[] adresse, bool rueck)
+        {
+            return Abbilden(adresse, 0, adresse.Length * 8, null, rueck);
+        }
+
+        public void Dispose()
+        {
+            _enc.Dispose();
+            _aes.Dispose();
+            Array.Clear(_pad, 0, _pad.Length);
+        }
+    }
+
     public class AnonState
     {
         public Dictionary<string, string> Forward = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

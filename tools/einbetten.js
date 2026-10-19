@@ -15,7 +15,7 @@ const STRUKTUR = "regeln/strukturvorlage.json";
 
 // Seite -> eingebettete Kerndateien (Reihenfolge wie in der Seite)
 const SEITEN = {
-  "web/anonymisierer.html": ["core/tabelle/zuordnung.js", "core/tabelle/krypto.js"],
+  "web/anonymisierer.html": ["core/tabelle/zuordnung.js", "core/tabelle/krypto.js", "core/ip/cryptopan.js"],
   "web/text/text-anonymisierer.html": ["core/text/text-engine.js", "core/tabelle/zuordnung.js", "core/tabelle/krypto.js"]
 };
 

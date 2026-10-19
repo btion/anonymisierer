@@ -1889,6 +1889,56 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
   assert(!htmlContent.includes('id="tab-text"') && !htmlContent.includes("TextPseudonymizer"), "anonymisierer.html enthält keinen Text-Reiter mehr (eigene Seite web/text/text-anonymisierer.html)");
   assert(htmlContent.includes("// >>> core/tabelle/zuordnung.js") && htmlContent.includes("// >>> core/tabelle/krypto.js"), "anonymisierer.html bettet core/tabelle/zuordnung.js und krypto.js ein");
 
+  // --- 19. IP-Modell: schlüsselbasierte, präfixerhaltende Verfremdung (Crypto-PAn) ---
+  console.log("--- 19. IP-Modell: Crypto-PAn-Kern und Testvektoren ---");
+  {
+    const vek = JSON.parse(fs.readFileSync(path.join(__dirname, "ip-testvektoren.json"), "utf8"));
+    const hex = (s) => Uint8Array.from(Buffer.from(s, "hex"));
+    const hexAus = (b) => Buffer.from(b).toString("hex");
+    const ip4 = (s) => Uint8Array.from(s.split(".").map(Number));
+    const ip4Text = (b) => Array.from(b).join(".");
+    const vekSchluessel = (v) => v.schluesselHex ? hex(v.schluesselHex) : Uint8Array.from(Buffer.from(v.schluesselText, "utf8"));
+    assert(htmlContent.includes("// >>> core/ip/cryptopan.js"), "IP-Modell: anonymisierer.html bettet core/ip/cryptopan.js ein");
+    assert(typeof core.aes128Block === "function" && typeof core.cryptoPanStandard === "function", "IP-Modell: AES-128 und Crypto-PAn exportiert");
+    if (typeof core.aes128Block === "function" && typeof core.cryptoPanStandard === "function") {
+      for (const a of vek.aes128) {
+        assert(hexAus(core.aes128Block(core.aes128Erweitern(hex(a.schluesselHex)), hex(a.klartextHex))) === a.geheimtextHex, `IP-Modell: AES-128 ${a.quelle}`);
+      }
+      // Gegenprobe gegen OpenSSL (node:crypto) mit Zufallsblöcken
+      let aesAbw = 0;
+      for (let i = 0; i < 300; i++) {
+        const k = crypto.randomBytes(16), b = crypto.randomBytes(16);
+        const ci = crypto.createCipheriv("aes-128-ecb", k, null);
+        ci.setAutoPadding(false);
+        if (hexAus(core.aes128Block(core.aes128Erweitern(Uint8Array.from(k)), Uint8Array.from(b))) !== Buffer.concat([ci.update(b), ci.final()]).toString("hex")) aesAbw++;
+      }
+      assert(aesAbw === 0, `IP-Modell: AES-128 gleich OpenSSL bei 300 Zufallsblöcken (${aesAbw} abweichend)`);
+      let paare = 0, ok = 0, rueckOk = 0;
+      for (const v of vek.cryptoPanStandard) {
+        const ks = core.cryptoPanSchluessel(vekSchluessel(v));
+        for (const [ein, aus] of v.paare) {
+          paare++;
+          const r = ip4Text(core.cryptoPanStandard(ks, ip4(ein)));
+          if (r === aus) ok++; else console.error(`    Crypto-PAn ${ein}: erwartet ${aus}, erhalten ${r}`);
+          if (ip4Text(core.cryptoPanStandard(ks, ip4(aus), true)) === ein) rueckOk++;
+        }
+      }
+      assert(paare >= 25 && ok === paare, `IP-Modell: Crypto-PAn-Testvektoren (${ok} von ${paare})`);
+      assert(rueckOk === paare, `IP-Modell: Umkehrung liefert bei allen Vektoren das Original (${rueckOk} von ${paare})`);
+      // Präfixerhaltung: gemeinsame Präfixlänge von Ein- und Ausgabe ist gleich
+      const gemeinsam = (a, b) => { let n = 0; while (n < a.length * 8 && ((a[n >> 3] >> (7 - (n & 7))) & 1) === ((b[n >> 3] >> (7 - (n & 7))) & 1)) n++; return n; };
+      const ksZ = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
+      let praefixAbw = 0;
+      for (let i = 0; i < 300; i++) {
+        const a = Uint8Array.from(crypto.randomBytes(4)), b = Uint8Array.from(a);
+        const l = i % 33;
+        if (l < 32) { b[l >> 3] ^= 1 << (7 - (l & 7)); for (let j = l + 1; j < 32; j++) if (crypto.randomInt(2)) b[j >> 3] ^= 1 << (7 - (j & 7)); }
+        if (gemeinsam(core.cryptoPanStandard(ksZ, a), core.cryptoPanStandard(ksZ, b)) !== gemeinsam(a, b)) praefixAbw++;
+      }
+      assert(praefixAbw === 0, `IP-Modell: Präfixerhaltung bei 300 Zufallspaaren (/0 bis /32, ${praefixAbw} abweichend)`);
+    }
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

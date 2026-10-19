@@ -1,0 +1,145 @@
+{
+  "beschreibung": "Gemeinsame Testvektoren für core/ip/cryptopan.js und anon.ps1. aes128: FIPS-197. cryptoPanStandard: Original-Algorithmus; Sollwerte aus einer unabhängigen Referenz mit OpenSSL-AES, der erste Satz ist das veröffentlichte Beispiel aus der yacryptopan-Dokumentation. Eingaben nur aus Dokumentationsnetzen und den Testnetzen 10.0.0.0/24, 172.16.0.0/24, 192.168.0.0/24; die Ausgaben sind Rechenergebnisse.",
+  "aes128": [
+    {
+      "quelle": "FIPS-197 Anhang B",
+      "schluesselHex": "2b7e151628aed2a6abf7158809cf4f3c",
+      "klartextHex": "3243f6a8885a308d313198a2e0370734",
+      "geheimtextHex": "3925841d02dc09fbdc118597196a0b32"
+    },
+    {
+      "quelle": "FIPS-197 Anhang C.1",
+      "schluesselHex": "000102030405060708090a0b0c0d0e0f",
+      "klartextHex": "00112233445566778899aabbccddeeff",
+      "geheimtextHex": "69c4e0d86a7b0430d8cdb78070b4c55a"
+    }
+  ],
+  "cryptoPanStandard": [
+    {
+      "quelle": "veröffentlichtes Beispiel (yacryptopan)",
+      "schluesselText": "32-char-str-for-AES-key-and-pad.",
+      "paare": [
+        [
+          "192.0.2.1",
+          "192.0.125.244"
+        ]
+      ]
+    },
+    {
+      "quelle": "Referenz OpenSSL-AES",
+      "schluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "paare": [
+        [
+          "192.0.2.1",
+          "2.90.93.17"
+        ],
+        [
+          "192.0.2.2",
+          "2.90.93.19"
+        ],
+        [
+          "192.0.2.254",
+          "2.90.93.254"
+        ],
+        [
+          "198.51.100.7",
+          "6.247.27.25"
+        ],
+        [
+          "198.51.100.200",
+          "6.247.27.188"
+        ],
+        [
+          "203.0.113.9",
+          "15.69.242.197"
+        ],
+        [
+          "203.0.113.255",
+          "15.69.242.120"
+        ],
+        [
+          "10.0.0.1",
+          "246.35.191.210"
+        ],
+        [
+          "10.0.0.255",
+          "246.35.191.7"
+        ],
+        [
+          "172.16.0.30",
+          "84.8.100.192"
+        ],
+        [
+          "192.168.0.100",
+          "2.149.253.155"
+        ],
+        [
+          "0.0.0.0",
+          "254.152.65.220"
+        ],
+        [
+          "255.255.255.255",
+          "56.0.15.254"
+        ]
+      ]
+    },
+    {
+      "quelle": "Referenz OpenSSL-AES",
+      "schluesselText": "32-char-str-for-AES-key-and-pad.",
+      "paare": [
+        [
+          "192.0.2.1",
+          "192.0.125.244"
+        ],
+        [
+          "192.0.2.2",
+          "192.0.125.246"
+        ],
+        [
+          "192.0.2.254",
+          "192.0.125.1"
+        ],
+        [
+          "198.51.100.7",
+          "196.48.251.231"
+        ],
+        [
+          "198.51.100.200",
+          "196.48.251.6"
+        ],
+        [
+          "203.0.113.9",
+          "203.3.162.234"
+        ],
+        [
+          "203.0.113.255",
+          "203.3.162.64"
+        ],
+        [
+          "10.0.0.1",
+          "11.0.255.254"
+        ],
+        [
+          "10.0.0.255",
+          "11.0.255.64"
+        ],
+        [
+          "172.16.0.30",
+          "175.19.128.30"
+        ],
+        [
+          "192.168.0.100",
+          "192.172.131.170"
+        ],
+        [
+          "0.0.0.0",
+          "7.3.253.250"
+        ],
+        [
+          "255.255.255.255",
+          "253.184.39.255"
+        ]
+      ]
+    }
+  ]
+}
