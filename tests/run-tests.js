@@ -131,15 +131,21 @@ for (const [i, g] of (diskRules.geheimnisMuster || []).entries()) {
     return [full];
   });
   const rxPrivate = /(?<![0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}|192\.168\.[0-9]{1,3})\.[0-9]{1,3}(?![0-9])/g;
-  const allowedNets = new Set(["10.0.0", "172.16.0", "192.168.0"]);
+  // 10.0.1 für /23-Fälle, 172.22.0 aus dem vorgegebenen Beispiel 172.22.0.230/24 (IP-Modell)
+  const allowedNets = new Set(["10.0.0", "10.0.1", "172.16.0", "172.22.0", "192.168.0"]);
   const badIps = [];
   for (const file of listTestFiles(__dirname)) {
-    const content = fs.readFileSync(file, "utf8");
+    let content = fs.readFileSync(file, "utf8");
+    // tests/ip-testvektoren.json: nur die Eingaben prüfen, die Ausgaben sind Rechenergebnisse
+    if (path.basename(file) === "ip-testvektoren.json") {
+      const iv = JSON.parse(content);
+      content = [].concat(...["cryptoPanStandard", "cryptoPanStandard6", "klassen"].map(k => (iv[k] || []).map(v => v.paare.map(p => p[0]).join("\n")))).join("\n");
+    }
     for (const m of content.matchAll(rxPrivate)) {
       if (!allowedNets.has(m[1])) badIps.push(path.relative(ROOT, file) + ": " + m[0]);
     }
   }
-  assert(badIps.length === 0, `Testdaten: private IPv4 nur aus 10.0.0.0/24, 172.16.0.0/24, 192.168.0.0/24 (${badIps.slice(0, 5).join(", ")})`);
+  assert(badIps.length === 0, `Testdaten: private IPv4 nur aus 10.0.0.0/23, 172.16.0.0/24, 172.22.0.0/24, 192.168.0.0/24 (${badIps.slice(0, 5).join(", ")})`);
 }
 
 console.log("=== 3. Führe Testkorpus tests/faelle.json aus (LF und CRLF) ===");
@@ -1936,6 +1942,127 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
         if (gemeinsam(core.cryptoPanStandard(ksZ, a), core.cryptoPanStandard(ksZ, b)) !== gemeinsam(a, b)) praefixAbw++;
       }
       assert(praefixAbw === 0, `IP-Modell: Präfixerhaltung bei 300 Zufallspaaren (/0 bis /32, ${praefixAbw} abweichend)`);
+    }
+  }
+
+  // --- 19b. IP-Modell: Adressklassen und IPv6 ---
+  console.log("--- 19b. IP-Modell: Adressklassen und IPv6 ---");
+  {
+    const vek = JSON.parse(fs.readFileSync(path.join(__dirname, "ip-testvektoren.json"), "utf8"));
+    const hex = (s) => Uint8Array.from(Buffer.from(s, "hex"));
+    const da = ["ip4Lesen", "ip4Text", "ip6Lesen", "ip6Text", "ipKlasse", "ipVerfremden", "ipTextVerfremden"].every(f => typeof core[f] === "function");
+    assert(da, "IP-Modell: Klassenfunktionen exportiert (ip4Lesen, ip6Lesen, ipKlasse, ipVerfremden, ipTextVerfremden)");
+    assert(Array.isArray(vek.klassen) && vek.klassen.length > 0 && typeof vek.pruefsummeOeffentlich === "object", "IP-Modell: Klassen-Testvektoren und Prüfsumme vorhanden");
+    if (da && Array.isArray(vek.klassen) && typeof vek.pruefsummeOeffentlich === "object") {
+      const gemeinsam = (a, b) => { let n = 0; while (n < a.length * 8 && ((a[n >> 3] >> (7 - (n & 7))) & 1) === ((b[n >> 3] >> (7 - (n & 7))) & 1)) n++; return n; };
+      const ks = core.cryptoPanSchluessel(hex(vek.cryptoPanStandard6[0].schluesselHex));
+      const vf = (t, p) => core.ipTextVerfremden(ks, t, p === undefined ? null : p, false);
+      const rv = (t, p) => core.ipTextVerfremden(ks, t, p === undefined ? null : p, true);
+      // IPv6 nach dem Original-Algorithmus (128 Bit)
+      let v6ok = 0, v6n = 0;
+      for (const v of vek.cryptoPanStandard6) {
+        const k6 = core.cryptoPanSchluessel(hex(v.schluesselHex));
+        for (const [ein, aus] of v.paare) {
+          v6n++;
+          const r = core.cryptoPanStandard(k6, core.ip6Lesen(ein));
+          if (Buffer.from(r).equals(Buffer.from(core.ip6Lesen(aus))) && core.ip6Text(core.cryptoPanStandard(k6, r, true)) === core.ip6Text(core.ip6Lesen(ein))) v6ok++;
+        }
+      }
+      assert(v6n >= 4 && v6ok === v6n, `IP-Modell: Crypto-PAn IPv6-Testvektoren hin und zurück (${v6ok} von ${v6n})`);
+      // Klassen-Testvektoren (gemeinsam mit anon.ps1)
+      let kok = 0, kn = 0;
+      for (const v of vek.klassen) {
+        const kk = core.cryptoPanSchluessel(hex(v.schluesselHex));
+        for (const [ein, pr, aus] of v.paare) {
+          kn++;
+          const r = core.ipTextVerfremden(kk, ein, pr, false);
+          if (r === aus) kok++; else console.error(`    Klassen ${ein}/${pr}: erwartet ${aus}, erhalten ${r}`);
+        }
+      }
+      assert(kn >= 30 && kok === kn, `IP-Modell: Klassen-Testvektoren (${kok} von ${kn})`);
+      // Prüfsumme über 2000 öffentliche Adressen aus einer festen Zahlenfolge (gleich in anon.ps1)
+      {
+        const kk = core.cryptoPanSchluessel(hex(vek.pruefsummeOeffentlich.schluesselHex));
+        const aus = [];
+        for (let i = 1; aus.length < vek.pruefsummeOeffentlich.anzahl; i++) {
+          const z = Number((BigInt(i) * 2654435761n) % 4294967296n);
+          const b = Uint8Array.from([z >>> 24, (z >>> 16) & 255, (z >>> 8) & 255, z & 255]);
+          if (core.ipKlasse(b).art !== "oeffentlich") continue;
+          aus.push(core.ip4Text(core.ipVerfremden(kk, b, false)));
+        }
+        assert(crypto.createHash("sha256").update(aus.join("\n")).digest("hex") === vek.pruefsummeOeffentlich.sha256, `IP-Modell: Prüfsumme über ${aus.length} öffentliche Adressen gleich Sollwert`);
+      }
+      // Unverändert: Sonderadressen, Masken, Wildcards
+      const fest = ["0.0.0.0", "255.255.255.255", "127.0.0.1", "224.0.0.5", "239.255.255.250", "240.0.0.1", "0.0.0.15", "0.0.0.255", "255.255.255.0", "255.255.254.0", "::", "::1", "ff02::1"];
+      assert(fest.every(t => vf(t) === t), "IP-Modell: 0.0.0.0, 255.255.255.255, 127/8, 224/4, 240/4, Masken, Wildcard 0.0.0.15, ::, ::1, ff00::/8 unverändert");
+      // Privat: Block bleibt, Host-Teil (letztes Oktett) bleibt, Netzgröße gleich
+      const r230 = vf("172.22.0.230");
+      const o230 = core.ip4Lesen(r230);
+      assert(o230 && o230[0] === 172 && o230[1] >= 16 && o230[1] <= 31 && o230[3] === 230 && core.ipKlasse(o230).art === "privat", `IP-Modell: 172.22.0.230 bleibt in 172.16.0.0/12 mit Host .230 (${r230})`);
+      assert(vf("172.22.0.0", 24) === r230.replace(/\.230$/, ".0") && vf("172.22.0.255", 24) === r230.replace(/\.230$/, ".255"), "IP-Modell: Netz 172.22.0.0/24 bleibt ein /24 mit Netzadresse .0 und Broadcast .255");
+      const a1 = vf("10.0.0.1"), a255 = vf("10.0.0.255"), a7 = vf("10.0.0.7");
+      assert(/^10\.[0-9]+\.[0-9]+\.1$/.test(a1) && /\.255$/.test(a255) && a1.replace(/\.1$/, "") === a255.replace(/\.255$/, "") && a1.replace(/\.1$/, "") === a7.replace(/\.7$/, ""), `IP-Modell: .1 und .255 bleiben, Adressen im selben /24 bleiben im selben /24 (${a1}, ${a255})`);
+      const d100 = vf("192.168.0.100"), d200 = vf("192.168.0.200");
+      assert(/^192\.168\.[0-9]+\.100$/.test(d100) && d100.replace(/\.100$/, ".200") === d200, `IP-Modell: DHCP-Pool 192.168.0.100-200 bleibt im selben Netz (${d100} - ${d200})`);
+      assert(vf("100.64.0.1").startsWith("100.") && core.ipKlasse(core.ip4Lesen(vf("100.64.0.1"))).laenge === 10 && vf("169.254.0.9").startsWith("169.254."), "IP-Modell: 100.64.0.0/10 und 169.254.0.0/16 bleiben im Block");
+      // Doku-Netze: im Block, ganz umgerechnet
+      const doku = ["192.0.2.10", "198.51.100.7", "203.0.113.200"];
+      assert(doku.every(t => vf(t).split(".").slice(0, 3).join(".") === t.split(".").slice(0, 3).join(".")) && doku.some(t => vf(t) !== t), "IP-Modell: Doku-Netze bleiben im Block, Host-Teil umgerechnet");
+      assert(vf("2001:db8:0:1::10").startsWith("2001:db8:") && vf("2001:db8:0:1::10") !== "2001:db8:0:1::10", "IP-Modell: 2001:db8::/32 bleibt im Block, Rest umgerechnet");
+      // Umkehrung
+      const rueckListe = ["172.22.0.230", "10.0.0.1", "192.168.0.100", "192.0.2.10", "203.0.113.200", "100.64.0.1", "2001:db8:0:1::10", "fd00::1", "fe80::1"];
+      assert(rueckListe.every(t => rv(vf(t)) === (core.ip4Lesen(t) ? t : core.ip6Text(core.ip6Lesen(t)))), "IP-Modell: Umkehrung über den Schlüssel liefert das Original");
+      // Präfixerhaltung /23, /25, /27 (privat) und kanonische Netzadresse/Broadcast bei bekannter Präfixlänge
+      const g = (x, y) => gemeinsam(core.ip4Lesen(vf(x)), core.ip4Lesen(vf(y)));
+      assert(g("10.0.0.5", "10.0.1.9") === 23 && g("10.0.0.1", "10.0.0.100") === 25 && g("10.0.0.33", "10.0.0.60") === 27, "IP-Modell: Präfixerhaltung /23, /25, /27");
+      const n23 = core.ip4Lesen(vf("10.0.0.0", 23)), b23 = core.ip4Lesen(vf("10.0.1.255", 23));
+      assert(n23[3] === 0 && (n23[2] & 1) === 0 && b23[3] === 255 && (b23[2] & 1) === 1 && gemeinsam(n23, b23) === 23, `IP-Modell: 10.0.0.0/23 kanonisch als Netzadresse, 10.0.1.255/23 als Broadcast (${core.ip4Text(n23)}, ${core.ip4Text(b23)})`);
+      assert(rv(core.ip4Text(n23), 23) === "10.0.0.0" && rv(core.ip4Text(b23), 23) === "10.0.1.255", "IP-Modell: kanonische Netzadresse und Broadcast werden zurückübersetzt");
+      const n64 = core.ip6Lesen(vf("2001:db8:0:1::", 64));
+      assert(n64 && n64.slice(8).every(x => x === 0) && rv(core.ip6Text(n64), 64) === "2001:db8:0:1::", "IP-Modell: IPv6-Netz 2001:db8:0:1::/64 kanonisch und umkehrbar");
+      // IPv6: Kurz- und Langform (und Großschreibung) ergeben dieselbe Ausgabe
+      assert(vf("2001:db8:0:0:0:0:0:1") === vf("2001:db8::1") && vf("2001:DB8::1") === vf("2001:db8::1") && vf("2001:0db8:0000:0000:0000:0000:0000:0001") === vf("2001:db8::1"), "IP-Modell: IPv6 Kurz- und Langform gleich");
+      assert(core.ip6Text(core.ip6Lesen("2001:db8:0:0:1:0:0:1")) === "2001:db8::1:0:0:1" && core.ip6Text(core.ip6Lesen("2001:db8:0:1:1:1:1:1")) === "2001:db8:0:1:1:1:1:1" && core.ip6Lesen("1:2:3") === null && core.ip6Lesen("1::2::3") === null, "IP-Modell: IPv6-Normalform nach RFC 5952, ungültige Formen abgelehnt");
+      // Zufallstest: öffentlich nie in einem Sonderbereich, privat bleibt im Block, Umkehrung stimmt
+      const ksZ = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
+      let oeff = 0, oeffFehler = 0, prFehler = 0, rFehler = 0;
+      while (oeff < 20000) {
+        const b = Uint8Array.from(crypto.randomBytes(4));
+        const k = core.ipKlasse(b);
+        if (k.art === "fest") continue;
+        const o = core.ipVerfremden(ksZ, b, false);
+        const ko = core.ipKlasse(o);
+        if (k.art === "oeffentlich") { oeff++; if (ko.art !== "oeffentlich" || o[3] !== b[3]) oeffFehler++; }
+        else if (ko.art !== k.art || ko.laenge !== k.laenge || gemeinsam(o, b) < k.laenge || (k.art === "privat" && o[3] !== b[3])) prFehler++;
+        if (!Buffer.from(core.ipVerfremden(ksZ, o, true)).equals(Buffer.from(b))) rFehler++;
+      }
+      assert(oeffFehler === 0, `IP-Modell: Zufallstest 20000 öffentliche IPv4 nie in einem Sonderbereich, letztes Oktett bleibt (${oeffFehler} abweichend)`);
+      assert(prFehler === 0 && rFehler === 0, `IP-Modell: Zufallstest Sonderblöcke bleiben im Block, Umkehrung stimmt (${prFehler}/${rFehler})`);
+      let oeff6Fehler = 0;
+      for (let i = 0; i < 1500; i++) {
+        const b = Uint8Array.from(crypto.randomBytes(16));
+        b[0] = 0x20 | (b[0] & 0x1f);
+        if (core.ipKlasse(b).art !== "oeffentlich") continue;
+        const o = core.ipVerfremden(ksZ, b, false);
+        if (core.ipKlasse(o).art !== "oeffentlich" || o[15] !== b[15] || !Buffer.from(core.ipVerfremden(ksZ, o, true)).equals(Buffer.from(b))) oeff6Fehler++;
+      }
+      assert(oeff6Fehler === 0, `IP-Modell: Zufallstest 1500 öffentliche IPv6 nie in einem Sonderbereich, umkehrbar (${oeff6Fehler} abweichend)`);
+      // Präfixerhaltung innerhalb der Klassen bei Zufallspaaren
+      let ppFehler = 0;
+      for (let i = 0; i < 2000; i++) {
+        const a = Uint8Array.from(crypto.randomBytes(4));
+        const b = Uint8Array.from(a);
+        const l = 4 + (i % 28);
+        b[l >> 3] ^= 1 << (7 - (l & 7));
+        for (let j = l + 1; j < 32; j++) if (crypto.randomInt(2)) b[j >> 3] ^= 1 << (7 - (j & 7));
+        const ka = core.ipKlasse(a), kb = core.ipKlasse(b);
+        if (ka.art !== kb.art || ka.laenge !== kb.laenge || ka.art === "fest") continue;
+        if (gemeinsam(core.ipVerfremden(ksZ, a, false), core.ipVerfremden(ksZ, b, false)) !== gemeinsam(a, b)) ppFehler++;
+      }
+      assert(ppFehler === 0, `IP-Modell: Präfixerhaltung /4 bis /32 innerhalb der Klassen (${ppFehler} abweichend)`);
+      // Anderer Schlüssel = andere Abbildung
+      const ks3 = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
+      assert(["10.0.0.1", "192.0.2.10", "203.0.113.9", "172.16.0.30"].some(t => core.ipTextVerfremden(ks3, t, null, false) !== vf(t)), "IP-Modell: neuer Schlüssel ergibt eine andere Abbildung");
     }
   }
 

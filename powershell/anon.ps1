@@ -338,6 +338,236 @@ namespace AnonTool
             return Abbilden(adresse, 0, adresse.Length * 8, null, rueck);
         }
 
+        // ------------------------------------------------------------------
+        // Adressklassen (gleich core/ip/cryptopan.js): Blöcke bleiben erhalten, öffentlich nie in einem Sonderbereich
+        //   fest        unverändert (0/8, 127/8, 224/4, 240/4; ::, ::1, ff00::/8)
+        //   privat      Blockpräfix bleibt, Bits bis zur festen Grenze (/24, IPv6 /120) schlüsselbasiert, Rest bleibt
+        //   block       Blockpräfix bleibt, alle übrigen Bits schlüsselbasiert (Dokumentations- und Sondernetze)
+        //   oeffentlich Bits bis zur festen Grenze schlüsselbasiert, ohne in einen der Blöcke oben zu wechseln
+        // ------------------------------------------------------------------
+        private static readonly string[][] Ip4Klassen = new string[][] {
+            new string[] { "0.0.0.0", "8", "fest" }, new string[] { "127.0.0.0", "8", "fest" }, new string[] { "224.0.0.0", "4", "fest" }, new string[] { "240.0.0.0", "4", "fest" },
+            new string[] { "10.0.0.0", "8", "privat" }, new string[] { "100.64.0.0", "10", "privat" }, new string[] { "169.254.0.0", "16", "privat" }, new string[] { "172.16.0.0", "12", "privat" }, new string[] { "192.168.0.0", "16", "privat" },
+            new string[] { "192.0.0.0", "24", "block" }, new string[] { "192.0.2.0", "24", "block" }, new string[] { "192.88.99.0", "24", "block" }, new string[] { "198.18.0.0", "15", "block" }, new string[] { "198.51.100.0", "24", "block" }, new string[] { "203.0.113.0", "24", "block" }
+        };
+        private static readonly string[][] Ip6Klassen = new string[][] {
+            new string[] { "::", "128", "fest" }, new string[] { "::1", "128", "fest" }, new string[] { "ff00::", "8", "fest" },
+            new string[] { "fe80::", "64", "privat" }, new string[] { "fc00::", "8", "privat" }, new string[] { "fd00::", "8", "privat" },
+            new string[] { "fe80::", "10", "block" }, new string[] { "fec0::", "10", "block" }, new string[] { "2001:db8::", "32", "block" }, new string[] { "2001::", "23", "block" }, new string[] { "2002::", "16", "block" }, new string[] { "3fff::", "20", "block" },
+            new string[] { "::", "8", "block" }, new string[] { "100::", "64", "block" },
+            // außerhalb von 2000::/3 (nicht vergeben): erstes Viertel bleibt
+            new string[] { "::", "3", "block16" }, new string[] { "4000::", "2", "block16" }, new string[] { "8000::", "1", "block16" }
+        };
+
+        private class IpKlassenEintrag
+        {
+            public string Bits;
+            public int Laenge;
+            public string Art;
+        }
+
+        private static readonly object KlassenSperre = new object();
+        private static List<IpKlassenEintrag> _klassen4;
+        private static List<IpKlassenEintrag> _klassen6;
+        private static readonly Dictionary<string, string> Struktur4 = new Dictionary<string, string>();
+        private static readonly Dictionary<string, string> Struktur6 = new Dictionary<string, string>();
+        private readonly Dictionary<string, byte[]> _memo = new Dictionary<string, byte[]>();
+
+        public static string Bits(byte[] b, int n)
+        {
+            StringBuilder sb = new StringBuilder(n);
+            for (int i = 0; i < n; i++) sb.Append(Bit(b, i) == 1 ? '1' : '0');
+            return sb.ToString();
+        }
+
+        private static List<IpKlassenEintrag> KlassenListe(int n)
+        {
+            lock (KlassenSperre)
+            {
+                if (_klassen4 == null)
+                {
+                    List<IpKlassenEintrag> l4 = new List<IpKlassenEintrag>();
+                    foreach (string[] k in Ip4Klassen) l4.Add(new IpKlassenEintrag { Bits = Bits(Ip4Lesen(k[0]), int.Parse(k[1])), Laenge = int.Parse(k[1]), Art = k[2] });
+                    List<IpKlassenEintrag> l6 = new List<IpKlassenEintrag>();
+                    foreach (string[] k in Ip6Klassen) l6.Add(new IpKlassenEintrag { Bits = Bits(Ip6Lesen(k[0]), int.Parse(k[1])), Laenge = int.Parse(k[1]), Art = k[2] });
+                    _klassen4 = l4;
+                    _klassen6 = l6;
+                }
+                return n == 4 ? _klassen4 : _klassen6;
+            }
+        }
+
+        private static readonly Regex RxIp4Oktett = new Regex("^(?:0|[1-9][0-9]{0,2})$");
+        private static readonly Regex RxIp6Zeichen = new Regex("^[0-9a-f:]+$");
+        private static readonly Regex RxIp6Gruppe = new Regex("^[0-9a-f]{1,4}$");
+
+        public static byte[] Ip4Lesen(string text)
+        {
+            if (text == null) return null;
+            string[] t = text.Split('.');
+            if (t.Length != 4) return null;
+            byte[] b = new byte[4];
+            for (int i = 0; i < 4; i++)
+            {
+                if (!RxIp4Oktett.IsMatch(t[i])) return null;
+                int v = int.Parse(t[i]);
+                if (v > 255) return null;
+                b[i] = (byte)v;
+            }
+            return b;
+        }
+
+        public static string Ip4Text(byte[] b)
+        {
+            return b[0] + "." + b[1] + "." + b[2] + "." + b[3];
+        }
+
+        // IPv6 in 16 Byte (Kurz- und Langform, ohne Zonen-Index und ohne eingebettete IPv4-Schreibweise)
+        public static byte[] Ip6Lesen(string text)
+        {
+            if (text == null) return null;
+            string t = text.ToLowerInvariant();
+            if (!RxIp6Zeichen.IsMatch(t) || t.IndexOf(":::", StringComparison.Ordinal) >= 0) return null;
+            string[] teile = t.Split(new string[] { "::" }, StringSplitOptions.None);
+            if (teile.Length > 2) return null;
+            List<string> links = teile[0].Length > 0 ? new List<string>(teile[0].Split(':')) : new List<string>();
+            List<string> rechts = teile.Length == 2 && teile[1].Length > 0 ? new List<string>(teile[1].Split(':')) : new List<string>();
+            if (teile.Length == 1 && links.Count != 8) return null;
+            if (teile.Length == 2 && links.Count + rechts.Count > 7) return null;
+            List<string> gruppen = new List<string>(links);
+            int fehlend = 8 - links.Count - rechts.Count;
+            for (int i = 0; i < fehlend; i++) gruppen.Add("0");
+            gruppen.AddRange(rechts);
+            byte[] b = new byte[16];
+            for (int i = 0; i < 8; i++)
+            {
+                if (!RxIp6Gruppe.IsMatch(gruppen[i])) return null;
+                int v = Convert.ToInt32(gruppen[i], 16);
+                b[2 * i] = (byte)(v >> 8);
+                b[2 * i + 1] = (byte)(v & 0xff);
+            }
+            return b;
+        }
+
+        // Ausgabe nach RFC 5952: Kleinbuchstaben, ohne führende Nullen, längste Nullfolge (ab 2 Gruppen) als ::
+        public static string Ip6Text(byte[] b)
+        {
+            int[] g = new int[8];
+            for (int i = 0; i < 8; i++) g[i] = (b[2 * i] << 8) | b[2 * i + 1];
+            int best = -1, bestLen = 0;
+            for (int i = 0; i < 8; )
+            {
+                if (g[i] != 0) { i++; continue; }
+                int j = i;
+                while (j < 8 && g[j] == 0) j++;
+                if (j - i > bestLen && j - i >= 2) { best = i; bestLen = j - i; }
+                i = j;
+            }
+            string[] h = new string[8];
+            for (int i = 0; i < 8; i++) h[i] = g[i].ToString("x");
+            if (best < 0) return string.Join(":", h);
+            string[] l = new string[best];
+            Array.Copy(h, 0, l, 0, best);
+            string[] r = new string[8 - best - bestLen];
+            Array.Copy(h, best + bestLen, r, 0, r.Length);
+            return string.Join(":", l) + "::" + string.Join(":", r);
+        }
+
+        // Klasse einer Adresse (4 oder 16 Byte): "fest", "privat", "block" oder "oeffentlich"
+        public static string Klasse(byte[] bytes, out int laenge)
+        {
+            string bits = Bits(bytes, bytes.Length * 8);
+            foreach (IpKlassenEintrag k in KlassenListe(bytes.Length))
+            {
+                if (bits.StartsWith(k.Bits, StringComparison.Ordinal))
+                {
+                    if (k.Art == "block16") { laenge = 16; return "block"; }
+                    laenge = k.Laenge;
+                    return k.Art;
+                }
+            }
+            laenge = 0;
+            return "oeffentlich";
+        }
+
+        // Struktur eines Teilbaums: "P" nur öffentlich, "S" vollständig in einem Block, sonst beide Hälften
+        private static string Struktur(int n, string bits)
+        {
+            Dictionary<string, string> memo = n == 4 ? Struktur4 : Struktur6;
+            lock (memo)
+            {
+                string r;
+                if (memo.TryGetValue(bits, out r)) return r;
+            }
+            List<IpKlassenEintrag> liste = KlassenListe(n);
+            string erg;
+            bool voll = false, innen = false;
+            foreach (IpKlassenEintrag k in liste)
+            {
+                if (k.Laenge <= bits.Length && bits.StartsWith(k.Bits, StringComparison.Ordinal)) voll = true;
+                if (k.Laenge > bits.Length && k.Bits.StartsWith(bits, StringComparison.Ordinal)) innen = true;
+            }
+            if (voll) erg = "S";
+            else if (!innen) erg = "P";
+            else erg = "(" + Struktur(n, bits + "0") + Struktur(n, bits + "1") + ")";
+            lock (memo) { memo[bits] = erg; }
+            return erg;
+        }
+
+        // Kippen nur, wenn beide Hälften gleich aufgebaut sind: dann bleibt öffentlich immer öffentlich
+        private static bool OeffentlichErlaubt(byte[] praefix, int pos)
+        {
+            int n = praefix.Length;
+            string bits = Bits(praefix, pos);
+            return Struktur(n, bits + "0") == Struktur(n, bits + "1");
+        }
+
+        // Klassenerhaltende Abbildung einer Adresse (4 oder 16 Byte); rueck = Umkehrung
+        public byte[] Verfremden(byte[] bytes, bool rueck)
+        {
+            int n = bytes.Length;
+            string schl = (rueck ? "r" : "v") + n + ":" + Convert.ToBase64String(bytes);
+            byte[] vorher;
+            lock (_memo)
+            {
+                if (_memo.TryGetValue(schl, out vorher)) return (byte[])vorher.Clone();
+            }
+            int laenge;
+            string art = Klasse(bytes, out laenge);
+            int grenze = n == 4 ? 24 : 120;
+            byte[] aus;
+            if (art == "fest") aus = (byte[])bytes.Clone();
+            else if (art == "privat") aus = Abbilden(bytes, laenge, grenze, null, rueck);
+            else if (art == "block") aus = Abbilden(bytes, laenge, n * 8, null, rueck);
+            else aus = Abbilden(bytes, 0, grenze, OeffentlichErlaubt, rueck);
+            lock (_memo) { _memo[schl] = (byte[])aus.Clone(); }
+            return aus;
+        }
+
+        // Textform: "192.0.2.10" oder "2001:db8::1"; praefix -1 = unbekannt.
+        // Bei bekannter Präfixlänge werden Netzadresse und Broadcast kanonisch ausgegeben (Host-Bits 0 bzw. 1).
+        // Ergebnis null: keine gültige Adresse. Adressen der Klasse "fest" bleiben wörtlich.
+        public string TextVerfremden(string text, int praefix, bool rueck)
+        {
+            byte[] v4 = Ip4Lesen(text);
+            byte[] bytes = v4 ?? Ip6Lesen(text);
+            if (bytes == null) return null;
+            int laenge;
+            if (Klasse(bytes, out laenge) == "fest") return text;
+            byte[] aus = Verfremden(bytes, rueck);
+            int n = bytes.Length * 8;
+            if (praefix >= 0 && praefix < n)
+            {
+                bool null0 = true, eins = true;
+                for (int i = praefix; i < n; i++)
+                {
+                    if (Bit(bytes, i) == 1) null0 = false; else eins = false;
+                }
+                if (null0 || eins) for (int i = praefix; i < n; i++) BitSetzen(aus, i, eins ? 1 : 0);
+            }
+            return v4 != null ? Ip4Text(aus) : Ip6Text(aus);
+        }
+
         public void Dispose()
         {
             _enc.Dispose();

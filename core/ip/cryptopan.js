@@ -81,7 +81,7 @@
     if (!key32 || key32.length !== 32) throw new Error("Der IP-Schlüssel muss 32 Byte lang sein.");
     const w = aes128Erweitern(Uint8Array.from(key32.slice(0, 16)));
     const pad = aes128Block(w, Uint8Array.from(key32.slice(16, 32)));
-    return { w, pad };
+    return { w, pad, memo: new Map() };
   }
 
   function ipBit(bytes, i) {
@@ -125,4 +125,163 @@
   // Original-Crypto-PAn über alle Bits (für die veröffentlichten Testvektoren)
   function cryptoPanStandard(ks, adresse, rueck) {
     return cryptoPanAbbilden(ks, adresse, 0, adresse.length * 8, null, !!rueck);
+  }
+
+  // --------------------------------------------------------------------------
+  // Adressklassen: Blöcke bleiben erhalten, öffentliche Adressen landen nie in einem Sonderbereich
+  //   fest        unverändert (0/8, 127/8, 224/4, 240/4; ::, ::1, ff00::/8)
+  //   privat      Blockpräfix bleibt, Bits bis zur festen Grenze (/24, IPv6 /120) schlüsselbasiert, Rest bleibt
+  //   block       Blockpräfix bleibt, alle übrigen Bits schlüsselbasiert (Dokumentations- und Sondernetze)
+  //   oeffentlich Bits bis zur festen Grenze schlüsselbasiert, ohne in einen der Blöcke oben zu wechseln
+  // --------------------------------------------------------------------------
+  const IP4_KLASSEN = [
+    ["0.0.0.0", 8, "fest"], ["127.0.0.0", 8, "fest"], ["224.0.0.0", 4, "fest"], ["240.0.0.0", 4, "fest"],
+    ["10.0.0.0", 8, "privat"], ["100.64.0.0", 10, "privat"], ["169.254.0.0", 16, "privat"], ["172.16.0.0", 12, "privat"], ["192.168.0.0", 16, "privat"],
+    ["192.0.0.0", 24, "block"], ["192.0.2.0", 24, "block"], ["192.88.99.0", 24, "block"], ["198.18.0.0", 15, "block"], ["198.51.100.0", 24, "block"], ["203.0.113.0", 24, "block"]
+  ];
+  const IP6_KLASSEN = [
+    ["::", 128, "fest"], ["::1", 128, "fest"], ["ff00::", 8, "fest"],
+    ["fe80::", 64, "privat"], ["fc00::", 8, "privat"], ["fd00::", 8, "privat"],
+    ["fe80::", 10, "block"], ["fec0::", 10, "block"], ["2001:db8::", 32, "block"], ["2001::", 23, "block"], ["2002::", 16, "block"], ["3fff::", 20, "block"],
+    ["::", 8, "block"], ["100::", 64, "block"],
+    // außerhalb von 2000::/3 (nicht vergeben): erstes Viertel bleibt
+    ["::", 3, "block16"], ["4000::", 2, "block16"], ["8000::", 1, "block16"]
+  ];
+  const IP_GRENZE = { 4: 24, 16: 120 };
+
+  function ipBits(bytes, n) {
+    let s = "";
+    for (let i = 0; i < n; i++) s += ipBit(bytes, i);
+    return s;
+  }
+
+  function ip4Lesen(text) {
+    const t = String(text).split(".");
+    if (t.length !== 4) return null;
+    const b = new Uint8Array(4);
+    for (let i = 0; i < 4; i++) {
+      if (!/^(?:0|[1-9][0-9]{0,2})$/.test(t[i]) || Number(t[i]) > 255) return null;
+      b[i] = Number(t[i]);
+    }
+    return b;
+  }
+
+  function ip4Text(b) {
+    return b[0] + "." + b[1] + "." + b[2] + "." + b[3];
+  }
+
+  // IPv6 in 16 Byte (Kurz- und Langform, ohne Zonen-Index und ohne eingebettete IPv4-Schreibweise)
+  function ip6Lesen(text) {
+    const t = String(text).toLowerCase();
+    if (!/^[0-9a-f:]+$/.test(t) || t.indexOf(":::") >= 0) return null;
+    const teile = t.split("::");
+    if (teile.length > 2) return null;
+    const links = teile[0] ? teile[0].split(":") : [];
+    const rechts = teile.length === 2 && teile[1] ? teile[1].split(":") : [];
+    if (teile.length === 1 && links.length !== 8) return null;
+    if (teile.length === 2 && links.length + rechts.length > 7) return null;
+    const gruppen = links.concat(new Array(8 - links.length - rechts.length).fill("0"), rechts);
+    const b = new Uint8Array(16);
+    for (let i = 0; i < 8; i++) {
+      if (!/^[0-9a-f]{1,4}$/.test(gruppen[i])) return null;
+      const v = parseInt(gruppen[i], 16);
+      b[2 * i] = v >> 8;
+      b[2 * i + 1] = v & 0xff;
+    }
+    return b;
+  }
+
+  // Ausgabe nach RFC 5952: Kleinbuchstaben, ohne führende Nullen, längste Nullfolge (ab 2 Gruppen) als ::
+  function ip6Text(b) {
+    const g = [];
+    for (let i = 0; i < 8; i++) g.push((b[2 * i] << 8) | b[2 * i + 1]);
+    let best = -1, bestLen = 0;
+    for (let i = 0; i < 8;) {
+      if (g[i] !== 0) { i++; continue; }
+      let j = i;
+      while (j < 8 && g[j] === 0) j++;
+      if (j - i > bestLen && j - i >= 2) { best = i; bestLen = j - i; }
+      i = j;
+    }
+    const h = g.map(v => v.toString(16));
+    if (best < 0) return h.join(":");
+    return h.slice(0, best).join(":") + "::" + h.slice(best + bestLen).join(":");
+  }
+
+  let ipKlassenCache = null;
+  function ipKlassenListe(n) {
+    if (!ipKlassenCache) {
+      const bau = (liste, lesen, bytes) => liste.map(([a, l, art]) => ({ bits: ipBits(lesen(a), l), laenge: l, art }));
+      ipKlassenCache = { 4: bau(IP4_KLASSEN, ip4Lesen), 16: bau(IP6_KLASSEN, ip6Lesen), sig4: new Map(), sig16: new Map() };
+    }
+    return ipKlassenCache[n];
+  }
+
+  function ipKlasse(bytes) {
+    const n = bytes.length;
+    const bits = ipBits(bytes, n * 8);
+    for (const k of ipKlassenListe(n)) {
+      if (bits.startsWith(k.bits)) {
+        if (k.art === "block16") return { art: "block", laenge: 16 };
+        return { art: k.art, laenge: k.laenge };
+      }
+    }
+    return { art: "oeffentlich", laenge: 0 };
+  }
+
+  // Struktur eines Teilbaums: "P" nur öffentlich, "S" vollständig in einem Block, sonst beide Hälften
+  function ipStruktur(n, bits) {
+    const memo = ipKlassenCache["sig" + n];
+    let r = memo.get(bits);
+    if (r !== undefined) return r;
+    const liste = ipKlassenListe(n);
+    if (liste.some(k => k.laenge <= bits.length && bits.startsWith(k.bits))) r = "S";
+    else if (!liste.some(k => k.laenge > bits.length && k.bits.startsWith(bits))) r = "P";
+    else r = "(" + ipStruktur(n, bits + "0") + ipStruktur(n, bits + "1") + ")";
+    memo.set(bits, r);
+    return r;
+  }
+
+  // Kippen nur, wenn beide Hälften gleich aufgebaut sind: dann bleibt öffentlich immer öffentlich
+  function ipOeffentlichErlaubt(praefix, pos) {
+    const n = praefix.length;
+    ipKlassenListe(n);
+    const bits = ipBits(praefix, pos);
+    return ipStruktur(n, bits + "0") === ipStruktur(n, bits + "1");
+  }
+
+  // Klassenerhaltende Abbildung einer Adresse (4 oder 16 Byte); rueck = Umkehrung
+  function ipVerfremden(ks, bytes, rueck) {
+    const n = bytes.length;
+    const schl = (rueck ? "r" : "v") + n + ":" + Array.from(bytes).join(",");
+    const vorher = ks.memo.get(schl);
+    if (vorher) return Uint8Array.from(vorher);
+    const k = ipKlasse(bytes);
+    let aus;
+    if (k.art === "fest") aus = Uint8Array.from(bytes);
+    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, IP_GRENZE[n], null, !!rueck);
+    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, n * 8, null, !!rueck);
+    else aus = cryptoPanAbbilden(ks, bytes, 0, IP_GRENZE[n], ipOeffentlichErlaubt, !!rueck);
+    ks.memo.set(schl, Uint8Array.from(aus));
+    return aus;
+  }
+
+  // Textform: "192.0.2.10" oder "2001:db8::1"; praefix (Zahl oder null) aus "/n".
+  // Bei bekannter Präfixlänge werden Netzadresse und Broadcast kanonisch ausgegeben (Host-Bits 0 bzw. 1).
+  // Ergebnis null: keine gültige Adresse. Adressen der Klasse "fest" bleiben wörtlich.
+  function ipTextVerfremden(ks, text, praefix, rueck) {
+    const v4 = ip4Lesen(text);
+    const bytes = v4 || ip6Lesen(text);
+    if (!bytes) return null;
+    if (ipKlasse(bytes).art === "fest") return String(text);
+    const aus = ipVerfremden(ks, bytes, rueck);
+    const n = bytes.length * 8;
+    if (praefix !== null && praefix !== undefined && praefix >= 0 && praefix < n) {
+      let null0 = true, eins = true;
+      for (let i = praefix; i < n; i++) {
+        if (ipBit(bytes, i)) null0 = false; else eins = false;
+      }
+      if (null0 || eins) for (let i = praefix; i < n; i++) ipBitSetzen(aus, i, eins ? 1 : 0);
+    }
+    return v4 ? ip4Text(aus) : ip6Text(aus);
   }

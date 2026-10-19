@@ -1298,6 +1298,62 @@ if ($ipKernDa) {
     Assert-True ($ipRueck -eq $ipPaare) "IP-Modell: Umkehrung liefert bei allen Vektoren das Original ($ipRueck von $ipPaare)"
 }
 
+Write-Host "=== IP-Modell: Adressklassen und IPv6 ===" -ForegroundColor Cyan
+if ($ipKernDa) {
+    $ks6 = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $ipVek.cryptoPanStandard6[0].schluesselHex))
+    $v6ok = 0; $v6n = 0
+    foreach ($pr in $ipVek.cryptoPanStandard6[0].paare) {
+        $v6n++
+        $r = $ks6.Standard([AnonTool.CryptoPan]::Ip6Lesen($pr[0]), $false)
+        if ((ConvertTo-TestHex $r) -eq (ConvertTo-TestHex ([AnonTool.CryptoPan]::Ip6Lesen($pr[1]))) -and [AnonTool.CryptoPan]::Ip6Text($ks6.Standard($r, $true)) -eq [AnonTool.CryptoPan]::Ip6Text([AnonTool.CryptoPan]::Ip6Lesen($pr[0]))) { $v6ok++ }
+    }
+    Assert-True ($v6n -ge 4 -and $v6ok -eq $v6n) "IP-Modell: Crypto-PAn IPv6-Testvektoren hin und zurück ($v6ok von $v6n)"
+    $kok = 0; $kn = 0
+    foreach ($v in $ipVek.klassen) {
+        $kk = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $v.schluesselHex))
+        foreach ($pr in $v.paare) {
+            $kn++
+            $praef = if ($null -eq $pr[1]) { -1 } else { [int]$pr[1] }
+            $r = $kk.TextVerfremden([string]$pr[0], $praef, $false)
+            if ($r -ceq $pr[2]) { $kok++ } else { Write-Host "    Klassen $($pr[0])/$($pr[1]): erwartet $($pr[2]), erhalten $r" -ForegroundColor Yellow }
+        }
+    }
+    Assert-True ($kn -ge 30 -and $kok -eq $kn) "IP-Modell: Klassen-Testvektoren gleich JS ($kok von $kn)"
+    # Prüfsumme über öffentliche Adressen aus derselben Zahlenfolge wie in run-tests.js
+    $pk = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $ipVek.pruefsummeOeffentlich.schluesselHex))
+    $pAus = New-Object System.Collections.Generic.List[string]
+    $pl = 0
+    for ([long]$i = 1; $pAus.Count -lt [int]$ipVek.pruefsummeOeffentlich.anzahl; $i++) {
+        [long]$z = ($i * 2654435761) % 4294967296
+        $b = [byte[]]@((($z -shr 24) -band 255), (($z -shr 16) -band 255), (($z -shr 8) -band 255), ($z -band 255))
+        if ([AnonTool.CryptoPan]::Klasse($b, [ref]$pl) -ne "oeffentlich") { continue }
+        $pAus.Add([AnonTool.CryptoPan]::Ip4Text($pk.Verfremden($b, $false)))
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $pHash = ConvertTo-TestHex ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($pAus -join "`n"))))
+    Assert-Equal $pHash $ipVek.pruefsummeOeffentlich.sha256 "IP-Modell: Prüfsumme über $($pAus.Count) öffentliche Adressen gleich JS"
+    $fest = @("0.0.0.0", "255.255.255.255", "127.0.0.1", "224.0.0.5", "240.0.0.1", "0.0.0.15", "255.255.255.0", "::", "::1", "ff02::1")
+    $festOk = @($fest | Where-Object { $pk.TextVerfremden($_, -1, $false) -ceq $_ }).Count
+    Assert-Equal $festOk $fest.Count "IP-Modell: Sonderadressen, Masken und Wildcards unverändert"
+    $r230 = $pk.TextVerfremden("172.22.0.230", -1, $false)
+    $o230 = [AnonTool.CryptoPan]::Ip4Lesen($r230)
+    Assert-True ($o230[0] -eq 172 -and $o230[1] -ge 16 -and $o230[1] -le 31 -and $o230[3] -eq 230) "IP-Modell: 172.22.0.230 bleibt in 172.16.0.0/12 mit Host .230 ($r230)"
+    # Zufallstest: öffentlich nie in einem Sonderbereich, Umkehrung stimmt
+    $rng = New-Object System.Random 4711
+    $zk = New-Object byte[] 32; $rng.NextBytes($zk)
+    $zks = New-Object AnonTool.CryptoPan (,$zk)
+    $oeff = 0; $oeffFehler = 0; $kl = 0; $klo = 0
+    while ($oeff -lt 3000) {
+        $b = New-Object byte[] 4; $rng.NextBytes($b)
+        if ([AnonTool.CryptoPan]::Klasse($b, [ref]$kl) -ne "oeffentlich") { continue }
+        $oeff++
+        $o = $zks.Verfremden($b, $false)
+        if ([AnonTool.CryptoPan]::Klasse($o, [ref]$klo) -ne "oeffentlich" -or $o[3] -ne $b[3] -or (ConvertTo-TestHex ($zks.Verfremden($o, $true))) -ne (ConvertTo-TestHex $b)) { $oeffFehler++ }
+    }
+    Assert-Equal $oeffFehler 0 "IP-Modell: Zufallstest 3000 öffentliche IPv4 nie in einem Sonderbereich, umkehrbar"
+    Assert-True ($pk.TextVerfremden("2001:db8:0:0:0:0:0:1", -1, $false) -ceq $pk.TextVerfremden("2001:DB8::1", -1, $false)) "IP-Modell: IPv6 Kurz- und Langform gleich"
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners
