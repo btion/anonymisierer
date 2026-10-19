@@ -85,7 +85,21 @@
       "VXLAN",
       "Spanning-Tree",
       "MSTP",
-      "RSTP"
+      "RSTP",
+      "daemon",
+      "nobody",
+      "bin",
+      "sys",
+      "www-data",
+      "messagebus",
+      "syslog",
+      "sshd",
+      "ntp",
+      "chrony",
+      "postfix",
+      "polkitd",
+      "avahi",
+      "rpcuser"
     ],
     "versionKontext": [
       "(?i)(?<![A-Za-z0-9_])(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|comware|routeros|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?[0-9]+(?:\\.[0-9]+){1,4}(?:[-._a-zA-Z0-9]+)?",
@@ -97,7 +111,8 @@
       "(?<![0-9A-Fa-f:])[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-][0-9]{2}:?[0-9]{2}))?(?![0-9A-Fa-f:])",
       "(?<![A-Za-z0-9_])(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)(?![A-Za-z0-9_])",
       "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)",
-      "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$"
+      "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$",
+      "(?i)^(?:systemd-[a-z0-9-]+|systemd\\+|messageb\\+|_[a-z0-9_-]+)$"
     ]
   },
   "pruefung": {
@@ -166,6 +181,12 @@
       "nurWertSchuetzen": true
     },
     {
+      "name": "Schlüsselwort mit Typwörtern und Wert (key cleartext X, pre-shared-key ascii-text X, password irreversible-cipher X, key 0 X)",
+      "hersteller": "Alle",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|secret|key|pre-shared-key|psk|psksecret|community|auth-pass|priv-pass|encrypted-password|authentication-key|message-digest-key[ \\t]+[0-9]{1,5}|key-string|wpa-psk|wpa-passphrase)(?:[ \\t]+(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))+[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!\\*{5})(?!(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))(?!(?:key-string|key-chain|cryptographic-algorithm|accept-lifetime|send-lifetime)(?![A-Za-z0-9_-]))[^ \\t\\r\\n;\"']+)",
+      "ersetzen": "$1*****"
+    },
+    {
       "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
       "hersteller": "FortiGate/Sophos",
       "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
@@ -192,7 +213,7 @@
     {
       "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
       "hersteller": "Cisco",
-      "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
+      "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii|ascii-text))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))\\S+)",
       "ersetzen": "$1*****"
     },
     {
@@ -277,7 +298,7 @@
     },
     {
       "name": "RADIUS/TACACS key in server host-Zeile",
-      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
+      "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|cleartext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|cleartext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
       "ersetzen": "$1*****"
     },
     {
@@ -292,7 +313,7 @@
     },
     {
       "name": "Generische Zugangsdaten (Schlüsselwort + Trenner + Wert)",
-      "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
+      "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|md5|sha|sha256|sha512|enc|hash|encrypted|level|complexity|minimum-length|min-length|history|lockout|aging|expiry|recovery|manager|operator|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
       "ersetzen": "$1*****"
     },
     {
@@ -302,9 +323,9 @@
       "ersetzen": "$1*****"
     },
     {
-      "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
+      "name": "Unix-/Geräte-Hashes ($1$, $1a$, $2a$, $5$, $6$, $7$, $8$, $9$, $y$, $c$)",
       "hersteller": "Alle",
-      "suche": "\\$(?:1|2[abxy]|5|6|8|9|y)\\$[a-zA-Z0-9./=$]{10,128}",
+      "suche": "\\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\\$[a-zA-Z0-9./=$+]{6,128}",
       "ersetzen": "*****"
     },
     {
@@ -617,6 +638,85 @@
         {
           "name": "Name",
           "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "top (Spalte USER)",
+      "kopf": [
+        "PID",
+        "USER",
+        "PR",
+        "NI",
+        "VIRT",
+        "RES"
+      ],
+      "spalten": [
+        {
+          "name": "USER",
+          "kategorie": "USER"
+        }
+      ]
+    },
+    {
+      "name": "ps aux (Spalte USER)",
+      "kopf": [
+        "USER",
+        "PID",
+        "%CPU",
+        "%MEM",
+        "VSZ",
+        "RSS"
+      ],
+      "spalten": [
+        {
+          "name": "USER",
+          "kategorie": "USER"
+        }
+      ]
+    },
+    {
+      "name": "ps -ef (Spalte UID)",
+      "kopf": [
+        "UID",
+        "PID",
+        "PPID",
+        "STIME"
+      ],
+      "spalten": [
+        {
+          "name": "UID",
+          "kategorie": "USER"
+        }
+      ]
+    },
+    {
+      "name": "w / who (Spalte USER)",
+      "kopf": [
+        "USER",
+        "TTY",
+        "FROM",
+        "LOGIN@"
+      ],
+      "spalten": [
+        {
+          "name": "USER",
+          "kategorie": "USER"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show users (Spalte User)",
+      "kopf": [
+        "Line",
+        "User",
+        "Host(s)",
+        "Idle"
+      ],
+      "spalten": [
+        {
+          "name": "User",
+          "kategorie": "USER"
         }
       ]
     }

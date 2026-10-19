@@ -1176,6 +1176,22 @@ $sAus = [AnonTool.AnonEngine]::ProcessText($ssh, $kCfg, $sState)
 Assert-True ($sAus -cmatch "(?m)^user admin authorized-key SSHKEY-1$" -and $sAus -cmatch "(?m)^SSHKEY-2$") "Praxistest 2: SSH Public Keys werden SSHKEY-n"
 Assert-Equal ([AnonTool.AnonEngine]::DeanonymizeText($sAus, $sState.Reverse)) $ssh "Praxistest 2: SSH Public Keys über die Tabelle rückübersetzbar"
 Assert-True (@([AnonTool.AnonEngine]::Nachpruefen($sAus, "s.txt", $kCfg)).Count -eq 0) "Praxistest 2: SSHKEY-n ist kein Restfund"
+# Fix Geheimnis-Typwörter und USER-Spalte
+$twAus = (Get-KatAus "K32")
+Assert-True ($twAus[0].EndsWith("key cleartext *****") -and $twAus[1] -ceq "pre-shared-key ascii-text *****" -and $twAus[2] -cmatch "crypto isakmp key 0 \*{5} address" -and $twAus[5].EndsWith('pre-shared-key ascii-text "*****"')) "Typwörter: Typwort bleibt, Wert wird maskiert ($(($twAus[0..5]) -join ' | '))"
+$twLauf = Invoke-PtLauf $katText["K32"]
+$twGeheim = @($twLauf.Funde | Where-Object { $_.Kategorie -match "Geheimnis|Verdacht|Teilmaskierung" })
+Assert-True ($twGeheim.Count -eq 0) "Typwörter: Prüfung der Ausgabe ohne Geheimnis-Funde ($(@($twGeheim | ForEach-Object { $_.Kategorie + ':' + $_.Zeile }) -join ','))"
+$ohneWert = "password complexity`nno password-recovery`npassword minimum-length 8`nservice password-encryption`n"
+Assert-True ([AnonTool.AnonEngine]::ProcessText($ohneWert, $kCfg, (New-Object AnonTool.AnonState)) -ceq $ohneWert) "Typwörter: Befehlszeilen ohne Wert bleiben unverändert"
+$twNach = @([AnonTool.AnonEngine]::Nachpruefen((($twAus -join "`n") + "`nkey cleartext *****`npassword ciphertext *****`nwpa-psk hex *****`n"), "t.txt", $kCfg))
+Assert-True ($twNach.Count -eq 0) "Typwörter: Typwörter und maskierte Werte sind kein Fund ($(@($twNach | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"
+$twRoh = @([AnonTool.AnonEngine]::Nachpruefen("tacacs-server host 192.0.2.6 key cleartext tacgeheim`npassword ciphertext AQBapXyZ12`n", "t.txt", $kCfg) | ForEach-Object { $_.Fund })
+Assert-True (($twRoh -join "|") -ceq "tacgeheim|AQBapXyZ12") "Typwörter: Nachprüfung meldet Wert nach Typwort, nicht das Typwort ($($twRoh -join ' | '))"
+$usAus = [AnonTool.AnonEngine]::ProcessText($katText["K33"], $kCfg, (New-Object AnonTool.AnonState))
+Assert-True ($usAus -cmatch "(?m)^ 1234 root " -and $usAus -cmatch "(?m)^www-data    5432" -and $usAus -cmatch "(?m)^  987 messageb\+ " -and $usAus -cmatch "(?m)^systemd\+     321") "USER-Spalte: Systemkonten bleiben"
+Assert-True ($usAus -cmatch "(?m)^ 2345 USER-[0-9]+ " -and $usAus -cmatch "(?m)^USER-[0-9]+ +4321" -and $usAus -cmatch "(?m)^\*  2 vty 0     USER-[0-9]+ ") "USER-Spalte: Benutzer in Datenzeilen ersetzt"
+Assert-True ($usAus -cmatch "(?m)^  PID USER      PR" -and $usAus -cmatch "(?m)^    Line       User       Host\(s\)") "USER-Spalte: Kopfzeilen bleiben unverändert"
 # Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
 $pFunde = @([AnonTool.AnonEngine]::Nachpruefen("description (HOST-1), TEXT-2;`n Port Description : [USER-1]`nhostname HOST-1.`nuser USER-3,`nPort      Native  Type   Description`n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)`n", "p.txt", $kCfg))
 Assert-True ($pFunde.Count -eq 0) "Fix 2: Nachprüfung meldet keine eigenen Platzhalter ($(@($pFunde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"

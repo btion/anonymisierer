@@ -1626,6 +1626,26 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       assert(core.deanonymizeText(sAus, sState) === ssh, "Praxistest 2: SSH Public Keys über die Tabelle rückübersetzbar");
       assert(core.nachpruefen(sAus, "s.txt", kCfg).length === 0, "Praxistest 2: SSHKEY-n ist kein Restfund");
     }
+    // Fix Geheimnis-Typwörter und USER-Spalte
+    {
+      const tw = katalog.faelle.find(f => f.id === "K32").eingabe;
+      const twAus = core.processText(tw, kCfg, new core.AnonState()).split("\n");
+      assert(twAus[0].endsWith("key cleartext *****") && twAus[1] === "pre-shared-key ascii-text *****" && /crypto isakmp key 0 \*{5} address/.test(twAus[2]) && twAus[5].endsWith('pre-shared-key ascii-text "*****"'), `Typwörter: Typwort bleibt, Wert wird maskiert (${twAus.slice(0, 6).join(" | ")})`);
+      const twLauf = core.reprocessFilesWithState([{ path: "t.txt", text: tw }], diskRules, {}, new core.AnonState(), { overrides: { netzerhaltend: true } });
+      const twGeheim = twLauf.findings.filter(f => /Geheimnis|Verdacht|Teilmaskierung/.test(f.kategorie));
+      assert(twGeheim.length === 0, `Typwörter: Prüfung der Ausgabe ohne Geheimnis-Funde (${twGeheim.map(f => f.kategorie + ":" + f.zeile).join(",")})`);
+      const ohneWert = "password complexity\nno password-recovery\npassword minimum-length 8\nservice password-encryption\n";
+      assert(core.processText(ohneWert, kCfg, new core.AnonState()) === ohneWert, "Typwörter: Befehlszeilen ohne Wert bleiben unverändert");
+      const twNach = core.nachpruefen(twAus.join("\n") + "\nkey cleartext *****\npassword ciphertext *****\nwpa-psk hex *****\n", "t.txt", kCfg);
+      assert(twNach.length === 0, `Typwörter: Typwörter und maskierte Werte sind kein Fund (${twNach.map(f => f.kategorie + ":" + f.fund).join(" | ")})`);
+      const twRoh = core.nachpruefen("tacacs-server host 192.0.2.6 key cleartext tacgeheim\npassword ciphertext AQBapXyZ12\n", "t.txt", kCfg).map(f => f.fund);
+      assert(JSON.stringify(twRoh) === '["tacgeheim","AQBapXyZ12"]', `Typwörter: Nachprüfung meldet Wert nach Typwort, nicht das Typwort (${JSON.stringify(twRoh)})`);
+      const us = katalog.faelle.find(f => f.id === "K33").eingabe;
+      const usAus = core.processText(us, kCfg, new core.AnonState());
+      assert(/^ 1234 root /m.test(usAus) && /^www-data    5432/m.test(usAus) && /^  987 messageb\+ /m.test(usAus) && /^systemd\+     321/m.test(usAus), "USER-Spalte: Systemkonten bleiben");
+      assert(/^ 2345 USER-[0-9]+ /m.test(usAus) && /^USER-[0-9]+ +4321/m.test(usAus) && /^\*  2 vty 0     USER-[0-9]+ /m.test(usAus), `USER-Spalte: Benutzer in Datenzeilen ersetzt (${usAus.split("\n")[2]})`);
+      assert(/^  PID USER      PR/m.test(usAus) && /^    Line       User       Host\(s\)/m.test(usAus), "USER-Spalte: Kopfzeilen bleiben unverändert");
+    }
     // Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
     {
       const pText = "description Uplink zu (HOST-1), siehe TEXT-2;\n Port Description : [USER-1]\nhostname HOST-1.\nuser USER-3,\nPort      Native  Type   Description\n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)\n";

@@ -890,7 +890,8 @@ namespace AnonTool
             }
             bool letzte = col[4] == 1;
             List<Match> kandidaten = new List<Match>();
-            if (col[3] >= 0) foreach (Match m in anker) if (m.Index >= col[3] - 1) kandidaten.Add(m);
+            // Ankerfeld nur für die letzte Spalte; mittlere Spalten nach Position bis zum nächsten Statuswert/Zahlenfeld
+            if (letzte && col[3] >= 0) foreach (Match m in anker) if (m.Index >= col[3] - 1) kandidaten.Add(m);
             int s;
             bool unsicher;
             if (kandidaten.Count > 0)
@@ -1502,6 +1503,13 @@ namespace AnonTool
                             if (!cfg.CatSeriennummern || !IsLearnable("SERIAL", wert, cfg)) continue;
                             state.AddStat("seriennummern", 1);
                             rep = state.GetOrCreateToken("SERIAL", wert, "SERIAL");
+                        }
+                        else if (f.Kategorie == "USER")
+                        {
+                            // Benutzerspalte (top, ps, w, show users); Systemkonten stehen in den Ausnahmen
+                            if (!cfg.CatBenutzer || !IsLearnable("USER", wert, cfg, true)) continue;
+                            state.AddStat("benutzer", 1);
+                            rep = state.GetOrCreateToken("USER", wert, "USER");
                         }
                         else
                         {
@@ -2544,7 +2552,7 @@ namespace AnonTool
             string cleanText = ipCleanText.Replace('\u0002', ' ');
 
             Regex rxSuspiciousLongHexOrB64 = new Regex(@"\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b", RegexOptions.Compiled, RxTimeout);
-            Regex rxCryptHash = new Regex(@"\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}", RegexOptions.Compiled, RxTimeout);
+            Regex rxCryptHash = new Regex(@"\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[a-zA-Z0-9./=$+]{6,128}", RegexOptions.Compiled, RxTimeout);
 
             // 1. Prüfe auf verbliebene IPv4
             foreach (Match m in RxIpv4.Matches(ipCleanText))
@@ -2792,9 +2800,10 @@ namespace AnonTool
         // ----------------------------------------------------------------
         private const RegexOptions NachOpt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
         private static readonly Regex RxNachPlatzhalter = new Regex("^(?:NET-[0-9]+(?:\\.H[0-9]+)?(?:/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN|SSHKEY)-[0-9]+)$", RegexOptions.CultureInvariant, RxTimeout);
-        private static readonly Regex RxNachFeldFrei = new Regex("(?<![A-Za-z0-9_./-])\"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)\"?(?![A-Za-z0-9_-])(?:[ \\t]*[:=][ \\t]*|[ \\t]+)", NachOpt, RxTimeout);
+        private static readonly Regex RxNachFeldFrei = new Regex("(?<![A-Za-z0-9_./-])\"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|psk|psksecret|encrypted-password|message-digest-key|key-string|wpa-psk|wpa-passphrase|api[_-]?key|token)\"?(?![A-Za-z0-9_-])(?:[ \\t]*[:=][ \\t]*|[ \\t]+)", NachOpt, RxTimeout);
         private static readonly Regex RxNachFeldDoppelpunkt = new Regex("(?<![A-Za-z0-9_./-])\"?(System[ \\t-]+Name|Device[ \\t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \\t]+|System[ \\t]+|Board[ \\t]+)?Serial(?:[ \\t_-]*(?:Number|Nbr|No|Num)\\.?)?|SN|Service[ \\t]+Tag|Asset[ \\t]+Tag|Authorization)\"?(?![A-Za-z0-9_-])[ \\t]*[:=][ \\t]*", NachOpt, RxTimeout);
-        private static readonly HashSet<string> NachTypwoerter = new HashSet<string>(new string[] { "0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> NachTypwoerter = new HashSet<string>(new string[] { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "cleartext", "encrypted", "unencrypted", "cipher",
+            "irreversible-cipher", "simple", "hex", "ascii", "ascii-text", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure" }, StringComparer.Ordinal);
         private static readonly HashSet<string> NachStrukturwoerter = new HashSet<string>(new string[] { "changed", "expired", "incorrect", "succeeded", "successful", "failed", "denied", "rejected", "accepted", "invalid", "updated",
             "required", "timeout", "validation", "verification", "rotation", "refresh", "mismatch", "error", "reset", "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication" }, StringComparer.Ordinal);
         private static readonly Regex RxNachSid = new Regex("(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])", RegexOptions.CultureInvariant, RxTimeout);
@@ -2813,7 +2822,8 @@ namespace AnonTool
         private static readonly Dictionary<string, string> NachTabellenSpalten = new Dictionary<string, string>(StringComparer.Ordinal) {
             { "Description", "T" }, { "DESCRIPTION", "T" }, { "Desc", "T" }, { "DESC", "T" }, { "PORT-DESC", "T" }, { "Port-Desc", "T" }, { "Port Description", "T" },
             { "Name", "T" }, { "NAME", "T" }, { "Alias", "T" }, { "ALIAS", "T" }, { "Port-Name", "T" }, { "PORT-NAME", "T" },
-            { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" }, { "Device ID", "H" } };
+            { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" }, { "Device ID", "H" },
+            { "USER", "B" }, { "User", "B" }, { "UID", "B" } };
         // Hardwarebezeichnungen (show module: "8400X Mgmt Module", "JL375A") sind kein Freitext
         private static readonly Regex RxNachModellnummer = new Regex("^(?:[0-9]+[a-z]{0,4}|[a-z]{1,3}[0-9][a-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly HashSet<string> NachTechnikwoerter = new HashSet<string>(new string[] { "module", "mgmt", "management", "fabric", "fan", "fans", "tray", "power", "supply", "psu", "line", "card", "linecard",
@@ -2821,6 +2831,10 @@ namespace AnonTool
         // SSH Public Keys und Session-IDs/Tokens/Cookies (eigene Muster der Nachprüfung)
         private static readonly Regex RxNachSshKey = new Regex("(?<![A-Za-z0-9_-])(?:ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp[0-9]{3}|sk-ssh-ed25519@openssh\\.com|sk-ecdsa-sha2-nistp256@openssh\\.com)[ \\t]+AAAA[A-Za-z0-9+/]{16,}={0,3}(?:[ \\t]+[^\\r\\n\"]*[^\\s\"])?", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachSitzung = new Regex("(?<![A-Za-z0-9_-])(?:session|token|sid|cookie)(?:[ \\t]*[:=][ \\t]*|[ \\t]+)\"?((?!S-1-)(?=[A-Za-z0-9+/_-]*[0-9])[A-Za-z0-9+/_-]{16,}={0,2})", NachOpt, RxTimeout);
+        // Unix- und Geräte-Hashes überall ($1$, $1a$, $5$, $6$, $7$, $9$, $y$, $c$ ...)
+        private static readonly Regex RxNachHash = new Regex("\\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\\$[A-Za-z0-9./=$+]{6,}", RegexOptions.CultureInvariant, RxTimeout);
+        // Systemkonten in Benutzerspalten (top, ps, w, show users)
+        private static readonly Regex RxNachSystemkonto = new Regex("^(?:root|daemon|nobody|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|syslog|messagebus|messageb\\+|sshd|ntp|chrony|postfix|dbus|polkitd|avahi|rpc|rpcuser|admin|systemd\\+|systemd-[a-z0-9-]+|_[a-z0-9_-]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
         // Zeitstempel, Datum, Uhrzeit und Firmware-Versionen sind kein Benutzer, Gerätename oder Seriennummer
         private static readonly Regex RxNachZeitOderVersion = new Regex("^(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}(?:[T ][0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?|[0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?|(?:[A-Z]{1,4}\\.)?[0-9]+(?:\\.[0-9]+){2,4}[A-Za-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
         // Kopfzeile einer Prozess- oder Benutzertabelle (top, ps, show users): mindestens vier Wörter, alle groß beginnend, ohne ":"
@@ -3029,10 +3043,16 @@ namespace AnonTool
                     string wert = w.Groups[1].Success ? Regex.Replace(w.Groups[1].Value, "\\\\([\"\\\\])", "$1") : (w.Groups[2].Success ? w.Groups[2].Value : w.Groups[3].Value.TrimEnd('.', ':'));
                     string low = wert.ToLowerInvariant();
                     if (!zitiert && KeinFeldwert.Contains(low)) return;
+                    // "key authentication cipher X" (Comware): authentication/accounting nach key überspringen
+                    if (!zitiert && art == "G" && string.Equals(name, "key", StringComparison.OrdinalIgnoreCase) && (low == "authentication" || low == "accounting"))
+                    {
+                        rest = rest.Substring(w.Length).TrimStart(' ', '\t');
+                        continue;
+                    }
                     if (!zitiert && art == "G" && NachStrukturwoerter.Contains(low)) return;
                     if (!zitiert && art == "B" && NachStrukturwoerter.Contains(low)) return;
                     // Schlüsselnummer ("key 1", "authentication-key 1 md5 ...") ist kein Wert
-                    bool istSchluesselNr = art == "G" && Regex.IsMatch(name, "^(?:key|authentication-key)$", RegexOptions.IgnoreCase) && Regex.IsMatch(wert, "^[0-9]{1,5}$") && !NachTypwoerter.Contains(low);
+                    bool istSchluesselNr = art == "G" && Regex.IsMatch(name, "^(?:key|authentication-key|message-digest-key)$", RegexOptions.IgnoreCase) && Regex.IsMatch(wert, "^[0-9]{1,5}$") && !NachTypwoerter.Contains(low);
                     if (!zitiert && (istSchluesselNr || (NachTypwoerter.Contains(low) && (art == "G" || art == "B"))))
                     {
                         rest = rest.Substring(w.Length).TrimStart(' ', '\t');
@@ -3078,6 +3098,7 @@ namespace AnonTool
                 Match pu = RxNachPromptUserHost.Match(zeile);
                 if (pu.Success) pruefeWert(ln, "H", pu.Groups[1].Value, null);
                 foreach (Match m in RxNachSshKey.Matches(zeile)) pruefeWert(ln, "G", m.Value, null);
+                foreach (Match m in RxNachHash.Matches(zeile)) pruefeWert(ln, "G", m.Value, null);
                 foreach (Match m in RxNachSitzung.Matches(zeile)) pruefeWert(ln, "G", m.Groups[1].Value, null);
                 Match bm = NachTabellenKopf(zeile) != null ? Match.Empty : RxNachBeschreibung.Match(zeile);
                 if (bm.Success)
@@ -3138,7 +3159,7 @@ namespace AnonTool
                     string z = zeilen[j];
                     if (z.Trim().Length == 0 || RxNachBefehl.IsMatch(z)) break;
                     NachKopf neuerKopf = NachTabellenKopf(z);
-                    if (neuerKopf != null && NachKopfBestaetigt(zeilen, j, neuerKopf)) break;
+                    if ((neuerKopf != null && NachKopfBestaetigt(zeilen, j, neuerKopf)) || NachIstKopfzeile(z)) break;
                     if (RxNachTabellenTrenner.IsMatch(z)) continue;
                     foreach (NachSpalte sp in kopf.Spalten)
                     {
@@ -3184,6 +3205,12 @@ namespace AnonTool
                         foreach (string wert in werte)
                         {
                             if (sp.Art == "H") { if (wert.Length > 0 && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "H", wert, null); }
+                            else if (sp.Art == "B")
+                            {
+                                // Benutzernamen enthalten keine Leerzeichen: erstes Wort der Spalte
+                                string u = Regex.Split(wert, "[ \\t]+")[0];
+                                if (Regex.IsMatch(u, "[A-Za-z]") && !RxNachSystemkonto.IsMatch(u)) pruefeWert(j + 1, "B", u, null);
+                            }
                             else if (!NachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
                         }
                     }

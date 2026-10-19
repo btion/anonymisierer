@@ -301,6 +301,11 @@ Alle mehrzeiligen Muster verwenden `(?=\r?$)` am Zeilenende, damit sie sowohl be
 - **Session-IDs, Tokens, Cookies** nach `session`, `token`, `sid`, `cookie` (Base64/Hex ab 16 Zeichen mit mindestens einer Ziffer, keine Windows-SID) werden zu `*****`; die Nachprüfung meldet sie.
 - **Zeitstempel, Datum, Uhrzeit und Firmware-Versionen** (`2026-07-02T18:42:25Z`, `GL.10.13.1020`) sind nie Benutzer, Gerätename oder Seriennummer, weder in der Engine noch in der Nachprüfung. Kopfzeilen von Prozess- und Benutzertabellen (`top`, `ps`, `show users`) liefern keine Benutzernamen.
 
+### Typwörter nach Schlüsselwörtern, Hashes, Benutzerspalten
+- **Typwörter:** Nach `password`, `secret`, `key`, `pre-shared-key`, `psk`, `community`, `auth-pass`, `priv-pass`, `encrypted-password`, `authentication-key`, `message-digest-key` … werden Typwörter übersprungen (einzelne Ziffer, `plaintext`, `cleartext`, `ciphertext`, `cipher`, `irreversible-cipher`, `simple`, `hex`, `ascii`, `ascii-text`, `encrypted`, `md5`, `sha`, `sha256`, `hash`, `ENC`); maskiert wird der eigentliche Wert, auch in Anführungszeichen (`key cleartext *****`, `pre-shared-key ascii-text "*****"`). Typwörter selbst sind kein Fund; Befehlszeilen ohne Wert (`password complexity`, `password minimum-length 8`) bleiben unverändert. Die Nachprüfung meldet Schlüsselwort + Typwort + nicht maskierten Wert.
+- **Hashes** (`$1$`, `$1a$`, `$2a$`, `$5$`, `$6$`, `$7$`, `$8$`, `$9$`, `$y$`, `$c$`) werden überall zu `*****`.
+- **Benutzerspalten** von `top`, `ps aux`, `ps -ef` (UID), `w` und Cisco `show users`: Benutzernamen in den Datenzeilen werden `USER-n`; Systemkonten (`root`, `daemon`, `nobody`, `bin`, `sys`, `www-data`, `messagebus`, `systemd-*` …) bleiben.
+
 ### E. Reihenfolge der Engine (identisch in `anon.ps1` und `anonymisierer.html`)
 0. JSON-Escapes dekodieren, feste Zuordnungen reservieren; Tabellenspalten (`tabellenSpalten`) über Spaltenpositionen der Kopfzeile (Geheimnisse im Spaltenwert werden vorher entfernt)
 1. Geheimnisse entfernen (`*****`)

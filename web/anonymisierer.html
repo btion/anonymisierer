@@ -1015,7 +1015,21 @@
         "VXLAN",
         "Spanning-Tree",
         "MSTP",
-        "RSTP"
+        "RSTP",
+        "daemon",
+        "nobody",
+        "bin",
+        "sys",
+        "www-data",
+        "messagebus",
+        "syslog",
+        "sshd",
+        "ntp",
+        "chrony",
+        "postfix",
+        "polkitd",
+        "avahi",
+        "rpcuser"
       ],
       "versionKontext": [
         "(?i)(?<![A-Za-z0-9_])(?:version|ver|release|build|os10|aos-cx|aos-s|sonic|comware|routeros|firmware|image|software|sw-version|nos|nx-os|ios|fortios|sfos)[ \\t]*[:=]?[ \\t]*v?[0-9]+(?:\\.[0-9]+){1,4}(?:[-._a-zA-Z0-9]+)?",
@@ -1027,7 +1041,8 @@
         "(?<![0-9A-Fa-f:])[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-][0-9]{2}:?[0-9]{2}))?(?![0-9A-Fa-f:])",
         "(?<![A-Za-z0-9_])(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)(?![A-Za-z0-9_])",
         "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)",
-        "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$"
+        "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$",
+        "(?i)^(?:systemd-[a-z0-9-]+|systemd\\+|messageb\\+|_[a-z0-9_-]+)$"
       ]
     },
     "pruefung": {
@@ -1096,6 +1111,12 @@
         "nurWertSchuetzen": true
       },
       {
+        "name": "Schlüsselwort mit Typwörtern und Wert (key cleartext X, pre-shared-key ascii-text X, password irreversible-cipher X, key 0 X)",
+        "hersteller": "Alle",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|secret|key|pre-shared-key|psk|psksecret|community|auth-pass|priv-pass|encrypted-password|authentication-key|message-digest-key[ \\t]+[0-9]{1,5}|key-string|wpa-psk|wpa-passphrase)(?:[ \\t]+(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))+[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!\\*{5})(?!(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))(?!(?:key-string|key-chain|cryptographic-algorithm|accept-lifetime|send-lifetime)(?![A-Za-z0-9_-]))[^ \\t\\r\\n;\"']+)",
+        "ersetzen": "$1*****"
+      },
+      {
         "name": "FortiGate ENC & PSKSecret / Sophos XG / SFOS",
         "hersteller": "FortiGate/Sophos",
         "suche": "(?i)((?<![A-Za-z0-9_])set[ \\t]+(?:password|psksecret|passwd|private-key|key|auth-password-l1|priv-password-l1|secret|radius-secret|shared-secret)[ \\t]+(?:ENC[ \\t]+)?)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
@@ -1122,7 +1143,7 @@
       {
         "name": "Cisco IOS/NX-OS Secret, Password 0/5/7/8/9, WPA-PSK, Key-String",
         "hersteller": "Cisco",
-        "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|\\S+)",
+        "suche": "(?i)((?<![A-Za-z0-9_])(?:enable[ \\t]+(?:secret|password)(?:[ \\t]+[0-9]+)?|password[ \\t]+(?:0|5|7|8|9|encrypted)|secret(?:[ \\t]+(?:0|4|5|7|8|9))?|wpa-psk[ \\t]+(?:ascii|hex)(?:[ \\t]+[0-9]+)?|key-string(?:[ \\t]+[0-9]+)?|pre-shared-key(?:[ \\t]+(?:hex|ascii|ascii-text))?|crypto[ \\t]+isakmp[ \\t]+key|radius-server[ \\t]+key(?:[ \\t]+[0-9]+)?|tacacs-server[ \\t]+key(?:[ \\t]+[0-9]+)?)[ \\t]+)(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:[0-9]|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|encrypted|md5|sha|sha256|sha512|hash|ENC)(?![A-Za-z0-9_-]))\\S+)",
         "ersetzen": "$1*****"
       },
       {
@@ -1207,7 +1228,7 @@
       },
       {
         "name": "RADIUS/TACACS key in server host-Zeile",
-        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
+        "suche": "(?i)(?<=(?<![A-Za-z0-9_-])(?:radius|tacacs)-server[ \\t]+host[ \\t]+[^\\r\\n]*?[ \\t]key(?:[ \\t]+(?:[0-9]|ciphertext|plaintext|cleartext|encrypted|cipher|simple)(?=[ \\t]))?[ \\t]+)()(?!(?:[0-9]|ciphertext|plaintext|cleartext|encrypted|cipher|simple)[ \\t]+[^ \\t\\r\\n])(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|[^ \\t\\r\\n;]+)",
         "ersetzen": "$1*****"
       },
       {
@@ -1222,7 +1243,7 @@
       },
       {
         "name": "Generische Zugangsdaten (Schlüsselwort + Trenner + Wert)",
-        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|ciphertext|cipher|simple|hash|encrypted|level|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
+        "suche": "(?i)((?<![A-Za-z0-9_-])(?:password|passwd|passwort|kennwort|pwd|secret|api[_-]?key|token)(?:[ \\t]*[:=][ \\t]*|[ \\t]+))(\"(?:[^\"\\\\\\r\\n]|\\\\.)*\"|'(?:[^'\\\\\\r\\n]|\\\\.)*'|(?!(?:for|from|is|was|has|of|to|required|expired|changed|incorrect|invalid|accepted|failed|authentication|policy|prompt|plaintext|cleartext|ciphertext|cipher|irreversible-cipher|simple|hex|ascii|ascii-text|md5|sha|sha256|sha512|enc|hash|encrypted|level|complexity|minimum-length|min-length|history|lockout|aging|expiry|recovery|manager|operator|[0-9])(?![A-Za-z0-9_-]))[^ \\t\\r\\n\"',;\\u0002]+(?![^ \\t\\r\\n\"',;\\u0002])(?![ \\t]+(?:\\*\\*\\*\\*\\*|\\u0002)))",
         "ersetzen": "$1*****"
       },
       {
@@ -1232,9 +1253,9 @@
         "ersetzen": "$1*****"
       },
       {
-        "name": "Linux/SONiC/OS10 Crypt-Hashes ($1$, $2a$, $5$, $6$, $y$, $9$)",
+        "name": "Unix-/Geräte-Hashes ($1$, $1a$, $2a$, $5$, $6$, $7$, $8$, $9$, $y$, $c$)",
         "hersteller": "Alle",
-        "suche": "\\$(?:1|2[abxy]|5|6|8|9|y)\\$[a-zA-Z0-9./=$]{10,128}",
+        "suche": "\\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\\$[a-zA-Z0-9./=$+]{6,128}",
         "ersetzen": "*****"
       },
       {
@@ -1547,6 +1568,85 @@
           {
             "name": "Name",
             "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "top (Spalte USER)",
+        "kopf": [
+          "PID",
+          "USER",
+          "PR",
+          "NI",
+          "VIRT",
+          "RES"
+        ],
+        "spalten": [
+          {
+            "name": "USER",
+            "kategorie": "USER"
+          }
+        ]
+      },
+      {
+        "name": "ps aux (Spalte USER)",
+        "kopf": [
+          "USER",
+          "PID",
+          "%CPU",
+          "%MEM",
+          "VSZ",
+          "RSS"
+        ],
+        "spalten": [
+          {
+            "name": "USER",
+            "kategorie": "USER"
+          }
+        ]
+      },
+      {
+        "name": "ps -ef (Spalte UID)",
+        "kopf": [
+          "UID",
+          "PID",
+          "PPID",
+          "STIME"
+        ],
+        "spalten": [
+          {
+            "name": "UID",
+            "kategorie": "USER"
+          }
+        ]
+      },
+      {
+        "name": "w / who (Spalte USER)",
+        "kopf": [
+          "USER",
+          "TTY",
+          "FROM",
+          "LOGIN@"
+        ],
+        "spalten": [
+          {
+            "name": "USER",
+            "kategorie": "USER"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show users (Spalte User)",
+        "kopf": [
+          "Line",
+          "User",
+          "Host(s)",
+          "Idle"
+        ],
+        "spalten": [
+          {
+            "name": "User",
+            "kategorie": "USER"
           }
         ]
       }
@@ -2730,7 +2830,8 @@
     const anker = tokens.filter((tk, i) => i > 0 && RxAnkerFeld.test(tk.t));
     let s = -1;
     let unsicher = false;
-    const kandidaten = col.ankerStart >= 0 ? anker.filter(tk => tk.a >= col.ankerStart - 1) : [];
+    // Ankerfeld nur für die letzte Spalte; mittlere Spalten nach Position bis zum nächsten Statuswert/Zahlenfeld
+    const kandidaten = col.letzte && col.ankerStart >= 0 ? anker.filter(tk => tk.a >= col.ankerStart - 1) : [];
     if (kandidaten.length > 0) {
       s = kandidaten[0].b;
       unsicher = kandidaten.length !== 1;
@@ -3134,6 +3235,11 @@
             if (!cfg.catSeriennummern || !isLearnable("SERIAL", wert, cfg)) continue;
             state.addStat("seriennummern", 1);
             rep = state.getOrCreateToken("SERIAL", wert, "SERIAL");
+          } else if (f.kategorie === "USER") {
+            // Benutzerspalte (top, ps, w, show users); Systemkonten stehen in den Ausnahmen
+            if (!cfg.catBenutzer || !isLearnable("USER", wert, cfg, true)) continue;
+            state.addStat("benutzer", 1);
+            rep = state.getOrCreateToken("USER", wert, "USER");
           } else {
             if (!cfg.catFreitext) continue;
             state.addStat("freitext", 1);
@@ -3704,14 +3810,15 @@
   const RxNachPlatzhalter = /^(?:NET-[0-9]+(?:\.H[0-9]+)?(?:\/[0-9]{1,3})?|IP6?(?:-PRIV|-PUB)?-[0-9]+|(?:MAC|HOST|DOMAIN|USER|SERIAL|TEXT|MAIL|URL|ORT|KONTAKT|BANNER|FIRMA|PERSON|SW-EIGEN|SSHKEY)-[0-9]+)$/;
   const NACH_KATEGORIE = { B: "Nachpruefung-Benutzer", H: "Nachpruefung-Hostname", D: "Nachpruefung-Domaene", S: "Nachpruefung-Seriennummer", G: "Nachpruefung-Geheimnis", T: "Nachpruefung-Beschreibung" };
   // Feldnamen mit Trennzeichen ":" / "=" oder Leerzeichen; Feldnamen, die ein ":" / "=" verlangen
-  const RxNachFeldFrei = /(?<![A-Za-z0-9_.\/-])"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|api[_-]?key|token)"?(?![A-Za-z0-9_-])(?:[ \t]*[:=][ \t]*|[ \t]+)/gi;
+  const RxNachFeldFrei = /(?<![A-Za-z0-9_.\/-])"?(hostname|sysname|switchname|host-name|user[ _-]?name|user|local-user|domain-name|password|passwd|secret|key|community|auth-pass|priv-pass|authentication-key|pre-shared-key|psk|psksecret|encrypted-password|message-digest-key|key-string|wpa-psk|wpa-passphrase|api[_-]?key|token)"?(?![A-Za-z0-9_-])(?:[ \t]*[:=][ \t]*|[ \t]+)/gi;
   const RxNachFeldDoppelpunkt = /(?<![A-Za-z0-9_.\/-])"?(System[ \t-]+Name|Device[ \t]+ID|Computer(?:[ _]?Name)?|Workstation[ _]?Name|[A-Za-z]*UserName|[A-Za-z]*DomainName|(?:Chassis[ \t]+|System[ \t]+|Board[ \t]+)?Serial(?:[ \t_-]*(?:Number|Nbr|No|Num)\.?)?|SN|Service[ \t]+Tag|Asset[ \t]+Tag|Authorization)"?(?![A-Za-z0-9_-])[ \t]*[:=][ \t]*/gi;
   // Beschreibungen am Zeilenanfang: "Description: X", "Port Description : X", "Neighbor Port-Desc : X", "description X";
   // in JSON "description": "X"; "port-name X" (Ruckus ICX), "display-string X" (Extreme EXOS)
   const RxNachBeschreibung = /^[ \t]*(?:(?:Neighbor[ \t]+)?(?:Port[ \t-]+Desc(?:ription)?|Description|PORT-DESC)[ \t]*[:=][ \t]*|(?:description|alias)[ \t]+)(.*)$|"(?:description|alias)"[ \t]*:[ \t]*("(?:[^"\\\r\n]|\\.)*")|(?<![A-Za-z0-9_-])(?:port-name|display-string)[ \t]+(.*)$/i;
   // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
   const NACH_TABELLEN_SPALTEN = { "Description": "T", "DESCRIPTION": "T", "Desc": "T", "DESC": "T", "PORT-DESC": "T", "Port-Desc": "T", "Port Description": "T",
-    "Name": "T", "NAME": "T", "Alias": "T", "ALIAS": "T", "Port-Name": "T", "PORT-NAME": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H", "Device ID": "H" };
+    "Name": "T", "NAME": "T", "Alias": "T", "ALIAS": "T", "Port-Name": "T", "PORT-NAME": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H", "Device ID": "H",
+    "USER": "B", "User": "B", "UID": "B" };
   // Hardwarebezeichnungen (show module: "8400X Mgmt Module", "JL375A") sind kein Freitext
   const RxNachModellnummer = /^(?:[0-9]+[a-z]{0,4}|[a-z]{1,3}[0-9][a-z0-9-]*)$/;
   const NACH_TECHNIKWOERTER = new Set(["module", "mgmt", "management", "fabric", "fan", "fans", "tray", "power", "supply", "psu", "line", "card", "linecard",
@@ -3721,6 +3828,10 @@
   // SSH Public Keys und Session-IDs/Tokens/Cookies (eigene Muster der Nachprüfung)
   const RxNachSshKey = /(?<![A-Za-z0-9_-])(?:ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp[0-9]{3}|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)[ \t]+AAAA[A-Za-z0-9+\/]{16,}={0,3}(?:[ \t]+[^\r\n"]*[^\s"])?/g;
   const RxNachSitzung = /(?<![A-Za-z0-9_-])(?:session|token|sid|cookie)(?:[ \t]*[:=][ \t]*|[ \t]+)"?((?!S-1-)(?=[A-Za-z0-9+\/_-]*[0-9])[A-Za-z0-9+\/_-]{16,}={0,2})/gi;
+  // Unix- und Geräte-Hashes überall ($1$, $1a$, $5$, $6$, $7$, $9$, $y$, $c$ ...)
+  const RxNachHash = /\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[A-Za-z0-9.\/=$+]{6,}/g;
+  // Systemkonten in Benutzerspalten (top, ps, w, show users)
+  const RxNachSystemkonto = /^(?:root|daemon|nobody|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|syslog|messagebus|messageb\+|sshd|ntp|chrony|postfix|dbus|polkitd|avahi|rpc|rpcuser|admin|systemd\+|systemd-[a-z0-9-]+|_[a-z0-9_-]+)$/i;
   // Zeitstempel, Datum, Uhrzeit und Firmware-Versionen sind kein Benutzer, Gerätename oder Seriennummer
   const RxNachZeitOderVersion = /^(?:[0-9]{4}[-\/.][0-9]{1,2}[-\/.][0-9]{1,2}(?:[T ][0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?|[0-9]{1,2}[.\/-][0-9]{1,2}[.\/-][0-9]{2,4}|[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?|(?:[A-Z]{1,4}\.)?[0-9]+(?:\.[0-9]+){2,4}[A-Za-z0-9-]*)$/;
   // Kopfzeile einer Prozess- oder Benutzertabelle (top, ps, show users): mindestens vier Wörter, alle groß beginnend, ohne ":"
@@ -3790,7 +3901,8 @@
   function nachNurTechnik(wert) {
     return String(wert).split(/[ \t,;]+/).every(t => { const r = t.toLowerCase(); return !/[a-z]/.test(r) || RxNachModellnummer.test(r) || NACH_TECHNIKWOERTER.has(r) || NACH_STATUSWERTE.has(r); });
   }
-  const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
+  const NACH_TYPWOERTER = new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "cleartext", "encrypted", "unencrypted", "cipher",
+    "irreversible-cipher", "simple", "hex", "ascii", "ascii-text", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
   const NACH_STRUKTURWOERTER = new Set(["changed", "expired", "incorrect", "succeeded", "successful", "failed", "denied", "rejected", "accepted", "invalid", "updated",
     "required", "timeout", "validation", "verification", "rotation", "refresh", "mismatch", "error", "reset", "chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
   const RxNachSid = /(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])/g;
@@ -3869,10 +3981,15 @@
         if (!w) return;
         const low = w.wert.toLowerCase();
         if (!w.zitiert && KEIN_FELDWERT.has(low)) return;
+        // "key authentication cipher X" (Comware): authentication/accounting nach key überspringen
+        if (!w.zitiert && art === "G" && /^key$/i.test(name) && (low === "authentication" || low === "accounting")) {
+          rest = rest.slice(w.laenge).replace(/^[ \t]+/, "");
+          continue;
+        }
         if (!w.zitiert && art === "G" && NACH_STRUKTURWOERTER.has(low)) return;
         if (!w.zitiert && art === "B" && NACH_STRUKTURWOERTER.has(low)) return;
         // Schlüsselnummer ("key 1", "authentication-key 1 md5 ...") ist kein Wert
-        const istSchluesselNr = art === "G" && /^(?:key|authentication-key)$/i.test(name) && /^[0-9]{1,5}$/.test(w.wert) && !NACH_TYPWOERTER.has(low);
+        const istSchluesselNr = art === "G" && /^(?:key|authentication-key|message-digest-key)$/i.test(name) && /^[0-9]{1,5}$/.test(w.wert) && !NACH_TYPWOERTER.has(low);
         if (!w.zitiert && (istSchluesselNr || (NACH_TYPWOERTER.has(low) && (art === "G" || art === "B")))) {
           rest = rest.slice(w.laenge).replace(/^[ \t]+/, "");
           continue;
@@ -3911,6 +4028,7 @@
       const pu = RxNachPromptUserHost.exec(zeile);
       if (pu) pruefeWert(ln, "H", pu[1]);
       for (const m of zeile.matchAll(RxNachSshKey)) pruefeWert(ln, "G", m[0]);
+      for (const m of zeile.matchAll(RxNachHash)) pruefeWert(ln, "G", m[0]);
       for (const m of zeile.matchAll(RxNachSitzung)) pruefeWert(ln, "G", m[1]);
       const bm = nachTabellenKopf(zeile) ? null : RxNachBeschreibung.exec(zeile);
       if (bm) {
@@ -3959,7 +4077,7 @@
         const z = zeilen[j];
         if (z.trim() === "" || RxNachBefehl.test(z)) break;
         const neuerKopf = nachTabellenKopf(z);
-        if (neuerKopf && nachKopfBestaetigt(zeilen, j, neuerKopf)) break;
+        if ((neuerKopf && nachKopfBestaetigt(zeilen, j, neuerKopf)) || nachIstKopfzeile(z)) break;
         if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z)) continue;
         for (const sp of kopf.spalten) {
           const werte = [];
@@ -3990,7 +4108,13 @@
             }
           }
           for (const wert of werte) {
-            if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else if (!nachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
+            if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); }
+            else if (sp.art === "B") {
+              // Benutzernamen enthalten keine Leerzeichen: erstes Wort der Spalte
+              const u = wert.split(/[ \t]+/)[0];
+              if (/[A-Za-z]/.test(u) && !RxNachSystemkonto.test(u)) pruefeWert(j + 1, "B", u);
+            }
+            else if (!nachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
           }
         }
       }
@@ -4209,7 +4333,7 @@
     const cleanText = ipCleanText.replace(/\u0002/g, " ");
 
     const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
-    const rxCryptHash = /\$(?:1|2[abxy]|5|6|8|9|y)\$[a-zA-Z0-9./=$]{10,128}/g;
+    const rxCryptHash = /\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[a-zA-Z0-9./=$+]{6,128}/g;
 
     // 1. Prüfe auf verbliebene IPv4
     for (const m of ipCleanText.matchAll(RxIpv4)) {

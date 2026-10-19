@@ -662,6 +662,115 @@
           "art": "geheimnis"
         }
       ]
+    },
+    {
+      "id": "K32",
+      "quelle": "Fix Geheimnis-Typwörter / Wert nach Typwort (cleartext, ascii-text, Ziffer, irreversible-cipher), Unix-Hashes, Hersteller-Varianten",
+      "eingabe": "tacacs-server host 192.0.2.6 key cleartext tacgeheim\npre-shared-key ascii-text firmenvpn\ncrypto isakmp key 0 isakmpgeheim address 192.0.2.4\n password irreversible-cipher $1a$xyz123$Abcdefghijk\nset system root-authentication encrypted-password \"$6$abc$defghijklmnop\"\nset security ike policy p1 pre-shared-key ascii-text \"junipsk\"\nset psksecret ENC Zm9ydGlwc2tnZWhlaW0=\nset passwd ENC SH2abcdefgh1234567890\nusername jdoe7 secret 9 $9$abcdEFGH12345678\nradius-server host 192.0.2.7 key plaintext arubaradius9\n key authentication cipher $c$3$AbCdEfGh12345==\n authentication-key \"$9$Hn.Q3/CuOREdbs4ZDHqm\"\n ip ospf message-digest-key 1 md5 ospfgeheim7\n wpa-psk ascii 0 wlangeheim5\n",
+      "ziele": [
+        {
+          "wert": "tacgeheim",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "firmenvpn",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "isakmpgeheim",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "$1a$xyz123$Abcdefghijk",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "$6$abc$defghijklmnop",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "junipsk",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "Zm9ydGlwc2tnZWhlaW0=",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "SH2abcdefgh1234567890",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "$9$abcdEFGH12345678",
+          "kategorie": "Passwort",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "arubaradius9",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "$c$3$AbCdEfGh12345==",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "$9$Hn.Q3/CuOREdbs4ZDHqm",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "ospfgeheim7",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        },
+        {
+          "wert": "wlangeheim5",
+          "kategorie": "Schlüssel",
+          "art": "geheimnis"
+        }
+      ]
+    },
+    {
+      "id": "K33",
+      "quelle": "Fix USER-Spalte / top, ps aux, ps -ef, show users, w",
+      "eingabe": "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n 1234 root      20   0  123456  12345   1234 S   0.0   0.1   0:00.12 hpe-restd\n 2345 jdoe7     20   0   23456   2345    234 S   0.0   0.1   0:00.05 vim\n  987 messageb+  20   0    9876    987    98 S   0.0   0.0   0:00.01 dbus-daemon\n\nUSER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\nkmeier8     4321  0.0  0.1  12345  1234 pts/0    Ss   10:00   0:00 -bash\nwww-data    5432  0.0  0.2  23456  2345 ?        S    10:00   0:00 nginx: worker process\n\n    Line       User       Host(s)              Idle       Location\n*  2 vty 0     bwagner3   idle                 00:00:00 192.0.2.5\n\nUSER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT\nlschulz4 pts/1    192.0.2.9        10:00    1:00   0.01s  0.01s -bash\n\nUID          PID    PPID  C STIME TTY          TIME CMD\nhkoch5      6543       1  0 10:00 ?        00:00:00 /usr/bin/tmux\nsystemd+     321       1  0 10:00 ?        00:00:00 /lib/systemd/systemd-resolved\n",
+      "ziele": [
+        {
+          "wert": "jdoe7",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "kmeier8",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "bwagner3",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "lschulz4",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        },
+        {
+          "wert": "hkoch5",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
     }
   ]
 }
