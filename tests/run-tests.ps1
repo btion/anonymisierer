@@ -1398,6 +1398,67 @@ if ($ipKernDa) {
     Assert-Equal ([AnonTool.AnonEngine]::ProcessText("ip address 172.22.0.230 255.255.255.0`n", $altCfg, (New-Object AnonTool.AnonState))) "ip address NET-1.H1 255.255.255.0`n" "IP-Modell: alter Modus NET-n.Hm weiter wählbar"
 }
 
+Write-Host "=== IP-Modell: Schlüsselverwaltung (anon.ps1) ===" -ForegroundColor Cyan
+$ipDir = Join-Path $tempRunRoot "ipmodell"
+[void](New-Item -ItemType Directory -Path $ipDir -Force)
+$ipEin = Join-Path $ipDir "eingabe.txt"
+[System.IO.File]::WriteAllText($ipEin, "ntp server 192.0.2.10`nip address 172.22.0.230 255.255.255.0`nipv6 address 2001:db8:0:1::10/64`n", (New-Object System.Text.UTF8Encoding($false)))
+$ipKey = Join-Path (Join-Path $tempRunRoot "ipschluessel") "fall-1.anonkey"
+$ipLauf1 = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus1") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-1.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel $ipKey 6>&1 2>&1 | Out-String
+$ipCode1 = $LASTEXITCODE
+$ipAus1 = if (Test-Path -LiteralPath (Join-Path $ipDir "aus1/anonym/eingabe.txt")) { [System.IO.File]::ReadAllText((Join-Path $ipDir "aus1/anonym/eingabe.txt")) } else { "" }
+Assert-True ($ipCode1 -eq 0 -and (Test-Path -LiteralPath $ipKey)) "IP-Modell: Lauf im Schlüsselmodus legt den IP-Schlüssel an ($ipCode1)"
+Assert-True ($ipLauf1 -match "Neuer IP-Schl" -and $ipLauf1 -match "anders abgebildet") "IP-Modell: Hinweis 'neuer Schlüssel = andere Abbildung als frühere Läufe'"
+$ipKeyObj = if (Test-Path -LiteralPath $ipKey) { ConvertFrom-Json ([System.IO.File]::ReadAllText($ipKey)) } else { $null }
+Assert-True ($null -ne $ipKeyObj -and $ipKeyObj.format -eq "ANON-AES256-2") "IP-Modell: IP-Schlüssel mit Passwort geschützt (ANON-AES256-2)"
+Assert-True ($ipAus1.Length -gt 0 -and -not $ipAus1.Contains("192.0.2.10") -and -not $ipAus1.Contains("172.22.0.230") -and $ipAus1.Contains(" 255.255.255.0") -and -not $ipAus1.Contains("NET-")) "IP-Modell: Ausgabe verfremdet, ohne Platzhalter, Maske bleibt"
+$ipBericht1 = if (Test-Path -LiteralPath (Join-Path $ipDir "aus1/bericht.json")) { ConvertFrom-Json ([System.IO.File]::ReadAllText((Join-Path $ipDir "aus1/bericht.json"))) } else { $null }
+Assert-True ($null -ne $ipBericht1 -and $ipBericht1.ipModus -eq "schluessel" -and $ipBericht1.ipHinweis -eq "IP-Adressen sind schlüsselbasiert verfremdet, Netze rechnerisch korrekt." -and $ipBericht1.ipSchluesselKennung -match '^[0-9a-f]{16}$') "IP-Modell: Bericht mit Modus, Hinweis und Schlüsselkennung"
+$ipLauf2 = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus2") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-2.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel $ipKey 6>&1 2>&1 | Out-String
+$ipAus2 = if (Test-Path -LiteralPath (Join-Path $ipDir "aus2/anonym/eingabe.txt")) { [System.IO.File]::ReadAllText((Join-Path $ipDir "aus2/anonym/eingabe.txt")) } else { "x" }
+Assert-True ($ipAus2 -ceq $ipAus1 -and $ipLauf2 -notmatch "Neuer IP-Schl") "IP-Modell: zweiter Lauf mit demselben Schlüssel bildet gleich ab (neue Tabelle, kein Hinweis)"
+$ipKey3 = Join-Path (Join-Path $tempRunRoot "ipschluessel") "fall-2.anonkey"
+$null = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus3") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-3.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel $ipKey3 6>&1 2>&1
+$ipAus3 = if (Test-Path -LiteralPath (Join-Path $ipDir "aus3/anonym/eingabe.txt")) { [System.IO.File]::ReadAllText((Join-Path $ipDir "aus3/anonym/eingabe.txt")) } else { $ipAus1 }
+Assert-True ($ipAus3 -cne $ipAus1) "IP-Modell: anderer Schlüssel (pro Fall) bildet anders ab"
+# Prüfmodus: mit der Zuordnungstabelle des Laufs keine Restfunde, ohne Tabelle gelten die verfremdeten IPs als Restfund
+$null = & $anonScript -Pruefen -Eingabe (Join-Path $ipDir "aus1/anonym") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-1.json") -PasswortSecure $secPass -IpModus schluessel 6>&1 2>&1
+Assert-Equal $LASTEXITCODE 0 "IP-Modell: -Pruefen mit Zuordnungstabelle meldet keine verfremdeten IPs"
+$null = & $anonScript -Pruefen -Eingabe (Join-Path $ipDir "aus1/anonym") -Regeln $rulesPath -IpModus schluessel 6>&1 2>&1
+Assert-Equal $LASTEXITCODE 2 "IP-Modell: -Pruefen ohne Zuordnungstabelle meldet die IPs"
+# Arbeitsbereich-Schlüssel ohne -IpSchluessel: liegt unter <Basis>/schluessel/arbeitsbereich.anonkey
+$null = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus4") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-4.json") -PasswortSecure $secPass -IpModus schluessel 6>&1 2>&1
+Assert-True (Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA "Anon") "schluessel") "arbeitsbereich.anonkey")) "IP-Modell: Arbeitsbereich-Schlüssel wird angelegt"
+# Trockenlauf ohne Schlüsseldatei: temporärer Schlüssel, nichts gespeichert
+$ipKeyProbe = Join-Path (Join-Path $tempRunRoot "ipschluessel") "probe.anonkey"
+$ipProbe = & $anonScript -Eingabe $ipEin -Regeln $rulesPath -Probe -IpModus schluessel -IpSchluessel $ipKeyProbe 6>&1 2>&1 | Out-String
+Assert-True ($LASTEXITCODE -eq 0 -and -not (Test-Path -LiteralPath $ipKeyProbe) -and $ipProbe -match "tempor") "IP-Modell: Trockenlauf nutzt einen temporären Schlüssel und speichert nichts"
+# Sicherheit und Bedienfehler
+Assert-Throws { & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus5") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-5.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel (Join-Path $ipDir "aus5/k.anonkey") > $null 2>&1 } "IP-Modell: IP-Schlüssel im Ausgabeordner wird abgelehnt"
+Assert-Throws { & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus6") -Regeln $rulesPath -IpModus schluessel -Netzerhaltend > $null 2>&1 } "IP-Modell: -IpModus schluessel zusammen mit -Netzerhaltend wird abgelehnt"
+Assert-Throws { & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus7") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-7.json") -PasswortSecure (ConvertTo-SecureString "AnderesPasswort99!" -AsPlainText -Force) -IpModus schluessel -IpSchluessel $ipKey > $null 2>&1 } "IP-Modell: falsches Passwort für den IP-Schlüssel wird abgelehnt"
+$istWin = ($env:OS -eq "Windows_NT")
+if (-not $istWin) {
+    Assert-Throws { & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus8") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-8.json") -Unverschluesselt -IpModus schluessel -IpSchluessel (Join-Path (Join-Path $tempRunRoot "ipschluessel") "ohne.anonkey") > $null 2>&1 } "IP-Modell: ohne DPAPI und ohne Passwort wird kein IP-Schlüssel angelegt"
+} else {
+    $null = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus8") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-8.json") -IpModus schluessel -IpSchluessel (Join-Path (Join-Path $tempRunRoot "ipschluessel") "dpapi.anonkey") 6>&1 2>&1
+    Assert-True ((ConvertFrom-Json ([System.IO.File]::ReadAllText((Join-Path (Join-Path $tempRunRoot "ipschluessel") "dpapi.anonkey")))).format -eq "ANON-DPAPI-1") "IP-Modell: unter Windows wird der IP-Schlüssel mit DPAPI geschützt"
+}
+# Gegenprobe der Formate mit dem Browser-Kern (Node), falls vorhanden
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if ($null -ne $nodeCmd) {
+    $hilfe = Join-Path $testDir "ip-schluessel-hilfe.js"
+    $kNode = (& node $hilfe lesen $ipKey "TestPasswort123!" | Out-String).Trim()
+    Assert-Equal $kNode ([string]$ipBericht1.ipSchluesselKennung) "IP-Modell: Browser-Kern liest den von anon.ps1 erzeugten IP-Schlüssel (gleiche Kennung)"
+    $ipKeyJs = Join-Path (Join-Path $tempRunRoot "ipschluessel") "browser.anonkey"
+    $kJs = (& node $hilfe erstellen $ipKeyJs "TestPasswort123!" | Out-String).Trim()
+    $null = & $anonScript -Eingabe $ipEin -Ausgabe (Join-Path $ipDir "aus9") -Regeln $rulesPath -TabellenPfad (Join-Path $tabDir "ip-9.json") -PasswortSecure $secPass -IpModus schluessel -IpSchluessel $ipKeyJs 6>&1 2>&1
+    $ipBericht9 = ConvertFrom-Json ([System.IO.File]::ReadAllText((Join-Path $ipDir "aus9/bericht.json")))
+    Assert-Equal ([string]$ipBericht9.ipSchluesselKennung) $kJs "IP-Modell: anon.ps1 liest den im Browser erzeugten IP-Schlüssel (gleiche Kennung)"
+} else {
+    Write-Host "  [NICHT AUSGEFÜHRT] Gegenprobe .anonkey mit Node: node nicht gefunden" -ForegroundColor Yellow
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

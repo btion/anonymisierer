@@ -2147,6 +2147,38 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 19d. IP-Modell: Schlüsselverwaltung (.anonkey, ANON-AES256-2) ---
+  console.log("--- 19d. IP-Modell: Schlüsselverwaltung ---");
+  {
+    const da = ["ipSchluesselErzeugen", "ipSchluesselKennung", "ipSchluesselDateiErstellen", "ipSchluesselDateiLesen"].every(f => typeof core[f] === "function");
+    assert(da && typeof core.IP_HINWEIS_VERFREMDET === "string" && typeof core.IP_SCHLUESSEL_HINWEIS_NEU === "string", "IP-Modell: Schlüsselverwaltung exportiert (Erzeugen, Kennung, .anonkey schreiben/lesen, Hinweise)");
+    assert(htmlContent.includes("// >>> core/ip/schluessel.js"), "IP-Modell: anonymisierer.html bettet core/ip/schluessel.js ein");
+    const kernText = fs.readFileSync(path.join(ROOT, "core", "ip", "schluessel.js"), "utf8") + fs.readFileSync(path.join(ROOT, "core", "ip", "cryptopan.js"), "utf8");
+    assert(!/localStorage|sessionStorage|indexedDB/.test(kernText), "IP-Modell: Schlüssel nie im Browser-Speicher (kein localStorage/sessionStorage/IndexedDB im IP-Kern)");
+    if (da) {
+      const k1 = core.ipSchluesselErzeugen();
+      const k2 = core.ipSchluesselErzeugen();
+      assert(k1.length === 32 && !Buffer.from(k1).equals(Buffer.from(k2)), "IP-Modell: neuer Schlüssel hat 32 Byte und ist zufällig");
+      const fest = Uint8Array.from(Array.from({ length: 32 }, (_, i) => i));
+      const sollKennung = crypto.createHash("sha256").update(Buffer.concat([Buffer.from("ANON-IP-KENNUNG|"), Buffer.from(fest)])).digest("hex").slice(0, 16);
+      assert(await core.ipSchluesselKennung(fest) === sollKennung, `IP-Modell: Kennung = SHA-256("ANON-IP-KENNUNG|" + Schlüssel), 8 Byte (${sollKennung})`);
+      const pw = "Testpasswort-IP-1";
+      const datei = await core.ipSchluesselDateiErstellen(k1, pw, 2000);
+      const dObj = JSON.parse(datei);
+      assert(dObj.format === "ANON-AES256-2" && !datei.includes(Buffer.from(k1).toString("base64")), "IP-Modell: .anonkey im Format ANON-AES256-2, Schlüssel nicht im Klartext");
+      const gelesen = await core.ipSchluesselDateiLesen(datei, pw);
+      assert(Buffer.from(gelesen.schluessel).equals(Buffer.from(k1)) && gelesen.kennung === await core.ipSchluesselKennung(k1), "IP-Modell: .anonkey wird mit Passwort wieder gelesen");
+      await assertRejects(() => core.ipSchluesselDateiLesen(datei, "falsches-Passwort-9"), "IP-Modell: falsches Passwort wird abgelehnt");
+      await assertRejects(() => core.ipSchluesselDateiLesen(JSON.stringify({ format: "ANON-DPAPI-1", daten: "AA==" }), pw), "IP-Modell: DPAPI-Datei wird im Browser abgelehnt");
+      await assertRejects(() => core.ipSchluesselDateiLesen(JSON.stringify({ typ: "ANON-IP-SCHLUESSEL-1", schluessel: Buffer.from(k1).toString("base64") }), pw), "IP-Modell: unverschlüsselte Schlüsseldatei wird abgelehnt");
+      await assertRejects(async () => core.ipSchluesselDateiLesen(await core.encryptTableAes256V2(JSON.stringify({ version: "1.0", vorwaerts: {}, rueckwaerts: {} }), pw, 2000), pw), "IP-Modell: Zuordnungstabelle ist keine IP-Schlüsseldatei");
+      // Gelesener Schlüssel ergibt dieselbe Abbildung wie der ursprüngliche
+      const c1 = core.buildEngineConfig(diskRules, { ipModus: "schluessel", ipSchluessel: k1 });
+      const c2 = core.buildEngineConfig(diskRules, { ipModus: "schluessel", ipSchluessel: gelesen.schluessel });
+      assert(core.processText("ntp server 192.0.2.10\n", c1, new core.AnonState()) === core.processText("ntp server 192.0.2.10\n", c2, new core.AnonState()), "IP-Modell: geladener Schlüssel bildet gleich ab");
+    }
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

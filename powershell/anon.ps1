@@ -51,6 +51,7 @@
 
 .PARAMETER Pruefen
     Führt nur den Prüfmodus auf den angegebenen Dateien/Ordnern aus und gibt "KEINE_RESTFUNDE" (Keine Restfunde nach aktivem Regelwerk) bei 0 Treffern zurück.
+    Mit -TabellenPfad gelten die im Schlüsselmodus verfremdeten IP-Adressen dieser Tabelle nicht als Restfund.
 
 .PARAMETER Probe
     Trockenlauf: Zeigt nur, was ersetzt würde (Anzahl je Kategorie), schreibt keine anonymisierten Dateien.
@@ -73,6 +74,17 @@
 
 .PARAMETER Kategorien
     Kommagetrennte Liste aktiver Kategorien (z.B. "ip,mac,hostnamen,geheimnisseEntfernen").
+
+.PARAMETER IpModus
+    "schluessel": IP-Adressen schlüsselbasiert und präfixerhaltend verfremden (Crypto-PAn, Adressklassen bleiben erhalten).
+    "platzhalter": alter Modus mit Platzhaltern (NET-n.Hm bzw. IP-PRIV-n). Ohne Angabe gilt 'ipModus' aus anon-regeln.json;
+    -Netzerhaltend und -NichtNetzerhaltend wählen den alten Modus.
+
+.PARAMETER IpSchluessel
+    Pfad zur IP-Schlüsseldatei (.anonkey) für diesen Fall. Ohne Angabe gilt der Arbeitsbereich-Schlüssel
+    %LOCALAPPDATA%\Anon\schluessel\arbeitsbereich.anonkey. Fehlt die Datei, wird ein neuer Schlüssel erzeugt und mit
+    DPAPI (Windows) oder mit dem Passwort aus -MitPasswort geschützt. Ein neuer Schlüssel bildet IP-Adressen anders ab als frühere Läufe.
+    Die Datei darf nicht im Ausgabeordner oder in einer Eingabe liegen.
 #>
 [CmdletBinding()]
 param(
@@ -126,7 +138,14 @@ param(
     [switch]$NichtNetzerhaltend,
 
     [Parameter(Mandatory = $false)]
-    [string[]]$Kategorien
+    [string[]]$Kategorien,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("schluessel", "platzhalter")]
+    [string]$IpModus,
+
+    [Parameter(Mandatory = $false)]
+    [string]$IpSchluessel
 )
 
 Set-StrictMode -Version Latest
@@ -3698,6 +3717,8 @@ function Load-EngineConfig {
         if ($null -ne $vMask) { $cfg.SubnetzmaskenBehalten = [bool]$vMask }
         $vMac  = Get-JsonProp $opt "macNormalisieren"
         if ($null -ne $vMac)  { $cfg.MacNormalisieren = [bool]$vMac }
+        $vIpModus = Get-JsonProp $opt "ipModus"
+        if ($null -ne $vIpModus) { $cfg.IpModus = if ([string]$vIpModus -eq "schluessel") { "schluessel" } else { "platzhalter" } }
 
         $k = Get-JsonProp $opt "kategorien"
         if ($null -ne $k) {
@@ -4423,6 +4444,108 @@ function Export-AnonState {
 }
 
 # ============================================================================
+# IP-Schlüssel (Schlüsselmodus): .anonkey im Format ANON-DPAPI-1 oder ANON-AES256-2
+# Inhalt: { typ = ANON-IP-SCHLUESSEL-1, schluessel (Base64, 32 Byte), kennung, erstellt } wie core/ip/schluessel.js
+# ============================================================================
+$script:IP_HINWEIS_VERFREMDET = "IP-Adressen sind schlüsselbasiert verfremdet, Netze rechnerisch korrekt."
+$script:IP_SCHLUESSEL_HINWEIS_NEU = "Neuer IP-Schlüssel: IP-Adressen werden anders abgebildet als in früheren Läufen."
+
+function Get-IpSchluesselKennung {
+    param([byte[]]$Schluessel)
+    $kopf = [System.Text.Encoding]::UTF8.GetBytes("ANON-IP-KENNUNG|")
+    $daten = New-Object byte[] ($kopf.Length + $Schluessel.Length)
+    [System.Buffer]::BlockCopy($kopf, 0, $daten, 0, $kopf.Length)
+    [System.Buffer]::BlockCopy($Schluessel, 0, $daten, $kopf.Length, $Schluessel.Length)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $h = $sha.ComputeHash($daten)
+    $sha.Dispose()
+    [AnonTool.AnonCrypto]::Zero($daten)
+    return (($h[0..7] | ForEach-Object { $_.ToString("x2") }) -join "")
+}
+
+function Get-IpSchluesselPfad {
+    if (-not [string]::IsNullOrEmpty($IpSchluessel)) { return $IpSchluessel }
+    return (Join-Path (Join-Path (Get-AnonBaseDir) "schluessel") "arbeitsbereich.anonkey")
+}
+
+function Test-DpapiVerfuegbar {
+    $isWindowsOs = ($env:OS -eq "Windows_NT") -or ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT)
+    return ($isWindowsOs -and ($null -ne ("System.Security.Cryptography.ProtectedData" -as [type])))
+}
+
+# Lädt den IP-Schlüssel; fehlt die Datei, wird ein neuer Schlüssel erzeugt (Trockenlauf: nur temporär, nichts gespeichert)
+function Get-IpSchluessel {
+    param([string]$Pfad, [SecureString]$PasswordSecure, [switch]$NurTemporaer)
+    if (-not (Test-Path -LiteralPath $Pfad)) {
+        $neu = New-Object byte[] 32
+        $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+        $rng.GetBytes($neu)
+        $rng.Dispose()
+        $kennung = Get-IpSchluesselKennung -Schluessel $neu
+        if ($NurTemporaer) {
+            return [pscustomobject]@{ Bytes = $neu; Kennung = $kennung; Neu = $true; Temporaer = $true }
+        }
+        $inhalt = [ordered]@{
+            typ        = "ANON-IP-SCHLUESSEL-1"
+            schluessel = [Convert]::ToBase64String($neu)
+            kennung    = $kennung
+            erstellt   = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK")
+        } | ConvertTo-Json -Compress
+        if ($null -ne $PasswordSecure) {
+            $datei = Protect-TableContent -PlainJson $inhalt -PasswordSecure $PasswordSecure
+        } elseif (Test-DpapiVerfuegbar) {
+            $datei = Protect-TableContent -PlainJson $inhalt -UseDpapi
+        } else {
+            throw "Für einen neuen IP-Schlüssel wird ein Schutz benötigt: unter Windows DPAPI, sonst -MitPasswort. Der Schlüssel wird nie unverschlüsselt gespeichert."
+        }
+        $inhalt = $null
+        $dir = Split-Path -Parent ([System.IO.Path]::GetFullPath($Pfad))
+        if (-not (Test-Path -LiteralPath $dir)) {
+            [void](New-Item -ItemType Directory -Path $dir -Force)
+            Set-RestrictedUserAcl -TargetPath $dir
+        }
+        [System.IO.File]::WriteAllText($Pfad, $datei, (New-Object System.Text.UTF8Encoding($false)))
+        Set-RestrictedUserAcl -TargetPath $Pfad
+        return [pscustomobject]@{ Bytes = $neu; Kennung = $kennung; Neu = $true; Temporaer = $false }
+    }
+    $roh = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Pfad).Path, [System.Text.Encoding]::UTF8)
+    $huelle = $null
+    try { $huelle = ConvertFrom-Json -InputObject $roh } catch { $huelle = $null }
+    $fmt = if ($null -ne $huelle -and -not ($huelle -is [System.Array])) { [string](Get-JsonProp $huelle "format") } else { "" }
+    if ($fmt -ne "ANON-DPAPI-1" -and $fmt -ne "ANON-AES256-2") {
+        throw "Die IP-Schlüsseldatei muss mit DPAPI (ANON-DPAPI-1) oder Passwort (ANON-AES256-2) verschlüsselt sein."
+    }
+    $pw = $PasswordSecure
+    if ($fmt -eq "ANON-AES256-2" -and $null -eq $pw) {
+        $pw = Read-Host -Prompt "Passwort des IP-Schlüssels eingeben" -AsSecureString
+    }
+    # Unprotect-TableContent merkt sich Schutzart und Passwort für die Zuordnungstabelle; hier unverändert lassen
+    $merkSchutz = $script:LastLoadedProtection
+    $merkPass = $script:LastLoadedPasswordSecure
+    try {
+        $klar = Unprotect-TableContent -RawFileContent $roh -PasswordSecure $pw
+    } catch {
+        throw ("IP-Schlüsseldatei nicht lesbar: " + ($_.Exception.Message -replace 'Zuordnungstabelle', 'Datei'))
+    } finally {
+        $script:LastLoadedProtection = $merkSchutz
+        $script:LastLoadedPasswordSecure = $merkPass
+    }
+    $obj = $null
+    try { $obj = ConvertFrom-Json -InputObject $klar } catch { $obj = $null }
+    if ($null -eq $obj -or [string](Get-JsonProp $obj "typ") -ne "ANON-IP-SCHLUESSEL-1") {
+        throw "Die Datei enthält keinen IP-Schlüssel."
+    }
+    $bytes = [Convert]::FromBase64String([string](Get-JsonProp $obj "schluessel"))
+    if ($bytes.Length -ne 32) { throw "Der IP-Schlüssel in der Datei ist nicht 32 Byte lang." }
+    $kennung = Get-IpSchluesselKennung -Schluessel $bytes
+    $gespeichert = [string](Get-JsonProp $obj "kennung")
+    if (-not [string]::IsNullOrEmpty($gespeichert) -and $gespeichert -ne $kennung) {
+        throw "Die Kennung des IP-Schlüssels passt nicht zum Schlüssel (Datei beschädigt)."
+    }
+    return [pscustomobject]@{ Bytes = $bytes; Kennung = $kennung; Neu = $false; Temporaer = $false }
+}
+
+# ============================================================================
 # Hauptablauf
 # ============================================================================
 
@@ -4444,6 +4567,13 @@ if ($Netzerhaltend) { $netzOverride = $true }
 if ($NichtNetzerhaltend) { $netzOverride = $false }
 
 $cfg = Load-EngineConfig -RegelDatei $Regeln -LokaleRegelDatei $LokaleRegeln -OverrideNetzerhaltend $netzOverride -AktivKategorien $Kategorien
+
+# IP-Modus: -IpModus, sonst wählen -Netzerhaltend/-NichtNetzerhaltend den alten Modus, sonst 'ipModus' der Regeldatei
+if ($IpModus -eq "schluessel" -and ($Netzerhaltend -or $NichtNetzerhaltend)) {
+    throw "-Netzerhaltend und -NichtNetzerhaltend gelten nur im alten IP-Modus (-IpModus platzhalter)."
+}
+if (-not [string]::IsNullOrEmpty($IpModus)) { $cfg.IpModus = $IpModus }
+elseif ($Netzerhaltend -or $NichtNetzerhaltend) { $cfg.IpModus = "platzhalter" }
 
 # Konsolenausgabe von Prüftreffern: nur Kategorie, Datei und Zeile, nie der gefundene Wert
 function Write-PruefFunde {
@@ -4623,6 +4753,15 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
     if ($null -eq $Eingabe -or $Eingabe.Count -eq 0) {
         throw "Bitte -Eingabe für den Prüfmodus (-Pruefen) angeben."
     }
+    # Optional mit Zuordnungstabelle (-TabellenPfad): verfremdete IPs des Schlüsselmodus gelten dann nicht als Restfund,
+    # zusätzlich werden alle Originalwerte der Tabelle gesucht
+    $pruefState = $null
+    if (-not [string]::IsNullOrEmpty($TabellenPfad)) {
+        if (-not (Test-Path -LiteralPath $TabellenPfad)) { throw "Zuordnungstabelle für -Pruefen nicht gefunden (-TabellenPfad)." }
+        $pruefPass = $PasswortSecure
+        if ($MitPasswort -and $null -eq $pruefPass) { $pruefPass = Read-TablePasswordInteractive -ConfirmTwice:$false }
+        $pruefState = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $pruefPass
+    }
     $alleFunde = New-Object 'System.Collections.Generic.List[AnonTool.AuditFinding]'
     $pruefFreigegeben = 0
     $einNr = 0
@@ -4650,7 +4789,7 @@ if ($Pruefen -and [string]::IsNullOrEmpty($Ausgabe)) {
                 } else {
                     $f.Name
                 }
-                $detail = [AnonTool.AnonEngine]::AuditTextDetail($txt, $relAuditPath, $cfg, $null)
+                $detail = [AnonTool.AnonEngine]::AuditTextDetail($txt, $relAuditPath, $cfg, $pruefState)
                 $funde = $detail.Funde
                 $pruefFreigegeben += $detail.Freigegeben
             } catch {
@@ -4773,6 +4912,24 @@ if (-not [string]::IsNullOrEmpty($Ausgabe)) {
     }
 }
 
+# IP-Schlüssel (Schlüsselmodus): darf weder im Ausgabeordner noch in einer Eingabe liegen
+$ipSchluesselPfad = $null
+if ($cfg.IpModus -eq "schluessel" -and $cfg.CatIp) {
+    $ipSchluesselPfad = Get-IpSchluesselPfad
+    $kanonSchluessel = [System.IO.Path]::GetFullPath($ipSchluesselPfad)
+    if ($null -ne $kanonAusgabe -and ((Test-PfadInnerhalb $kanonSchluessel $kanonAusgabe) -or (Test-PfadGleich $kanonSchluessel $kanonAusgabe))) {
+        throw "SICHERHEITSFEHLER: Der IP-Schlüssel (-IpSchluessel) darf NIEMALS innerhalb des Ausgabeordners (-Ausgabe) liegen!"
+    }
+    $einNr = 0
+    foreach ($ein in $Eingabe) {
+        $einNr++
+        $kanonEin = (Resolve-Path -LiteralPath $ein).ProviderPath
+        if (((Test-Path -LiteralPath $ein -PathType Container) -and (Test-PfadInnerhalb $kanonSchluessel $kanonEin)) -or (Test-PfadGleich $kanonSchluessel $kanonEin)) {
+            throw "SICHERHEITSFEHLER: Der IP-Schlüssel überschneidet sich mit Eingabe Nr. $einNr. Es wurde nichts verändert."
+        }
+    }
+}
+
 $activeSecPass = $PasswortSecure
 $tableExistsOnDisk = (-not [string]::IsNullOrEmpty($TabellenPfad)) -and (Test-Path -LiteralPath $TabellenPfad)
 if ($MitPasswort -and $null -eq $activeSecPass) {
@@ -4786,6 +4943,20 @@ $state = Import-AnonState -TablePath $TabellenPfad -PasswordSecure $activeSecPas
 $kollisionen = [AnonTool.AnonEngine]::FindPlaceholderCollisions($state, $cfg.FesteZuordnung)
 if ($kollisionen.Count -gt 0) {
     throw ("Zuordnungstabelle abgelehnt: " + ($kollisionen -join "; ") + ". Die Tabelle wird nicht verwendet und nicht überschrieben.")
+}
+
+$ipSchl = $null
+if ($null -ne $ipSchluesselPfad) {
+    $ipSchl = Get-IpSchluessel -Pfad $ipSchluesselPfad -PasswordSecure $activeSecPass -NurTemporaer:$Probe
+    $cfg.IpSchluessel = New-Object AnonTool.CryptoPan (,$ipSchl.Bytes)
+    [AnonTool.AnonCrypto]::Zero($ipSchl.Bytes)
+    if ($ipSchl.Temporaer) {
+        Write-Host ("Trockenlauf: temporärer IP-Schlüssel (Kennung {0}), nichts gespeichert." -f $ipSchl.Kennung) -ForegroundColor Yellow
+        Write-Host $script:IP_SCHLUESSEL_HINWEIS_NEU -ForegroundColor Yellow
+    } elseif ($ipSchl.Neu) {
+        Write-Host ("Neuer IP-Schlüssel erzeugt (Kennung {0}): {1}" -f $ipSchl.Kennung, $ipSchluesselPfad) -ForegroundColor Yellow
+        Write-Host $script:IP_SCHLUESSEL_HINWEIS_NEU -ForegroundColor Yellow
+    }
 }
 
 $arbeit = $null
@@ -5019,6 +5190,9 @@ $berichtObj = [ordered]@{
     zeitstempel          = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK")
     modus                = if ($Probe) { "PROBE" } else { "ANONYMISIERUNG" }
     netzerhaltend        = $cfg.Netzerhaltend
+    ipModus              = $cfg.IpModus
+    ipSchluesselKennung  = if ($null -ne $ipSchl) { $ipSchl.Kennung } else { $null }
+    ipHinweis            = if ($null -ne $ipSchl) { $script:IP_HINWEIS_VERFREMDET } else { $null }
     verarbeiteteDateien  = $dateiBerichte.Count
     uebersprungeneBinaer = @($uebersprungeneDateien | ForEach-Object { $_ -replace '\\', '/' })
     kategorienGesamt     = $gesamtKategorien
@@ -5045,6 +5219,9 @@ if ($Probe) {
     Write-Host " Zuordnungstabelle    : $TabellenPfad (geschützt)"
 }
 Write-Host "============================================================" -ForegroundColor Cyan
+if ($null -ne $ipSchl) {
+    Write-Host ("IP-Adressen              : {0} (IP-Schlüssel {1})" -f $script:IP_HINWEIS_VERFREMDET, $ipSchl.Kennung)
+}
 Write-Host ("Verarbeitete Textdateien : {0}" -f $dateiBerichte.Count)
 Write-Host ("Übersprungene Binärdat.  : {0}" -f $uebersprungeneDateien.Count)
 if ($uebersprungeneDateien.Count -gt 0) {
