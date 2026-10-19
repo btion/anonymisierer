@@ -54,6 +54,12 @@ function Assert-Throws {
     Assert-True $threw $Message
 }
 
+# Hilfen für die IP-Testvektoren (Hex, IPv4 als Bytes)
+function ConvertFrom-TestHex { param([string]$Hex) $b = New-Object byte[] ($Hex.Length / 2); for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($Hex.Substring(2 * $i, 2), 16) }; return ,$b }
+function ConvertTo-TestHex { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { $_.ToString("x2") }) -join "") }
+function ConvertFrom-TestIp4 { param([string]$Ip) return ,([byte[]]($Ip.Split(".") | ForEach-Object { [byte]$_ })) }
+function ConvertTo-TestIp4 { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { [string]$_ }) -join ".") }
+
 Write-Host "=== 1. Initialisiere AnonTool.AnonEngine über anon.ps1 (Trockenlauf) ===" -ForegroundColor Cyan
 & $anonScript -Eingabe (Join-Path $beispieleDir "01-aruba-aoscx.txt") -Regeln $rulesPath -Probe > $null
 Assert-True ($LASTEXITCODE -eq 0) "Trockenlauf auf sauberer Beispieldatei liefert Exit-Code 0"
@@ -1023,32 +1029,44 @@ $kCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
 # ('Alpha BetaSecret77', 'part1"SecretTail77', '-42.5e3'); eine andere Fundstelle genügt nicht
 function Test-Deckt {
     param([string]$Fund, [string]$Wert)
-    if ($Fund -ceq $Wert) { return $true }
+    if ($Fund -ceq $Wert -or $Fund.Split("/")[0] -ceq $Wert) { return $true }
     foreach ($t in [regex]::Split($Fund, "[\s`"'``]+")) { if ($t -ceq $Wert -or ($t -replace '^[-+]', '') -ceq $Wert) { return $true } }
     return $false
 }
 # Lauf wie in anon.ps1: Durchlauf 1 lernt, Durchlauf 2 schreibt
 function Invoke-KatalogLauf {
-    param($Dateien, $State)
-    foreach ($d in $Dateien) { [void][AnonTool.AnonEngine]::ProcessText([string]$d.text, $kCfg, $State) }
+    param($Dateien, $State, $Cfg = $kCfg)
+    foreach ($d in $Dateien) { [void][AnonTool.AnonEngine]::ProcessText([string]$d.text, $Cfg, $State) }
     $aus = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($d in $Dateien) { $aus.Add([AnonTool.AnonEngine]::ProcessText([string]$d.text, $kCfg, $State)) }
+    foreach ($d in $Dateien) { $aus.Add([AnonTool.AnonEngine]::ProcessText([string]$d.text, $Cfg, $State)) }
     return $aus.ToArray()
 }
 foreach ($k in $katalog.faelle) {
     $dateien = if ($null -ne $k.PSObject.Properties["dateien"]) { @($k.dateien) } else { @([pscustomobject]@{ path = "$($k.id).txt"; text = [string]$k.eingabe }) }
     $kState = New-Object AnonTool.AnonState
-    $ausgabe = (Invoke-KatalogLauf -Dateien $dateien -State $kState) -join "`n"
+    # Fälle mit ipModus "schluessel" laufen im Schlüsselmodus, alle übrigen im alten Modus (Standard der Testkonfiguration)
+    $lCfg = $kCfg
+    if ($null -ne $k.PSObject.Properties["ipModus"] -and $k.ipModus -eq "schluessel") {
+        $lCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+        $lCfg.IpModus = "schluessel"
+        $lCfg.IpSchluessel = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $k.ipSchluesselHex))
+    }
+    $ausgabe = (Invoke-KatalogLauf -Dateien $dateien -State $kState -Cfg $lCfg) -join "`n"
     $tabelle = (@($kState.Forward.Keys) + @($kState.Forward.Values) + @($kState.Reverse.Keys) + @($kState.Reverse.Values) + @($kState.Aliases.Keys) + @($kState.Aliases.Values)) -join "`n"
     $rohFunde = @()
     if ($hatNachpruefung) { foreach ($d in $dateien) { $rohFunde += @([AnonTool.AnonEngine]::Nachpruefen([string]$d.text, [string]$d.path, $kCfg)) } }
+    # IPs prüft die Nachprüfung nicht; auf der Roheingabe meldet sie der Prüfmodus
+    $rohIp = @()
+    foreach ($d in $dateien) { $rohIp += @([AnonTool.AnonEngine]::AuditText([string]$d.text, [string]$d.path, $kCfg, (New-Object AnonTool.AnonState))) }
     foreach ($z in $k.ziele) {
         $kurz = "$($k.id)/$($z.kategorie)"
         Assert-True (-not $ausgabe.Contains([string]$z.wert)) "${kurz}: Zielwert steht nicht in der Ausgabe"
         if ($z.art -eq "geheimnis") { Assert-True (-not $tabelle.Contains([string]$z.wert)) "${kurz}: Geheimnis steht nicht in der Zuordnungstabelle" }
         $soll = [string]$katalog.kategorien.($z.kategorie)
-        $treffer = @($rohFunde | Where-Object { $_.Kategorie -eq $soll -and (Test-Deckt ([string]$_.Fund) ([string]$z.wert)) }).Count
-        Assert-True ($treffer -gt 0) "${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als $soll"
+        $istIp = ($soll -eq "Rest-IPv4" -or $soll -eq "Rest-IPv6")
+        $quelle = if ($istIp) { $rohIp } else { $rohFunde }
+        $treffer = @($quelle | Where-Object { $_.Kategorie -eq $soll -and (Test-Deckt ([string]$_.Fund) ([string]$z.wert)) }).Count
+        Assert-True ($treffer -gt 0) "${kurz}: $(if ($istIp) { 'Prüfmodus' } else { 'Nachprüfung' }) erkennt den Zielwert auf der Roheingabe als $soll"
     }
 }
 if ($hatNachpruefung) {
@@ -1272,10 +1290,6 @@ Assert-Equal ([AnonTool.AnonEngine]::ProcessText("note Geheim9z here`n", $litCfg
 
 Write-Host "=== IP-Modell: Crypto-PAn-Kern und Testvektoren ===" -ForegroundColor Cyan
 $ipVek = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText((Join-Path $testDir "ip-testvektoren.json"), [System.Text.Encoding]::UTF8))
-function ConvertFrom-TestHex { param([string]$Hex) $b = New-Object byte[] ($Hex.Length / 2); for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($Hex.Substring(2 * $i, 2), 16) }; return ,$b }
-function ConvertTo-TestHex { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { $_.ToString("x2") }) -join "") }
-function ConvertFrom-TestIp4 { param([string]$Ip) return ,([byte[]]($Ip.Split(".") | ForEach-Object { [byte]$_ })) }
-function ConvertTo-TestIp4 { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { [string]$_ }) -join ".") }
 $ipKernDa = $null -ne ("AnonTool.CryptoPan" -as [type])
 Assert-True $ipKernDa "IP-Modell: C#-Klasse AnonTool.CryptoPan vorhanden"
 if ($ipKernDa) {
@@ -1352,6 +1366,36 @@ if ($ipKernDa) {
     }
     Assert-Equal $oeffFehler 0 "IP-Modell: Zufallstest 3000 öffentliche IPv4 nie in einem Sonderbereich, umkehrbar"
     Assert-True ($pk.TextVerfremden("2001:db8:0:0:0:0:0:1", -1, $false) -ceq $pk.TextVerfremden("2001:DB8::1", -1, $false)) "IP-Modell: IPv6 Kurz- und Langform gleich"
+}
+
+Write-Host "=== IP-Modell: Engine (Schlüsselmodus) und Prüfung ===" -ForegroundColor Cyan
+if ($ipKernDa) {
+    $eCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+    $eCfg.IpModus = "schluessel"
+    Assert-Throws { [void][AnonTool.AnonEngine]::ProcessText("ntp server 192.0.2.10`n", $eCfg, (New-Object AnonTool.AnonState)) } "IP-Modell: Schlüsselmodus ohne Schlüssel wird abgelehnt"
+    $eCfg.IpSchluessel = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $ipVek.engine.schluesselHex))
+    $eState = New-Object AnonTool.AnonState
+    [void][AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $eCfg, $eState)
+    $eAus = [AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $eCfg, $eState)
+    if ($eAus -cne [string]$ipVek.engine.ausgabe) {
+        $ea = $eAus.Split("`n"); $es = ([string]$ipVek.engine.ausgabe).Split("`n")
+        for ($i = 0; $i -lt [Math]::Min($ea.Length, $es.Length); $i++) { if ($ea[$i] -cne $es[$i]) { Write-Host "    Zeile $($i + 1): erwartet '$($es[$i])', erhalten '$($ea[$i])'" -ForegroundColor Yellow } }
+    }
+    Assert-True ($eAus -ceq [string]$ipVek.engine.ausgabe) "IP-Modell: Parität A == B, Engine-Ausgabe im Schlüsselmodus gleich JS"
+    $eA = $eCfg.IpSchluessel.TextVerfremden("172.22.0.230", -1, $false)
+    $eN = $eCfg.IpSchluessel.TextVerfremden("10.0.0.0", 23, $false)
+    Assert-True ($eState.Reverse.ContainsKey($eA) -and $eState.Reverse[$eA] -eq "172.22.0.230" -and $eState.Reverse[$eN] -eq "10.0.0.0") "IP-Modell: Zuordnungstabelle enthält Ausgabe -> Original (auch kanonisch)"
+    $eFunde = @([AnonTool.AnonEngine]::AuditText($eAus, "e.txt", $eCfg, $eState) | Where-Object { $_.Kategorie -match "IPv[46]" })
+    Assert-Equal $eFunde.Count 0 "IP-Modell: Prüfmodus meldet keine verfremdeten IPs"
+    $eNach = @([AnonTool.AnonEngine]::Nachpruefen($eAus, "e.txt", $eCfg))
+    Assert-Equal $eNach.Count 0 "IP-Modell: Nachprüfung meldet keine verfremdeten IPs"
+    $eOhne = @([AnonTool.AnonEngine]::AuditText($eAus, "e.txt", $eCfg, (New-Object AnonTool.AnonState)) | Where-Object { $_.Kategorie -eq "Rest-IPv4" })
+    Assert-True ($eOhne.Count -gt 0) "IP-Modell: Prüfmodus ohne passende Zuordnung meldet IPs weiterhin"
+    $eState2 = New-Object AnonTool.AnonState
+    [void][AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $eCfg, $eState2)
+    Assert-True ([AnonTool.AnonEngine]::ProcessText([string]$ipVek.engine.eingabe, $eCfg, $eState2) -ceq $eAus) "IP-Modell: gleiche Abbildung über Läufe mit demselben Schlüssel"
+    $altCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+    Assert-Equal ([AnonTool.AnonEngine]::ProcessText("ip address 172.22.0.230 255.255.255.0`n", $altCfg, (New-Object AnonTool.AnonState))) "ip address NET-1.H1 255.255.255.0`n" "IP-Modell: alter Modus NET-n.Hm weiter wählbar"
 }
 
 $env:LOCALAPPDATA = $origLocalAppData

@@ -139,7 +139,7 @@ for (const [i, g] of (diskRules.geheimnisMuster || []).entries()) {
     // tests/ip-testvektoren.json: nur die Eingaben prüfen, die Ausgaben sind Rechenergebnisse
     if (path.basename(file) === "ip-testvektoren.json") {
       const iv = JSON.parse(content);
-      content = [].concat(...["cryptoPanStandard", "cryptoPanStandard6", "klassen"].map(k => (iv[k] || []).map(v => v.paare.map(p => p[0]).join("\n")))).join("\n");
+      content = [].concat(...["cryptoPanStandard", "cryptoPanStandard6", "klassen"].map(k => (iv[k] || []).map(v => v.paare.map(p => p[0]).join("\n")))).join("\n") + "\n" + ((iv.engine && iv.engine.eingabe) || "");
     }
     for (const m of content.matchAll(rxPrivate)) {
       if (!allowedNets.has(m[1])) badIps.push(path.relative(ROOT, file) + ": " + m[0]);
@@ -1509,23 +1509,32 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     const kCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true });
     // Ein Fund deckt den Zielwert, wenn er ihm entspricht oder ihn als eigenen Teil enthält
     // ('Alpha BetaSecret77', 'part1"SecretTail77', '-42.5e3'); eine andere Fundstelle genügt nicht
-    const deckt = (fund, wert) => fund === wert || String(fund).split(/[\s"'`]+/).some(t => t === wert || t.replace(/^[-+]/, "") === wert);
+    // IP-Adressen: Fund "a.b.c.d/n" deckt "a.b.c.d"
+    const deckt = (fund, wert) => fund === wert || String(fund).split("/")[0] === wert || String(fund).split(/[\s"'`]+/).some(t => t === wert || t.replace(/^[-+]/, "") === wert);
     for (const k of katalog.faelle) {
       const dateien = k.dateien || [{ path: k.id + ".txt", text: k.eingabe }];
       const kState = new core.AnonState();
-      const lauf = core.reprocessFilesWithState(dateien, diskRules, {}, kState, { overrides: { netzerhaltend: true } });
+      // Fälle mit ipModus "schluessel" laufen im Schlüsselmodus, alle übrigen ausdrücklich im alten Modus
+      const kOv = k.ipModus === "schluessel"
+        ? { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: Uint8Array.from(Buffer.from(k.ipSchluesselHex, "hex")) }
+        : { netzerhaltend: true, ipModus: "platzhalter" };
+      const lauf = core.reprocessFilesWithState(dateien, diskRules, {}, kState, { overrides: kOv });
       const ausgabe = lauf.results.map(r => r.anonText).join("\n");
       const tabelle = JSON.stringify(kState.toJSON());
       const rohFunde = hatNachpruefung ? [].concat(...dateien.map(d => core.nachpruefen(d.text, d.path, kCfg))) : [];
+      // IPs prüft die Nachprüfung nicht; auf der Roheingabe meldet sie der Prüfmodus
+      const rohIp = [].concat(...dateien.map(d => core.auditText(d.text, d.path, kCfg, new core.AnonState())));
       for (const z of k.ziele) {
         const kurz = `${k.id}/${z.kategorie}`;
         assert(!ausgabe.includes(z.wert), `${kurz}: Zielwert steht nicht in der Ausgabe`);
         if (z.art === "geheimnis") assert(!tabelle.includes(z.wert), `${kurz}: Geheimnis steht nicht in der Zuordnungstabelle`);
         const soll = katalog.kategorien[z.kategorie];
-        assert(rohFunde.some(f => f.kategorie === soll && deckt(f.fund, z.wert)),
-          `${kurz}: Nachprüfung erkennt den Zielwert auf der Roheingabe als ${soll}`);
+        const ip = soll === "Rest-IPv4" || soll === "Rest-IPv6";
+        assert((ip ? rohIp : rohFunde).some(f => f.kategorie === soll && deckt(f.fund, z.wert)),
+          `${kurz}: ${ip ? "Prüfmodus" : "Nachprüfung"} erkennt den Zielwert auf der Roheingabe als ${soll}`);
       }
     }
+    assert(katalog.faelle.some(k => k.ipModus === "schluessel" && k.ziele.some(z => z.kategorie === "IPv6")), "Leck-Katalog: Fall im IP-Schlüsselmodus mit IPv4 und IPv6");
     // Parität A == B: Nachprüfung auf den Roheingaben (Katalog, tests/beispiele) gegen tests/nachpruefung-erwartet.json
     if (hatNachpruefung) {
       const quellen = [];
@@ -2063,6 +2072,78 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       // Anderer Schlüssel = andere Abbildung
       const ks3 = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
       assert(["10.0.0.1", "192.0.2.10", "203.0.113.9", "172.16.0.30"].some(t => core.ipTextVerfremden(ks3, t, null, false) !== vf(t)), "IP-Modell: neuer Schlüssel ergibt eine andere Abbildung");
+    }
+  }
+
+  // --- 19c. IP-Modell: Engine (Schlüsselmodus) und Prüfung ---
+  console.log("--- 19c. IP-Modell: Engine und Prüfung ---");
+  {
+    const vek = JSON.parse(fs.readFileSync(path.join(__dirname, "ip-testvektoren.json"), "utf8"));
+    const kBytes = Uint8Array.from(Buffer.from(vek.klassen[0].schluesselHex, "hex"));
+    const ks = core.cryptoPanSchluessel(kBytes);
+    const vf = (t, p) => core.ipTextVerfremden(ks, t, p === undefined ? null : p, false);
+    const ov = { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: kBytes };
+    let ohneSchluessel = null;
+    try { core.buildEngineConfig(diskRules, { ipModus: "schluessel" }); } catch (e) { ohneSchluessel = e; }
+    assert(ohneSchluessel && /Schlüssel/.test(ohneSchluessel.message), "IP-Modell: Schlüsselmodus ohne Schlüssel wird abgelehnt");
+    let cfgK = null;
+    try { cfgK = core.buildEngineConfig(diskRules, ov); } catch (e) { cfgK = null; }
+    assert(cfgK && cfgK.ipModus === "schluessel", "IP-Modell: Engine-Konfiguration im Schlüsselmodus");
+    if (cfgK && cfgK.ipModus === "schluessel") {
+      const konfig = [
+        "interface Vlan10",
+        " ip address 172.22.0.230 255.255.255.0",
+        " ip helper-address 192.0.2.10",
+        "ip route 0.0.0.0 0.0.0.0 172.22.0.1",
+        "access-list 10 permit 10.0.0.0 0.0.0.255",
+        "access-list 11 permit 10.0.0.16 0.0.0.15",
+        "ip dhcp excluded-address 192.168.0.100 192.168.0.200",
+        "ip prefix-list LAN seq 5 permit 10.0.0.0/23",
+        "ipv6 address 2001:db8:0:1::10/64",
+        "ipv6 route 2001:0db8:0000:0000:0000:0000:0000:0001/128 Null0",
+        "ipv6 route 2001:db8::1/128 Null0",
+        "ntp server 203.0.113.9",
+        "logging host 127.0.0.1",
+        ""].join("\n");
+      const st = new core.AnonState();
+      const aus = core.processText(konfig, cfgK, st).split("\n");
+      assert(aus[1] === " ip address " + vf("172.22.0.230") + " 255.255.255.0", `IP-Modell: Adresse verfremdet, Maske unverändert (${aus[1]})`);
+      assert(aus[3] === "ip route 0.0.0.0 0.0.0.0 " + vf("172.22.0.1") && vf("172.22.0.1").replace(/\.1$/, "") === vf("172.22.0.230").replace(/\.230$/, ""), `IP-Modell: Gateway im selben /24, 0.0.0.0 bleibt (${aus[3]})`);
+      assert(aus[4] === "access-list 10 permit " + vf("10.0.0.0") + " 0.0.0.255" && aus[5].endsWith(" 0.0.0.15"), `IP-Modell: Wildcards 0.0.0.255 und 0.0.0.15 unverändert (${aus[4]})`);
+      assert(aus[6] === "ip dhcp excluded-address " + vf("192.168.0.100") + " " + vf("192.168.0.200"), `IP-Modell: DHCP-Bereich im selben Netz (${aus[6]})`);
+      assert(aus[7] === "ip prefix-list LAN seq 5 permit " + vf("10.0.0.0", 23) + "/23", `IP-Modell: Netz mit Präfixlänge kanonisch, /23 bleibt (${aus[7]})`);
+      assert(aus[8] === "ipv6 address " + vf("2001:db8:0:1::10") + "/64", `IP-Modell: IPv6 verfremdet, /64 bleibt (${aus[8]})`);
+      assert(aus[9] === aus[10] && aus[9] === "ipv6 route " + vf("2001:db8::1") + "/128 Null0", `IP-Modell: IPv6 Lang- und Kurzform ergeben dieselbe Ausgabe (${aus[9]})`);
+      assert(aus[11] === "ntp server " + vf("203.0.113.9") && aus[12] === "logging host 127.0.0.1" && aus[0] === "interface Vlan10", "IP-Modell: Doku-Netz verfremdet, 127.0.0.1 bleibt");
+      assert(st.reverse.get(vf("172.22.0.230").toUpperCase()) === "172.22.0.230" && st.reverse.get(vf("10.0.0.0", 23).toUpperCase()) === "10.0.0.0" && st.reverse.get(vf("2001:db8::1").toUpperCase()) === "2001:db8::1", "IP-Modell: Zuordnungstabelle enthält Ausgabe -> Original (auch kanonisch und IPv6 normalisiert)");
+      assert(core.validateStateConsistency(st).length === 0 && core.findPlaceholderCollisions(st, {}).length === 0, "IP-Modell: Zuordnungstabelle konsistent und ohne Kollisionen");
+      // Gleichheit über Dateien und Läufe (gleicher Schlüssel)
+      const dateien = [{ path: "a.txt", text: konfig }, { path: "b.txt", text: "neighbor 172.22.0.230 remote-as 65000\nntp server 203.0.113.9\n" }];
+      const l1 = core.reprocessFilesWithState(dateien, diskRules, {}, new core.AnonState(), { overrides: ov });
+      const l2 = core.reprocessFilesWithState(dateien, diskRules, {}, new core.AnonState(), { overrides: ov });
+      assert(l1.ok !== false && l1.results.length === 2 && l1.results[1].anonText === "neighbor " + vf("172.22.0.230") + " remote-as 65000\nntp server " + vf("203.0.113.9") + "\n", `IP-Modell: gleiche Abbildung über Dateien (${l1.results[1] && l1.results[1].anonText})`);
+      assert(l2.results.map(r => r.anonText).join("|") === l1.results.map(r => r.anonText).join("|"), "IP-Modell: gleiche Abbildung über Läufe mit demselben Schlüssel");
+      // Prüfmodus meldet verfremdete IPs nicht, die Nachprüfung ebenfalls nicht
+      const ipFunde = l1.findings.filter(f => /IPv[46]/.test(f.kategorie));
+      assert(ipFunde.length === 0, `IP-Modell: Prüfmodus meldet keine verfremdeten IPs (${JSON.stringify(ipFunde.map(f => f.fund))})`);
+      const nachAus = [].concat(...l1.results.map(r => core.nachpruefen(r.anonText, r.path, cfgK)));
+      assert(nachAus.length === 0, `IP-Modell: Nachprüfung meldet keine verfremdeten IPs (${JSON.stringify(nachAus.map(f => f.kategorie + ":" + f.fund))})`);
+      // Prüfmodus ohne Zuordnung (anderer Lauf) meldet dieselben Adressen als Rest-IPv4
+      assert(core.auditText(l1.results[1].anonText, "b.txt", cfgK, new core.AnonState()).some(f => f.kategorie === "Rest-IPv4"), "IP-Modell: Prüfmodus ohne passende Zuordnung meldet IPs weiterhin");
+      // Dateinamen mit IP-Adresse
+      const pfad = core.processPath("backup-172.22.0.230.cfg", cfgK, new core.AnonState());
+      assert(pfad.indexOf("172.22.0.230") < 0, `IP-Modell: IP im Dateinamen verfremdet (${pfad})`);
+      // Gemeinsamer Engine-Vektor (anon.ps1 prüft dieselbe Ausgabe)
+      const eSt = new core.AnonState();
+      const eCfg = core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: Uint8Array.from(Buffer.from(vek.engine.schluesselHex, "hex")) });
+      core.processText(vek.engine.eingabe, eCfg, eSt);
+      const eAus = core.processText(vek.engine.eingabe, eCfg, eSt);
+      assert(eAus === vek.engine.ausgabe, "IP-Modell: Engine-Vektor im Schlüsselmodus");
+      const eFunde = core.auditText(eAus, "e.txt", eCfg, eSt).filter(f => /IPv[46]/.test(f.kategorie));
+      assert(eFunde.length === 0, `IP-Modell: Prüfmodus meldet Multicast und 127.0.0.1 im Schlüsselmodus nicht (${JSON.stringify(eFunde.map(f => f.fund))})`);
+      // Alter Modus bleibt wählbar
+      const alt = core.processText("ip address 172.22.0.230 255.255.255.0\n", core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "platzhalter" }), new core.AnonState());
+      assert(alt === "ip address NET-1.H1 255.255.255.0\n", `IP-Modell: alter Modus NET-n.Hm weiter wählbar (${alt})`);
     }
   }
 

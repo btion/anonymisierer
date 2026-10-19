@@ -701,6 +701,9 @@ namespace AnonTool
     public class EngineConfig
     {
         public bool Netzerhaltend = true;
+        // IP-Modus: "schluessel" (präfixerhaltend, CryptoPan) oder "platzhalter" (NET-n.Hm, IP-PRIV-n)
+        public string IpModus = "platzhalter";
+        public CryptoPan IpSchluessel = null;
         public bool IpPrivatOeffentlichTrennen = true;
         public bool SubnetzmaskenBehalten = true;
         public bool MacNormalisieren = true;
@@ -981,6 +984,43 @@ namespace AnonTool
             return sb.ToString();
         }
 
+        // Schlüsselmodus: Ausgabe wie CryptoPan.TextVerfremden; die Zuordnungstabelle erhält Ausgabe -> Original
+        // (Vorwärtsschlüssel IPK4|ip bzw. IPK6|ip, kanonische Netz-/Broadcast-Ausgabe unter IPK4N<n>|ip). null = unverändert.
+        private static string IpSchluesselAusgabe(string ipText, int praefix, bool v6, EngineConfig cfg, AnonState state)
+        {
+            if (cfg.IpSchluessel == null) throw new InvalidOperationException("IP-Schlüsselmodus: kein gültiger IP-Schlüssel (32 Byte) geladen.");
+            byte[] bytes = v6 ? CryptoPan.Ip6Lesen(ipText) : CryptoPan.Ip4Lesen(ipText);
+            int laenge;
+            if (bytes == null || CryptoPan.Klasse(bytes, out laenge) == "fest") return null;
+            string orig = v6 ? CryptoPan.Ip6Text(bytes) : ipText;
+            string aus = cfg.IpSchluessel.TextVerfremden(orig, praefix, false);
+            if (aus == null) return null;
+            state.AddStat("ip", 1);
+            bool kanonisch = praefix >= 0 && aus != cfg.IpSchluessel.TextVerfremden(orig, -1, false);
+            string kat = (v6 ? "IPK6" : "IPK4") + (kanonisch ? "N" + praefix.ToString() : "");
+            state.Forward[(kat + "|" + orig).ToLowerInvariant()] = aus;
+            if (!state.Reverse.ContainsKey(aus)) state.Reverse[aus] = orig;
+            return aus;
+        }
+
+        // Schlüsselmodus: Adressen der Klasse "fest" (0/8, 127/8, 224/4, 240/4, ::, ::1, ff00::/8) bleiben absichtlich stehen
+        public static bool BleibtImSchluesselmodus(string text, EngineConfig cfg)
+        {
+            if (cfg.IpModus != "schluessel") return false;
+            byte[] b = CryptoPan.Ip4Lesen(text) ?? CryptoPan.Ip6Lesen(text);
+            int laenge;
+            return b != null && CryptoPan.Klasse(b, out laenge) == "fest";
+        }
+
+        // Schlüsselmodus: Adresse ist eine Ausgabe der Verfremdung (steht als Ausgabe -> Original in der Zuordnungstabelle)
+        public static bool IstVerfremdeteIp(string text, AnonState state)
+        {
+            if (state == null) return false;
+            string orig;
+            if (!state.Reverse.TryGetValue(text, out orig) || orig == null) return false;
+            return CryptoPan.Ip4Lesen(orig) != null || CryptoPan.Ip6Lesen(orig) != null;
+        }
+
         public static string FormatIpv4Token(string rawMatch, EngineConfig cfg, AnonState state)
         {
             string ipPart = rawMatch;
@@ -1018,6 +1058,13 @@ namespace AnonTool
 
             if (cfg.ExakteAusnahmen.Contains(ipPart) || cfg.ExakteAusnahmen.Contains(rawMatch))
                 return rawMatch;
+
+            if (cfg.IpModus == "schluessel")
+            {
+                int praefix = slashIdx > 0 ? int.Parse(suffix.Substring(1)) : -1;
+                string aus = IpSchluesselAusgabe(ipPart, praefix, false, cfg, state);
+                return aus == null ? rawMatch : aus + suffix;
+            }
 
             state.AddStat("ip", 1);
 
@@ -1098,6 +1145,12 @@ namespace AnonTool
                 string[] segs = lower.Split(':');
                 if (segs.Length < 6)
                     return rawMatch;
+            }
+
+            if (cfg.IpModus == "schluessel")
+            {
+                string aus6 = IpSchluesselAusgabe(lower, slashIdx > 0 ? int.Parse(suffix.Substring(1)) : -1, true, cfg, state);
+                return aus6 == null ? rawMatch : aus6 + suffix;
             }
 
             state.AddStat("ip", 1);
@@ -2778,7 +2831,7 @@ namespace AnonTool
                 {
                     string val = m.Value;
                     string ipOnly = val.Split('/', '-')[0];
-                    if (IsAllowedInAudit(ipOnly, cfg)) continue;
+                    if (IsAllowedInAudit(ipOnly, cfg) || IstVerfremdeteIp(ipOnly, state) || BleibtImSchluesselmodus(ipOnly, cfg)) continue;
                     string[] p = ipOnly.Split('.');
                     int o1, o2, o3, o4;
                     if (p.Length == 4 && int.TryParse(p[0], out o1) && int.TryParse(p[1], out o2) && int.TryParse(p[2], out o3) && int.TryParse(p[3], out o4))
@@ -2896,7 +2949,7 @@ namespace AnonTool
             {
                 string val = m.Value;
                 string ipOnly = val.Split('/', '-')[0];
-                if (IsAllowedInAudit(ipOnly, cfg)) continue;
+                if (IsAllowedInAudit(ipOnly, cfg) || IstVerfremdeteIp(ipOnly, state) || BleibtImSchluesselmodus(ipOnly, cfg)) continue;
                 string[] p = ipOnly.Split('.');
                 int o1, o2, o3, o4;
                 if (p.Length == 4 && int.TryParse(p[0], out o1) && int.TryParse(p[1], out o2) && int.TryParse(p[2], out o3) && int.TryParse(p[3], out o4))
@@ -2911,7 +2964,7 @@ namespace AnonTool
             foreach (Match m in RxIpv6.Matches(cleanText))
             {
                 string val = m.Value.Split('/')[0];
-                if (IsAllowedInAudit(val, cfg)) continue;
+                if (IsAllowedInAudit(val, cfg) || IstVerfremdeteIp(val, state) || BleibtImSchluesselmodus(val, cfg)) continue;
                 if (!val.Contains("::") && val.Split(':').Length < 6) continue;
                 int ln = GetLineNumber(lineStarts, m.Index);
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-IPv6", Fund = m.Value, Kontext = getLineCtx(ln) });

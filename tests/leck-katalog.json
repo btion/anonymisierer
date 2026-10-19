@@ -1,5 +1,5 @@
 {
-  "beschreibung": "Leck-Katalog: alle bisher gefundenen Leckfälle (erfundene Werte). Identitätswerte dürfen nicht in der Ausgabe stehen (in der Zuordnungstabelle schon), Geheimnisse weder in der Ausgabe noch in der Zuordnungstabelle. Die unabhängige Nachprüfung muss auf der ROHEN Eingabe jeden Zielwert mit passender Kategorie melden.",
+  "beschreibung": "Leck-Katalog: alle bisher gefundenen Leckfälle (erfundene Werte). Identitätswerte dürfen nicht in der Ausgabe stehen (in der Zuordnungstabelle schon), Geheimnisse weder in der Ausgabe noch in der Zuordnungstabelle. Die unabhängige Nachprüfung muss auf der ROHEN Eingabe jeden Zielwert mit passender Kategorie melden. IP-Adressen (Kategorien IPv4/IPv6, Fälle mit ipModus 'schluessel'): die Nachprüfung prüft keine IPs; auf der Roheingabe muss stattdessen der Prüfmodus jede Adresse als Rest-IPv4/Rest-IPv6 melden.",
   "kategorien": {
     "Benutzer": "Nachpruefung-Benutzer",
     "Hostname": "Nachpruefung-Hostname",
@@ -9,7 +9,9 @@
     "Token": "Nachpruefung-Geheimnis",
     "Schlüssel": "Nachpruefung-Geheimnis",
     "Community": "Nachpruefung-Geheimnis",
-    "Beschreibung": "Nachpruefung-Beschreibung"
+    "Beschreibung": "Nachpruefung-Beschreibung",
+    "IPv4": "Rest-IPv4",
+    "IPv6": "Rest-IPv6"
   },
   "faelle": [
     {
@@ -768,6 +770,65 @@
         {
           "wert": "hkoch5",
           "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K34",
+      "quelle": "IP-Modell / Schlüsselmodus: Adressen, Netz mit Präfixlänge, DHCP-Bereich, IPv6 Kurz- und Langform",
+      "ipModus": "schluessel",
+      "ipSchluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "eingabe": "interface Vlan10\n ip address 172.22.0.230 255.255.255.0\n ip helper-address 192.0.2.10\nip route 0.0.0.0 0.0.0.0 172.22.0.1\naccess-list 10 permit 10.0.0.0 0.0.0.255\nip dhcp excluded-address 192.168.0.100 192.168.0.200\nip prefix-list LAN seq 5 permit 10.0.0.0/23\nipv6 address 2001:db8:0:1::10/64\nipv6 route 2001:0db8:0000:0000:0000:0000:0000:0001/128 Null0\nntp server 203.0.113.9\nsnmp-server host 198.51.100.7 version 2c *****\n",
+      "ziele": [
+        {
+          "wert": "172.22.0.230",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "192.0.2.10",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "172.22.0.1",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "10.0.0.0",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "192.168.0.100",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "192.168.0.200",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "203.0.113.9",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "198.51.100.7",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "2001:db8:0:1::10",
+          "kategorie": "IPv6",
+          "art": "identitaet"
+        },
+        {
+          "wert": "2001:0db8:0000:0000:0000:0000:0000:0001",
+          "kategorie": "IPv6",
           "art": "identitaet"
         }
       ]

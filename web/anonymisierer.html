@@ -2540,6 +2540,9 @@
       netzerhaltend: overrides.netzerhaltend !== undefined ? overrides.netzerhaltend : (opt.netzerhaltend !== false),
       ipPrivatOeffentlichTrennen: overrides.ipPrivatOeffentlichTrennen !== undefined ? overrides.ipPrivatOeffentlichTrennen : (opt.ipPrivatOeffentlichTrennen !== false),
       subnetzmaskenBehalten: opt.subnetzmaskenBehalten !== false,
+      // IP-Modus: "schluessel" (präfixerhaltend, core/ip/cryptopan.js) oder "platzhalter" (NET-n.Hm, IP-PRIV-n)
+      ipModus: (overrides.ipModus || opt.ipModus) === "schluessel" ? "schluessel" : "platzhalter",
+      ipSchluessel: null,
       macNormalisieren: opt.macNormalisieren !== false,
       catGeheimnisse: overrides.kategorien ? overrides.kategorien.has("geheimnisseEntfernen") : (kat.geheimnisseEntfernen !== false),
       catIp: overrides.kategorien ? overrides.kategorien.has("ip") : (kat.ip !== false),
@@ -2591,6 +2594,11 @@
       // CLI-Schlüsselwörter und Tabellenköpfe (regeln/strukturvorlage.json): werden nie als Host/Benutzer/Seriennummer gelernt
       lernStoppwoerter: keywordSetFromVorlage(STRUKTUR_VORLAGE)
     };
+    if (cfg.ipModus === "schluessel") {
+      const k = overrides.ipSchluessel;
+      if (!k || k.length !== 32) throw new Error("IP-Schlüsselmodus: kein gültiger IP-Schlüssel (32 Byte) geladen.");
+      cfg.ipSchluessel = cryptoPanSchluessel(Uint8Array.from(k));
+    }
     return cfg;
   }
 
@@ -2928,6 +2936,26 @@
     return rawMac.replace(/[^0-9A-Fa-f]/g, "").toLowerCase();
   }
 
+  // Schlüsselmodus: Ausgabe wie ipTextVerfremden; die Zuordnungstabelle erhält Ausgabe -> Original
+  // (Vorwärtsschlüssel IPK4|ip bzw. IPK6|ip, kanonische Netz-/Broadcast-Ausgabe unter IPK4N<n>|ip). null = unverändert.
+  function ipSchluesselAusgabe(ipText, praefix, v6, cfg, state) {
+    const bytes = v6 ? ip6Lesen(ipText) : ip4Lesen(ipText);
+    if (!bytes || ipKlasse(bytes).art === "fest") return null;
+    const orig = v6 ? ip6Text(bytes) : ipText;
+    const aus = ipTextVerfremden(cfg.ipSchluessel, orig, praefix, false);
+    if (aus === null) return null;
+    state.addStat("ip", 1);
+    const kanonisch = praefix !== null && aus !== ipTextVerfremden(cfg.ipSchluessel, orig, null, false);
+    const kat = (v6 ? "IPK6" : "IPK4") + (kanonisch ? "N" + praefix : "");
+    state.forward.set((kat + "|" + orig).toLowerCase(), aus);
+    const upper = aus.toUpperCase();
+    if (!state.reverse.has(upper)) {
+      state.reverse.set(upper, orig);
+      state.reverseKeys.set(upper, aus);
+    }
+    return aus;
+  }
+
   function formatIpv4Token(rawMatch, cfg, state) {
     let ipPart = rawMatch;
     let suffix = "";
@@ -2958,6 +2986,12 @@
 
     if (cfg.exakteAusnahmen.has(ipPart.toLowerCase()) || cfg.exakteAusnahmen.has(rawMatch.toLowerCase())) {
       return rawMatch;
+    }
+
+    if (cfg.ipModus === "schluessel") {
+      const praefix = slashIdx > 0 ? parseInt(suffix.slice(1), 10) : null;
+      const aus = ipSchluesselAusgabe(ipPart, praefix, false, cfg, state);
+      return aus === null ? rawMatch : aus + suffix;
     }
 
     state.addStat("ip", 1);
@@ -3030,6 +3064,10 @@
     if (!lower.includes("::")) {
       const segs = lower.split(":");
       if (segs.length < 6) return rawMatch;
+    }
+    if (cfg.ipModus === "schluessel") {
+      const aus = ipSchluesselAusgabe(lower, slashIdx > 0 ? parseInt(suffix.slice(1), 10) : null, true, cfg, state);
+      return aus === null ? rawMatch : aus + suffix;
     }
     state.addStat("ip", 1);
     const isPriv = lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd");
@@ -4493,6 +4531,21 @@
     return auditTextDetail(text, fileName, cfg, state).funde;
   }
 
+  // Schlüsselmodus: Adresse ist eine Ausgabe der Verfremdung (steht als Ausgabe -> Original in der Zuordnungstabelle)
+  // Schlüsselmodus: Adressen der Klasse "fest" (0/8, 127/8, 224/4, 240/4, ::, ::1, ff00::/8) bleiben absichtlich stehen
+  function bleibtImSchluesselmodus(text, cfg) {
+    if (cfg.ipModus !== "schluessel") return false;
+    const b = ip4Lesen(text) || ip6Lesen(text);
+    return Boolean(b) && ipKlasse(b).art === "fest";
+  }
+
+  function istVerfremdeteIp(text, state) {
+    if (!state || !state.reverse) return false;
+    const orig = state.reverse.get(String(text).toUpperCase());
+    if (orig === undefined) return false;
+    return Boolean(ip4Lesen(orig) || ip6Lesen(orig));
+  }
+
   // state (optional): zusätzlich alle im Lauf erkannten Originalwerte (Hosts, Seriennummern, Benutzer, ...) suchen
   function auditTextRoh(text, fileName, cfg, state) {
     const findings = [];
@@ -4555,7 +4608,7 @@
       for (const m of pathCheck.matchAll(RxIpv4)) {
         const val = m[0];
         const ipOnly = val.split(/[/-]/)[0];
-        if (isAllowedInAudit(ipOnly, cfg)) continue;
+        if (isAllowedInAudit(ipOnly, cfg) || istVerfremdeteIp(ipOnly, state) || bleibtImSchluesselmodus(ipOnly, cfg)) continue;
         const p = ipOnly.split(".").map(n => parseInt(n, 10));
         if (p.length === 4 && !p.some(Number.isNaN) && isSubnetMaskOrSpecialIpv4(p[0], p[1], p[2], p[3], true)) continue;
         findings.push({ datei: fileName, zeile: 0, kategorie: "Pfad-IPv4", fund: val, kontext: "Dateipfad: " + fileName });
@@ -4625,11 +4678,11 @@
     const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
     const rxCryptHash = /\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[a-zA-Z0-9./=$+]{6,128}/g;
 
-    // 1. Prüfe auf verbliebene IPv4
+    // 1. Prüfe auf verbliebene IPv4 (verfremdete Adressen aus der Zuordnungstabelle sind kein Restfund)
     for (const m of ipCleanText.matchAll(RxIpv4)) {
       const val = m[0];
       const ipOnly = val.split(/[/-]/)[0];
-      if (isAllowedInAudit(ipOnly, cfg)) continue;
+      if (isAllowedInAudit(ipOnly, cfg) || istVerfremdeteIp(ipOnly, state) || bleibtImSchluesselmodus(ipOnly, cfg)) continue;
       const p = ipOnly.split(".").map(n => parseInt(n, 10));
       if (p.length === 4 && !p.some(Number.isNaN) && isSubnetMaskOrSpecialIpv4(p[0], p[1], p[2], p[3], true)) continue;
       const ln = getLineNumberFromIndex(lineStarts, m.index);
@@ -4639,7 +4692,7 @@
     // 2. Prüfe auf verbliebene IPv6
     for (const m of cleanText.matchAll(RxIpv6)) {
       const val = m[0].split("/")[0];
-      if (isAllowedInAudit(val, cfg)) continue;
+      if (isAllowedInAudit(val, cfg) || istVerfremdeteIp(val, state) || bleibtImSchluesselmodus(val, cfg)) continue;
       if (!val.includes("::") && val.split(":").length < 6) continue;
       const ln = getLineNumberFromIndex(lineStarts, m.index);
       findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv6", fund: m[0], kontext: getLineCtx(ln) });
