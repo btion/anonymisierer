@@ -1549,13 +1549,13 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
         "VLAN  Name                              Status  Reason          Type      Interfaces                           Description", sep,
         "1     DEFAULT_VLAN_1                    up      ok              default   1/1/1-1/1/2                          Standard", ""].join("\n");
       const tNach = core.nachpruefen(tabelleText, "t.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
-      assert(JSON.stringify(tNach) === '["Uplink-Weber"]', `Fix 1: Nachprüfung meldet nur die Description der Brief-Tabelle (${JSON.stringify(tNach)})`);
+      assert(JSON.stringify(tNach) === '["Uplink-Weber","Standard"]', `Fix 1: Nachprüfung meldet die Descriptions der Brief- und VLAN-Tabelle, nicht Log oder UTC (${JSON.stringify(tNach)})`);
       const tAus = core.processText(tabelleText, kCfg, new core.AnonState());
       const tZeilen = tAus.split("\n");
       assert(/1000    TEXT-1$/.test(tZeilen[5]) && tAus.indexOf("Uplink-Weber") < 0, "Fix 1: Description der Brief-Tabelle ersetzt");
       assert(/login failed for user USER-1 from NET-1\.H1 port 22$/.test(tZeilen[8]), `Fix 1: Benutzer und IP nach Benutzer-/IP-Regel, nicht als Spaltenwert (${tZeilen[8]})`);
       assert(tZeilen[9] === "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC", "Fix 1: 'UTC' bleibt stehen");
-      assert(/Interfaces {27}Description$/.test(tZeilen[12]) && /Standard$/.test(tZeilen[14]), `Fix 1: VLAN-Kopfzeile und VLAN-Tabelle bleiben (${tZeilen[12].slice(-30)})`);
+      assert(/Interfaces {27}Description$/.test(tZeilen[12]) && /1\/1\/1-1\/1\/2 {26}TEXT-[0-9]+$/.test(tZeilen[14]) && tZeilen[14].indexOf("DEFAULT_VLAN_1") > 0, `Fix 1: VLAN-Kopfzeile bleibt, Standardname bleibt, VLAN-Description ersetzt (${tZeilen[14].slice(-40)})`);
       const tTab = core.processText("Port\tNative\tDescription\n1/1/1\t1\tUplink-Weber\nshow logging ohne Tabulator\n1/1/2\t1\tLog-Zeile\n", kCfg, new core.AnonState());
       assert(tTab.indexOf("Uplink-Weber") < 0 && tTab.indexOf("Log-Zeile") >= 0, `Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator (${JSON.stringify(tTab)})`);
       const tTrenn = core.processText(["Port      Native  Type   Description", sep, "1/1/1     1       1GbT   Uplink-Weber", sep, "1/1/9     1       1GbT   Nach-Trennlinie", ""].join("\n"), kCfg, new core.AnonState());
@@ -1579,6 +1579,25 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       assert(core.processText(vText, kCfg, new core.AnonState()) === vText && core.nachpruefen(vText, "v.txt", kCfg).length === 0, "show vlan: Standardnamen (default, VLAN0010, fddi-default) bleiben, kein Fund");
       const tPrompt = core.nachpruefen(["Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", ""].join("\n"), "p.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
       assert(JSON.stringify(tPrompt) === '["Uplink-Weber"]', `Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle (${JSON.stringify(tPrompt)})`);
+    }
+    // Fix Namensspalten: nur die Namensspalte ersetzen, übrige Spalten bleiben unverändert
+    {
+      const kat = Object.fromEntries(katalog.faelle.map(f => [f.id, f.eingabe]));
+      const aus = (id) => core.processText(kat[id], kCfg, new core.AnonState()).split("\n");
+      const ein = (id) => kat[id].split("\n");
+      const c = aus("K26"), ce = ein("K26");
+      assert(c[1].endsWith("connected    10         a-full  a-1000 10/100/1000BaseTX") && c[1].indexOf("Becker") < 0 && c[1].length === ce[1].length, `Namensspalten: Cisco Name ersetzt, Status bis Type unverändert (${c[1]})`);
+      assert(c[2].endsWith(" notconnect 20        auto    auto 10/100/1000BaseTX") && c[2].indexOf("Hoffmann") < 0, `Namensspalten: überlanger Name ersetzt, Rest bleibt (${c[2]})`);
+      assert(c[3] === ce[3], "Namensspalten: leerer Name bleibt leer");
+      const n = aus("K27");
+      assert(/^  1     TEXT-[0-9]+$/.test(n[4]) && /^  2     TEXT-[0-9]+$/.test(n[5]) && n[6] === "  3", `Namensspalten: ArubaOS-Switch show name ersetzt (${n.slice(4, 7).join(" | ")})`);
+      const pr = aus("K28");
+      assert(/^admin@HOST-[0-9]+> show version$/.test(pr[0]) && /^admin@HOST-[0-9]+# show clock$/.test(pr[1]), `Namensspalten: Prompt user@host (${pr.join(" | ")})`);
+      const d = aus("K29"), de = ein("K29");
+      assert(d[1].endsWith("Gig 1/0/1         150             R S I  C9300-48P Gig 1/0/48") && /^HOST-[0-9]+ /.test(d[1]) && d[3] === de[3], `Namensspalten: CDP nur Device ID ersetzt, Local Intrfce bleibt (${d[1]} | ${d[3]})`);
+      assert(d[2].indexOf("brw-core12") < 0, "Namensspalten: umbrochene Device ID ersetzt");
+      const nAlle = core.nachpruefen("ID  Desc             Status\n1   Lager-Engel      up\n2   --               down\n\nIdx Alias        Port-Name      Speed\n1   Halle-Ost    Tor-Seidel     1000\n", "n.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
+      assert(JSON.stringify(nAlle) === '["Lager-Engel","Halle-Ost","Tor-Seidel"]', `Nachprüfung: Spalten Name/Desc/Alias/Port-Name in beliebiger Position (${JSON.stringify(nAlle)})`);
     }
     // Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
     {

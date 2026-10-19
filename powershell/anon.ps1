@@ -833,10 +833,22 @@ namespace AnonTool
             return RxBefehlszeile.IsMatch(line);
         }
 
-        // Spaltenraster: Beginn jedes Worts der Kopfzeile
+        // Spaltenraster: Beginn jeder Kopfzelle. Zellen sind durch mindestens zwei Leerzeichen getrennt ("Device ID",
+        // "Local Intrfce"); nutzt die Kopfzeile nur einzelne Leerzeichen, ist jedes Wort eine Zelle.
         private static readonly Regex RxWort = new Regex("[^ \\t]+", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxZelle = new Regex("[^ \\t]+(?: [^ \\t]+)*", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxZellenLuecke = new Regex("[ \\t]{2,}|\\t", RegexOptions.CultureInvariant, RxTimeout);
 
         private static List<int> KopfRaster(string line)
+        {
+            List<int> starts = new List<int>();
+            Regex rx = RxZellenLuecke.IsMatch(line.Trim()) ? RxZelle : RxWort;
+            foreach (Match m in rx.Matches(line)) starts.Add(m.Index);
+            return starts;
+        }
+
+        // Wortanfänge der Kopfzeile (für das Ankerfeld vor der Zielspalte)
+        private static List<int> KopfWoerter(string line)
         {
             List<int> starts = new List<int>();
             foreach (Match m in RxWort.Matches(line)) starts.Add(m.Index);
@@ -858,6 +870,9 @@ namespace AnonTool
         // Ankerfeld vor der Zielspalte (z. B. Speed vor Description): Zahl, Zahl mit Einheit, "--", "auto"
         private static readonly Regex RxAnkerFeld = new Regex("^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|-{1,2}|auto|n/a|a-[0-9]+[KMGT]?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxLuecke = new Regex("[ \\t]{2,}", RegexOptions.CultureInvariant, RxTimeout);
+        // Statuswerte, an denen eine mittlere Spalte (z. B. Name vor Status) endet
+        private static readonly HashSet<string> TabellenStatuswerte = new HashSet<string>(new string[] { "connected", "notconnect", "disabled", "err-disabled", "inactive", "monitoring", "up", "down", "sfpabsent",
+            "xcvrabsent", "suspended", "active", "act/unsup", "enabled", "yes", "no", "routed", "trunk", "access" }, StringComparer.Ordinal);
 
         // Wert einer Zeile außerhalb des Spaltenrasters (z. B. überlanger Reason verschiebt Speed und Description):
         // Beschreibung nach dem Ankerfeld; ohne eindeutigen Anker nach Position. Nicht eindeutig -> unsicher (wird gemeldet).
@@ -865,9 +880,11 @@ namespace AnonTool
         private static int[] FeldAusserhalbRaster(string line, int[] col)
         {
             List<Match> anker = new List<Match>();
+            List<Match> tokens = new List<Match>();
             int ti = 0;
             foreach (Match m in RxWort.Matches(line))
             {
+                tokens.Add(m);
                 if (ti > 0 && RxAnkerFeld.IsMatch(m.Value)) anker.Add(m);
                 ti++;
             }
@@ -887,15 +904,29 @@ namespace AnonTool
                 s = Math.Min(col[0], line.Length);
                 while (s > 0 && s < line.Length && !IsBlank(line[s - 1])) s++;
                 if (s >= line.Length && letzte && anker.Count > 0) s = anker[anker.Count - 1].Index + anker[anker.Count - 1].Length;
-                unsicher = true;
+                unsicher = letzte;
             }
             while (s < line.Length && IsBlank(line[s])) s++;
             int e = line.Length;
             if (!letzte)
             {
-                Match l = RxLuecke.Match(line, s);
-                if (l.Success) e = l.Index;
-                unsicher = true;
+                // Mittlere Spalte: Wert beginnt in der Spalte und endet vor dem ersten Statuswert oder Ankerfeld danach
+                if (col[1] >= 0 && s >= col[1]) return null;
+                Match stopp = null;
+                foreach (Match tk in tokens)
+                {
+                    if (tk.Index > s && (TabellenStatuswerte.Contains(tk.Value.ToLowerInvariant()) || RxAnkerFeld.IsMatch(tk.Value))) { stopp = tk; break; }
+                }
+                if (stopp != null)
+                {
+                    e = stopp.Index;
+                }
+                else
+                {
+                    Match l = RxLuecke.Match(line, s);
+                    if (l.Success) e = l.Index;
+                    unsicher = true;
+                }
             }
             while (e > s && IsBlank(line[e - 1])) e--;
             if (e <= s) return null;
@@ -961,6 +992,7 @@ namespace AnonTool
                     else
                     {
                         raster = KopfRaster(line);
+                        List<int> kopfWoerter = KopfWoerter(line);
                         foreach (TableColumnSpec sp in rule.Spalten)
                         {
                             int st = FindHeaderWordNth(line, sp.Name, sp.Vorkommen);
@@ -972,7 +1004,7 @@ namespace AnonTool
                             }
                             // Ankerfeld: Wort der Kopfzeile direkt vor der Zielspalte
                             int ankerStart = -1;
-                            foreach (int r in raster) if (r < st) ankerStart = r;
+                            foreach (int r in kopfWoerter) if (r < st) ankerStart = r;
                             int ins = 0;
                             while (ins < newCols.Count && newCols[ins][0] <= st) ins++;
                             newCols.Insert(ins, new int[] { st, e, -1, ankerStart, e < 0 ? 1 : 0 });
@@ -2741,8 +2773,15 @@ namespace AnonTool
         private static readonly Regex RxNachPrompt = new Regex("^<([A-Za-z0-9._-]{2,64})>[ \\t]*(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))", NachOpt, RxTimeout);
         // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
         private static readonly Dictionary<string, string> NachTabellenSpalten = new Dictionary<string, string>(StringComparer.Ordinal) {
-            { "Description", "T" }, { "DESCRIPTION", "T" }, { "PORT-DESC", "T" }, { "Port-Desc", "T" }, { "Port Description", "T" },
-            { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" } };
+            { "Description", "T" }, { "DESCRIPTION", "T" }, { "Desc", "T" }, { "DESC", "T" }, { "PORT-DESC", "T" }, { "Port-Desc", "T" }, { "Port Description", "T" },
+            { "Name", "T" }, { "NAME", "T" }, { "Alias", "T" }, { "ALIAS", "T" }, { "Port-Name", "T" }, { "PORT-NAME", "T" },
+            { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" }, { "Device ID", "H" } };
+        // Hardwarebezeichnungen (show module: "8400X Mgmt Module", "JL375A") sind kein Freitext
+        private static readonly Regex RxNachModellnummer = new Regex("^(?:[0-9]+[a-z]{0,4}|[a-z]{1,3}[0-9][a-z0-9-]*)$", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly HashSet<string> NachTechnikwoerter = new HashSet<string>(new string[] { "module", "mgmt", "management", "fabric", "fan", "fans", "tray", "power", "supply", "psu", "line", "card", "linecard",
+            "chassis", "slot", "port", "ports", "transceiver", "sfp", "sfp+", "qsfp", "qsfp+", "gbic", "stack", "member", "controller", "supervisor" }, StringComparer.Ordinal);
+        // Prompt "user@host>" / "user@host#" (Juniper und andere)
+        private static readonly Regex RxNachPromptUserHost = new Regex("^[A-Za-z0-9._-]{1,32}@([A-Za-z0-9._-]{2,64})(?:\\([^)]*\\))?[#>](?=[ \\t]|$)", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachSchnittstellenKopf = new Regex("^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$", NachOpt, RxTimeout);
         private static readonly Regex RxNachWortKopf = new Regex("[^ \\t]+", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachLauf = new Regex("[^ \\t]+(?: [^ \\t]+)+", RegexOptions.CultureInvariant, RxTimeout);
@@ -2757,7 +2796,41 @@ namespace AnonTool
         private static readonly Regex RxNachStandardName = new Regex("^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|(?:fddi|token-ring|fddinet|trnet)-default)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
 
         private class NachSpalte { public int Start; public int Ende; public int Feld; public string Art; }
-        private class NachKopf { public bool Tab; public List<NachSpalte> Spalten = new List<NachSpalte>(); }
+        private class NachKopf { public bool Tab; public List<NachSpalte> Spalten = new List<NachSpalte>(); public List<int> Woerter = new List<int>(); }
+
+        // Eine Kopfzeile gilt erst als Tabelle, wenn direkt danach eine Trennlinie oder eine passend ausgerichtete Zeile folgt
+        private static bool NachKopfBestaetigt(string[] zeilen, int i, NachKopf kopf)
+        {
+            for (int t = i + 1; t <= i + 3 && t < zeilen.Length && zeilen[t].Trim().Length > 0; t++)
+            {
+                if (RxNachTabellenTrenner.IsMatch(zeilen[t])) return true;
+            }
+            string z = i + 1 < zeilen.Length ? zeilen[i + 1] : "";
+            if (z.Trim().Length == 0) return false;
+            if (kopf.Tab) return z.IndexOf('\t') >= 0;
+            // ausgerichtete Spaltenanfänge ohne die erste Spalte: mindestens 2 und mindestens ein Drittel;
+            // ohne Ausrichtung (einzelne Leerzeichen): mindestens so viele Felder wie Kopfwörter weniger eins, mindestens 4
+            int treffer = 0;
+            int felder = 0;
+            foreach (Match m in RxNachWortKopf.Matches(z))
+            {
+                felder++;
+                if (m.Index <= 1) continue;
+                foreach (int w in kopf.Woerter) if (w > 1 && Math.Abs(w - m.Index) <= 1) { treffer++; break; }
+            }
+            return treffer >= Math.Max(2, (kopf.Woerter.Count - 1 + 2) / 3) || felder >= Math.Max(4, kopf.Woerter.Count - 1);
+        }
+
+        // Tabellenwert aus Hardwarebezeichnungen und Modellnummern ("8400X Mgmt Module", "JL375A")
+        private static bool NachNurTechnik(string wert)
+        {
+            foreach (string t in Regex.Split(wert, "[ \\t,;]+"))
+            {
+                string r = t.ToLowerInvariant();
+                if (Regex.IsMatch(r, "[a-z]") && !RxNachModellnummer.IsMatch(r) && !NachTechnikwoerter.Contains(r) && !NachStatuswerte.Contains(r)) return false;
+            }
+            return true;
+        }
 
         // Kopfzeile einer Tabelle mit Beschreibungs- oder Namensspalte, sonst null
         private static NachKopf NachTabellenKopf(string kopf)
@@ -2778,22 +2851,14 @@ namespace AnonTool
                 foreach (Match m in RxNachLauf.Matches(kopf)) { kText.Add(m.Value); kStart.Add(m.Index); }
                 foreach (Match m in RxNachPaar.Matches(kopf)) { kText.Add(m.Value); kStart.Add(m.Index); }
             }
-            if ((tab ? kText.Count : woerter.Count) < 3) return null;
-            bool schnittstelle = false;
-            bool vlan = false;
-            foreach (string t in kText)
-            {
-                if (RxNachSchnittstellenKopf.IsMatch(t)) schnittstelle = true;
-                if (t == "VLAN" || t == "VLAN ID") vlan = true;
-            }
+            if ((tab ? kText.Count : woerter.Count) < 2) return null;
             NachKopf res = new NachKopf();
             res.Tab = tab;
+            res.Woerter = woerter;
             for (int k = 0; k < kText.Count; k++)
             {
                 string art;
-                if (!NachTabellenSpalten.TryGetValue(kText[k], out art)) art = null;
-                if (kText[k] == "Name" && vlan) art = "T";
-                if (art == null || (art == "T" && kText[k] != "Name" && !schnittstelle)) continue;
+                if (!NachTabellenSpalten.TryGetValue(kText[k], out art)) continue;
                 bool doppelt = false;
                 foreach (NachSpalte sp0 in res.Spalten) if (sp0.Start == kStart[k]) doppelt = true;
                 if (doppelt) continue;
@@ -2955,7 +3020,9 @@ namespace AnonTool
                 foreach (Match m in RxNachSid.Matches(zeile)) melde(ln, "", m.Value, "Nachpruefung-SID");
                 Match pm = RxNachPrompt.Match(zeile);
                 if (pm.Success) pruefeWert(ln, "H", pm.Groups[1].Value, null);
-                Match bm = RxNachBeschreibung.Match(zeile);
+                Match pu = RxNachPromptUserHost.Match(zeile);
+                if (pu.Success) pruefeWert(ln, "H", pu.Groups[1].Value, null);
+                Match bm = NachTabellenKopf(zeile) != null ? Match.Empty : RxNachBeschreibung.Match(zeile);
                 if (bm.Success)
                 {
                     string roh = (bm.Groups[1].Success ? bm.Groups[1].Value : (bm.Groups[2].Success ? bm.Groups[2].Value : bm.Groups[3].Value)).Trim();
@@ -3008,11 +3075,13 @@ namespace AnonTool
             for (int i = 0; i < zeilen.Length; i++)
             {
                 NachKopf kopf = NachTabellenKopf(zeilen[i]);
-                if (kopf == null) continue;
+                if (kopf == null || !NachKopfBestaetigt(zeilen, i, kopf)) continue;
                 for (int j = i + 1; j < zeilen.Length && j < i + 2000; j++)
                 {
                     string z = zeilen[j];
-                    if (z.Trim().Length == 0 || RxNachBefehl.IsMatch(z) || NachTabellenKopf(z) != null) break;
+                    if (z.Trim().Length == 0 || RxNachBefehl.IsMatch(z)) break;
+                    NachKopf neuerKopf = NachTabellenKopf(z);
+                    if (neuerKopf != null && NachKopfBestaetigt(zeilen, j, neuerKopf)) break;
                     if (RxNachTabellenTrenner.IsMatch(z)) continue;
                     foreach (NachSpalte sp in kopf.Spalten)
                     {
@@ -3035,11 +3104,6 @@ namespace AnonTool
                                 while (a < z.Length && (z[a] == ' ' || z[a] == '\t')) a++;
                                 int b = sp.Ende < 0 ? z.Length : Math.Min(sp.Ende, z.Length);
                                 while (b < z.Length && z[b] != ' ' && z[b] != '\t' && z[b - 1] != ' ' && z[b - 1] != '\t') b++;
-                                if (sp.Ende >= 0 && b > a)
-                                {
-                                    Match l = Regex.Match(z.Substring(a, b - a), "[ \\t]{2,}");
-                                    if (l.Success && l.Index > 0) b = a + l.Index;
-                                }
                                 lage = a < b ? z.Substring(a, b - a).Trim() : "";
                             }
                             string nachAnker = "";
@@ -3063,7 +3127,7 @@ namespace AnonTool
                         foreach (string wert in werte)
                         {
                             if (sp.Art == "H") { if (wert.Length > 0 && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "H", wert, null); }
-                            else pruefeBeschreibung(j + 1, "T", wert);
+                            else if (!NachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
                         }
                     }
                 }

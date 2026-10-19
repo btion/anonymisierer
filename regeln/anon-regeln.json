@@ -405,6 +405,7 @@
     "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
     "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
     "(?m)^(<)([A-Za-z0-9._-]{2,64})(>[ \\t]*)(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))",
+    "(?m)^([A-Za-z0-9._-]{1,32}@)([A-Za-z0-9._-]{2,64})((?:\\([^)\\r\\n]*\\))?[#>])(?=[ \\t]|\\r?$)",
     "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
     "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
     "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"
@@ -533,7 +534,7 @@
       ]
     },
     {
-      "name": "Aruba AOS-CX show vlan (Spalte Name)",
+      "name": "Aruba AOS-CX show vlan (Spalten Name und Description)",
       "kopf": [
         "VLAN",
         "Name",
@@ -545,6 +546,10 @@
       "spalten": [
         {
           "name": "Name",
+          "kategorie": "TEXT"
+        },
+        {
+          "name": "Description",
           "kategorie": "TEXT"
         }
       ]
@@ -570,6 +575,37 @@
         "VLAN ID",
         "Name",
         "Port"
+      ],
+      "spalten": [
+        {
+          "name": "Name",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show interfaces status (Spalte Name, mittlere Spalte)",
+      "kopf": [
+        "Port",
+        "Name",
+        "Status",
+        "Vlan",
+        "Duplex",
+        "Speed",
+        "Type"
+      ],
+      "spalten": [
+        {
+          "name": "Name",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "ArubaOS-Switch show name (Spalte Name)",
+      "kopf": [
+        "Port",
+        "Name"
       ],
       "spalten": [
         {

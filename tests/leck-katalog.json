@@ -545,6 +545,74 @@
           "art": "identitaet"
         }
       ]
+    },
+    {
+      "id": "K26",
+      "quelle": "Fix Namensspalten / Cisco show interfaces status (Name als mittlere Spalte, Doppel-Leerzeichen, Überlänge)",
+      "eingabe": "Port      Name                 Status       Vlan       Duplex  Speed Type\nGi1/0/1   PC  Becker           connected    10         a-full  a-1000 10/100/1000BaseTX\nGi1/0/2   AP-Hoffmann-Kueche-Lang notconnect 20        auto    auto 10/100/1000BaseTX\nGi1/0/3                        notconnect   1          auto    auto 10/100/1000BaseTX\n",
+      "ziele": [
+        {
+          "wert": "Becker",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "AP-Hoffmann-Kueche-Lang",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K27",
+      "quelle": "Fix Namensspalten / ArubaOS-Switch show name",
+      "eingabe": " Port Names\n\n  Port  Name\n  ----- --------------------------------\n  1     Drucker-Richter\n  2     Empfang Wolf\n  3\n",
+      "ziele": [
+        {
+          "wert": "Drucker-Richter",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        },
+        {
+          "wert": "Wolf",
+          "kategorie": "Beschreibung",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K28",
+      "quelle": "Fix Namensspalten / Prompt user@host> und user@host#",
+      "eingabe": "admin@brw-sw09> show version\nadmin@brw-sw10# show clock\n",
+      "ziele": [
+        {
+          "wert": "brw-sw09",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "brw-sw10",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K29",
+      "quelle": "Fix Namensspalten / show cdp neighbors (auch umbrochene Device ID)",
+      "eingabe": "Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID\nbrw-core11       Gig 1/0/1         150             R S I  C9300-48P Gig 1/0/48\nbrw-core12.example.invalid\n                 Gig 1/0/2         170             R S I  C9300-48P Gig 1/0/47\n",
+      "ziele": [
+        {
+          "wert": "brw-core11",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        },
+        {
+          "wert": "brw-core12.example.invalid",
+          "kategorie": "Hostname",
+          "art": "identitaet"
+        }
+      ]
     }
   ]
 }

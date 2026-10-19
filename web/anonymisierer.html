@@ -1335,6 +1335,7 @@
       "(?im)^([ \\t]*(?:Neighbor[ \\t]+)?(?:System[ -]Name|Device ID)[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,64})([ \\t]*)(?=\\r?$)",
       "(?im)^([ \\t]*/system[ \\t]+identity(?:[ \\t]+set|[ \\t]*\\r?\\n[ \\t]*set)[ \\t]+name=\"?)([A-Za-z0-9._-]{2,64})(\"?[ \\t]*)(?=\\r?$)",
       "(?m)^(<)([A-Za-z0-9._-]{2,64})(>[ \\t]*)(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))",
+      "(?m)^([A-Za-z0-9._-]{1,32}@)([A-Za-z0-9._-]{2,64})((?:\\([^)\\r\\n]*\\))?[#>])(?=[ \\t]|\\r?$)",
       "(?im)((?<![A-Za-z0-9-])(?:active-)?host-name=\"?)([A-Za-z0-9._-]{2,64})(\"?)(?=[ \\t]|\\r?$)",
       "(?i)(\"(?:hostname|sys_name|device_name|switch_name|geraet)\"[ \\t]*:[ \\t]*\")([A-Za-z0-9._-]{2,64})(\")",
       "(?i)(?<![A-Za-z0-9-])((?:sw|core|dist|acc)-[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)(?![A-Za-z0-9-])"
@@ -1463,7 +1464,7 @@
         ]
       },
       {
-        "name": "Aruba AOS-CX show vlan (Spalte Name)",
+        "name": "Aruba AOS-CX show vlan (Spalten Name und Description)",
         "kopf": [
           "VLAN",
           "Name",
@@ -1475,6 +1476,10 @@
         "spalten": [
           {
             "name": "Name",
+            "kategorie": "TEXT"
+          },
+          {
+            "name": "Description",
             "kategorie": "TEXT"
           }
         ]
@@ -1500,6 +1505,37 @@
           "VLAN ID",
           "Name",
           "Port"
+        ],
+        "spalten": [
+          {
+            "name": "Name",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show interfaces status (Spalte Name, mittlere Spalte)",
+        "kopf": [
+          "Port",
+          "Name",
+          "Status",
+          "Vlan",
+          "Duplex",
+          "Speed",
+          "Type"
+        ],
+        "spalten": [
+          {
+            "name": "Name",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "ArubaOS-Switch show name (Spalte Name)",
+        "kopf": [
+          "Port",
+          "Name"
         ],
         "spalten": [
           {
@@ -2657,10 +2693,12 @@
   function istBefehlszeile(line) {
     return RxBefehlszeile.test(line);
   }
-  // Spaltenraster: Beginn jedes Worts der Kopfzeile
+  // Spaltenraster: Beginn jeder Kopfzelle. Zellen sind durch mindestens zwei Leerzeichen getrennt ("Device ID",
+  // "Local Intrfce"); nutzt die Kopfzeile nur einzelne Leerzeichen, ist jedes Wort eine Zelle.
   function kopfRaster(line) {
     const starts = [];
-    for (const m of line.matchAll(/[^ \t]+/g)) starts.push(m.index);
+    const rx = /[ \t]{2,}|\t/.test(line.trim()) ? /[^ \t]+(?: [^ \t]+)*/g : /[^ \t]+/g;
+    for (const m of line.matchAll(rx)) starts.push(m.index);
     return starts;
   }
   // Eine Zeile passt zum Raster, wenn höchstens ein Wort über eine Spaltengrenze reicht
@@ -2675,6 +2713,9 @@
 
   // Ankerfeld vor der Zielspalte (z. B. Speed vor Description): Zahl, Zahl mit Einheit, "--", "auto"
   const RxAnkerFeld = /^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|-{1,2}|auto|n\/a|a-[0-9]+[KMGT]?)$/i;
+  // Statuswerte, an denen eine mittlere Spalte (z. B. Name vor Status) endet
+  const TABELLEN_STATUSWERTE = new Set(["connected", "notconnect", "disabled", "err-disabled", "inactive", "monitoring", "up", "down", "sfpabsent",
+    "xcvrabsent", "suspended", "active", "act/unsup", "enabled", "yes", "no", "routed", "trunk", "access"]);
 
   // Wert einer Zeile außerhalb des Spaltenrasters (z. B. überlanger Reason verschiebt Speed und Description):
   // Beschreibung nach dem Ankerfeld; ohne eindeutigen Anker nach Position. Nicht eindeutig -> unsicher (wird gemeldet).
@@ -2692,14 +2733,21 @@
       s = Math.min(col.start, line.length);
       while (s > 0 && s < line.length && !isBlankCh(line[s - 1])) s++;
       if (s >= line.length && col.letzte && anker.length > 0) s = anker[anker.length - 1].b;
-      unsicher = true;
+      unsicher = col.letzte;
     }
     while (s < line.length && isBlankCh(line[s])) s++;
     let e = line.length;
     if (!col.letzte) {
-      const luecke = line.slice(s).search(/[ \t]{2,}/);
-      if (luecke >= 0) e = s + luecke;
-      unsicher = true;
+      // Mittlere Spalte: Wert beginnt in der Spalte und endet vor dem ersten Statuswert oder Ankerfeld danach
+      if (col.end >= 0 && s >= col.end) return null;
+      const stopp = tokens.find(tk => tk.a > s && (TABELLEN_STATUSWERTE.has(tk.t.toLowerCase()) || RxAnkerFeld.test(tk.t)));
+      if (stopp) {
+        e = stopp.a;
+      } else {
+        const luecke = line.slice(s).search(/[ \t]{2,}/);
+        if (luecke >= 0) e = s + luecke;
+        unsicher = true;
+      }
     }
     while (e > s && isBlankCh(line[e - 1])) e--;
     if (e <= s) return null;
@@ -3635,9 +3683,16 @@
   // in JSON "description": "X"; "port-name X" (Ruckus ICX), "display-string X" (Extreme EXOS)
   const RxNachBeschreibung = /^[ \t]*(?:(?:Neighbor[ \t]+)?(?:Port[ \t-]+Desc(?:ription)?|Description|PORT-DESC)[ \t]*[:=][ \t]*|(?:description|alias)[ \t]+)(.*)$|"(?:description|alias)"[ \t]*:[ \t]*("(?:[^"\\\r\n]|\\.)*")|(?<![A-Za-z0-9_-])(?:port-name|display-string)[ \t]+(.*)$/i;
   // Tabellenköpfe mit Beschreibungs- oder Namensspalte (Zelle exakt, Zellen durch Tabulator oder mindestens zwei Leerzeichen getrennt)
-  const NACH_TABELLEN_SPALTEN = { "Description": "T", "DESCRIPTION": "T", "PORT-DESC": "T", "Port-Desc": "T", "Port Description": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H" };
+  const NACH_TABELLEN_SPALTEN = { "Description": "T", "DESCRIPTION": "T", "Desc": "T", "DESC": "T", "PORT-DESC": "T", "Port-Desc": "T", "Port Description": "T",
+    "Name": "T", "NAME": "T", "Alias": "T", "ALIAS": "T", "Port-Name": "T", "PORT-NAME": "T", "SYS-NAME": "H", "System-Name": "H", "System Name": "H", "Device ID": "H" };
+  // Hardwarebezeichnungen (show module: "8400X Mgmt Module", "JL375A") sind kein Freitext
+  const RxNachModellnummer = /^(?:[0-9]+[a-z]{0,4}|[a-z]{1,3}[0-9][a-z0-9-]*)$/;
+  const NACH_TECHNIKWOERTER = new Set(["module", "mgmt", "management", "fabric", "fan", "fans", "tray", "power", "supply", "psu", "line", "card", "linecard",
+    "chassis", "slot", "port", "ports", "transceiver", "sfp", "sfp+", "qsfp", "qsfp+", "gbic", "stack", "member", "controller", "supervisor"]);
   // Huawei/H3C-Prompt "<name>" gefolgt von einem Befehl (auch ohne sysname-Zeile)
   const RxNachPrompt = /^<([A-Za-z0-9._-]{2,64})>[ \t]*(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))/i;
+  // Prompt "user@host>" / "user@host#" (Juniper und andere)
+  const RxNachPromptUserHost = /^[A-Za-z0-9._-]{1,32}@([A-Za-z0-9._-]{2,64})(?:\([^)]*\))?[#>](?=[ \t]|$)/;
   const RxNachSchnittstellenKopf = /^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$/i;
   // Eigene Erkennung einer Befehls-/Promptzeile für die Nachprüfung
   const RxNachBefehl = /^\s*(?:show|display|dis)\s+\S|^[^\s<>\[\]#]{1,64}(?:\([^)]*\))?[#>]|^\s*<[^<>\s]+>|^\s*\[[^\[\]\s]+\]/i;
@@ -3661,21 +3716,41 @@
       for (const m of kopf.matchAll(/[^ \t]+(?: [^ \t]+)+/g)) kandidaten.push({ text: m[0], start: m.index });
       for (const m of kopf.matchAll(/[^ \t]+ [^ \t]+/g)) kandidaten.push({ text: m[0], start: m.index });
     }
-    if ((tab ? kandidaten.length : woerter.length) < 3) return null;
-    const texte = kandidaten.map(k => k.text);
-    const schnittstelle = texte.some(t => RxNachSchnittstellenKopf.test(t));
-    const vlan = texte.some(t => t === "VLAN" || t === "VLAN ID");
+    if ((tab ? kandidaten.length : woerter.length) < 2) return null;
     const spalten = [];
     for (const k of kandidaten) {
-      let art = NACH_TABELLEN_SPALTEN[k.text];
-      if (k.text === "Name" && vlan) art = "T";
-      if (!art || (art === "T" && k.text !== "Name" && !schnittstelle)) continue;
+      const art = NACH_TABELLEN_SPALTEN[k.text];
+      if (!art) continue;
       if (spalten.some(sp => sp.start === k.start)) continue;
       let ende = -1;
       if (!tab) for (const w of woerter) if (w > k.start + k.text.length) { ende = w; break; }
       spalten.push({ start: k.start, ende, feld: k.feld, art });
     }
-    return spalten.length > 0 ? { tab, spalten } : null;
+    return spalten.length > 0 ? { tab, spalten, woerter } : null;
+  }
+
+  // Eine Kopfzeile gilt erst als Tabelle, wenn direkt danach eine Trennlinie oder eine passend ausgerichtete Zeile folgt
+  function nachKopfBestaetigt(zeilen, i, kopf) {
+    for (let t = i + 1; t <= i + 3 && t < zeilen.length && zeilen[t].trim() !== ""; t++) {
+      if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(zeilen[t])) return true;
+    }
+    const z = i + 1 < zeilen.length ? zeilen[i + 1] : "";
+    if (z.trim() === "") return false;
+    if (kopf.tab) return z.indexOf("\t") >= 0;
+    // ausgerichtete Spaltenanfänge ohne die erste Spalte: mindestens 2 und mindestens ein Drittel;
+    // ohne Ausrichtung (einzelne Leerzeichen): mindestens so viele Felder wie Kopfwörter weniger eins, mindestens 4
+    let treffer = 0;
+    let felder = 0;
+    for (const m of z.matchAll(/[^ \t]+/g)) {
+      felder++;
+      if (m.index > 1 && kopf.woerter.some(w => w > 1 && Math.abs(w - m.index) <= 1)) treffer++;
+    }
+    return treffer >= Math.max(2, Math.ceil((kopf.woerter.length - 1) / 3)) || felder >= Math.max(4, kopf.woerter.length - 1);
+  }
+
+  // Tabellenwert aus Hardwarebezeichnungen und Modellnummern ("8400X Mgmt Module", "JL375A")
+  function nachNurTechnik(wert) {
+    return String(wert).split(/[ \t,;]+/).every(t => { const r = t.toLowerCase(); return !/[a-z]/.test(r) || RxNachModellnummer.test(r) || NACH_TECHNIKWOERTER.has(r) || NACH_STATUSWERTE.has(r); });
   }
   const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
   const NACH_STRUKTURWOERTER = new Set(["chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
@@ -3793,7 +3868,9 @@
       for (const m of zeile.matchAll(RxNachSid)) melde(ln, "", m[0], "Nachpruefung-SID");
       const pm = RxNachPrompt.exec(zeile);
       if (pm) pruefeWert(ln, "H", pm[1]);
-      const bm = RxNachBeschreibung.exec(zeile);
+      const pu = RxNachPromptUserHost.exec(zeile);
+      if (pu) pruefeWert(ln, "H", pu[1]);
+      const bm = nachTabellenKopf(zeile) ? null : RxNachBeschreibung.exec(zeile);
       if (bm) {
         const roh = (bm[1] !== undefined ? bm[1] : (bm[2] !== undefined ? bm[2] : bm[3])).trim();
         const w = roh.startsWith('"') ? nachWert(roh) : null;
@@ -3835,10 +3912,12 @@
     // auch in Zeilen, die nicht ins Spaltenraster passen (Wert nach dem letzten Zahlen-/"--"-Feld).
     for (let i = 0; i < zeilen.length; i++) {
       const kopf = nachTabellenKopf(zeilen[i]);
-      if (!kopf) continue;
+      if (!kopf || !nachKopfBestaetigt(zeilen, i, kopf)) continue;
       for (let j = i + 1; j < zeilen.length && j < i + 2000; j++) {
         const z = zeilen[j];
-        if (z.trim() === "" || RxNachBefehl.test(z) || nachTabellenKopf(z)) break;
+        if (z.trim() === "" || RxNachBefehl.test(z)) break;
+        const neuerKopf = nachTabellenKopf(z);
+        if (neuerKopf && nachKopfBestaetigt(zeilen, j, neuerKopf)) break;
         if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z)) continue;
         for (const sp of kopf.spalten) {
           const werte = [];
@@ -3852,7 +3931,6 @@
               while (a < z.length && /[ \t]/.test(z[a])) a++;
               let b = sp.ende < 0 ? z.length : Math.min(sp.ende, z.length);
               while (b < z.length && !/[ \t]/.test(z[b]) && !/[ \t]/.test(z[b - 1])) b++;
-              if (sp.ende >= 0 && b > a) { const l = z.slice(a, b).search(/[ \t]{2,}/); if (l > 0) b = a + l; }
               lage = a < b ? z.slice(a, b).trim() : "";
             }
             let nachAnker = "";
@@ -3870,7 +3948,7 @@
             }
           }
           for (const wert of werte) {
-            if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else pruefeBeschreibung(j + 1, "T", wert);
+            if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else if (!nachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
           }
         }
       }

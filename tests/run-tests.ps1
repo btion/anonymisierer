@@ -1103,12 +1103,12 @@ $tabelleText = (@("show interface brief", $sep,
     "VLAN  Name                              Status  Reason          Type      Interfaces                           Description", $sep,
     "1     DEFAULT_VLAN_1                    up      ok              default   1/1/1-1/1/2                          Standard", "") -join "`n")
 $tNach = @([AnonTool.AnonEngine]::Nachpruefen($tabelleText, "t.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
-Assert-True ($tNach.Count -eq 1 -and $tNach[0] -ceq "Uplink-Weber") "Fix 1: Nachprüfung meldet nur die Description der Brief-Tabelle ($($tNach -join ' | '))"
+Assert-True (($tNach -join "|") -ceq "Uplink-Weber|Standard") "Fix 1: Nachprüfung meldet die Descriptions der Brief- und VLAN-Tabelle, nicht Log oder UTC ($($tNach -join ' | '))"
 $tZeilen = [AnonTool.AnonEngine]::ProcessText($tabelleText, $kCfg, (New-Object AnonTool.AnonState)).Split("`n")
 Assert-True ($tZeilen[5] -match "1000    TEXT-1$") "Fix 1: Description der Brief-Tabelle ersetzt"
 Assert-True ($tZeilen[8] -cmatch "login failed for user USER-1 from NET-1\.H1 port 22$") "Fix 1: Benutzer und IP nach Benutzer-/IP-Regel, nicht als Spaltenwert ($($tZeilen[8]))"
 Assert-True ($tZeilen[9] -ceq "Build Date              : 2024-01-15 10:00:00 UTC                                      UTC") "Fix 1: 'UTC' bleibt stehen"
-Assert-True ($tZeilen[12] -cmatch "Interfaces {27}Description$" -and $tZeilen[14] -cmatch "Standard$") "Fix 1: VLAN-Kopfzeile und VLAN-Tabelle bleiben"
+Assert-True ($tZeilen[12] -cmatch "Interfaces {27}Description$" -and $tZeilen[14] -cmatch "1/1/1-1/1/2 {26}TEXT-[0-9]+$" -and $tZeilen[14].Contains("DEFAULT_VLAN_1")) "Fix 1: VLAN-Kopfzeile bleibt, Standardname bleibt, VLAN-Description ersetzt"
 $tTab = [AnonTool.AnonEngine]::ProcessText("Port`tNative`tDescription`n1/1/1`t1`tUplink-Weber`nshow logging ohne Tabulator`n1/1/2`t1`tLog-Zeile`n", $kCfg, (New-Object AnonTool.AnonState))
 Assert-True (-not $tTab.Contains("Uplink-Weber") -and $tTab.Contains("Log-Zeile")) "Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator"
 $tTrenn = [AnonTool.AnonEngine]::ProcessText((@("Port      Native  Type   Description", $sep, "1/1/1     1       1GbT   Uplink-Weber", $sep, "1/1/9     1       1GbT   Nach-Trennlinie", "") -join "`n"), $kCfg, (New-Object AnonTool.AnonState))
@@ -1130,6 +1130,23 @@ $vText = "VLAN Name                             Status    Ports`n---- ----------
 Assert-True ([AnonTool.AnonEngine]::ProcessText($vText, $kCfg, (New-Object AnonTool.AnonState)) -ceq $vText -and @([AnonTool.AnonEngine]::Nachpruefen($vText, "v.txt", $kCfg)).Count -eq 0) "show vlan: Standardnamen (default, VLAN0010, fddi-default) bleiben, kein Fund"
 $tPrompt = @([AnonTool.AnonEngine]::Nachpruefen((@("Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", "") -join "`n"), "p.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
 Assert-True ($tPrompt.Count -eq 1 -and $tPrompt[0] -ceq "Uplink-Weber") "Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle ($($tPrompt -join ' | '))"
+# Fix Namensspalten: nur die Namensspalte ersetzen, übrige Spalten bleiben unverändert
+$katText = @{}
+foreach ($kf in $katalog.faelle) { if ($null -ne $kf.PSObject.Properties["eingabe"]) { $katText[[string]$kf.id] = [string]$kf.eingabe } }
+function Get-KatAus([string]$Id) { return [AnonTool.AnonEngine]::ProcessText($katText[$Id], $kCfg, (New-Object AnonTool.AnonState)).Split("`n") }
+$c = Get-KatAus "K26"; $ce = $katText["K26"].Split("`n")
+Assert-True ($c[1].EndsWith("connected    10         a-full  a-1000 10/100/1000BaseTX") -and -not $c[1].Contains("Becker") -and $c[1].Length -eq $ce[1].Length) "Namensspalten: Cisco Name ersetzt, Status bis Type unverändert ($($c[1]))"
+Assert-True ($c[2].EndsWith(" notconnect 20        auto    auto 10/100/1000BaseTX") -and -not $c[2].Contains("Hoffmann")) "Namensspalten: überlanger Name ersetzt, Rest bleibt ($($c[2]))"
+Assert-True ($c[3] -ceq $ce[3]) "Namensspalten: leerer Name bleibt leer"
+$n = Get-KatAus "K27"
+Assert-True ($n[4] -cmatch "^  1     TEXT-[0-9]+$" -and $n[5] -cmatch "^  2     TEXT-[0-9]+$" -and $n[6] -ceq "  3") "Namensspalten: ArubaOS-Switch show name ersetzt"
+$pr = Get-KatAus "K28"
+Assert-True ($pr[0] -cmatch "^admin@HOST-[0-9]+> show version$" -and $pr[1] -cmatch "^admin@HOST-[0-9]+# show clock$") "Namensspalten: Prompt user@host ($($pr -join ' | '))"
+$d = Get-KatAus "K29"; $de = $katText["K29"].Split("`n")
+Assert-True ($d[1].EndsWith("Gig 1/0/1         150             R S I  C9300-48P Gig 1/0/48") -and $d[1] -cmatch "^HOST-[0-9]+ " -and $d[3] -ceq $de[3]) "Namensspalten: CDP nur Device ID ersetzt, Local Intrfce bleibt ($($d[1]) | $($d[3]))"
+Assert-True (-not $d[2].Contains("brw-core12")) "Namensspalten: umbrochene Device ID ersetzt"
+$nAlle = @([AnonTool.AnonEngine]::Nachpruefen("ID  Desc             Status`n1   Lager-Engel      up`n2   --               down`n`nIdx Alias        Port-Name      Speed`n1   Halle-Ost    Tor-Seidel     1000`n", "n.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
+Assert-True (($nAlle -join "|") -ceq "Lager-Engel|Halle-Ost|Tor-Seidel") "Nachprüfung: Spalten Name/Desc/Alias/Port-Name in beliebiger Position ($($nAlle -join ' | '))"
 # Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung
 $pFunde = @([AnonTool.AnonEngine]::Nachpruefen("description (HOST-1), TEXT-2;`n Port Description : [USER-1]`nhostname HOST-1.`nuser USER-3,`nPort      Native  Type   Description`n1/1/1     1       1GbT   TEXT-1 (FIRMA-1)`n", "p.txt", $kCfg))
 Assert-True ($pFunde.Count -eq 0) "Fix 2: Nachprüfung meldet keine eigenen Platzhalter ($(@($pFunde | ForEach-Object { $_.Kategorie + ':' + $_.Fund }) -join ' | '))"
