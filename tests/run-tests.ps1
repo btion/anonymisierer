@@ -1112,7 +1112,22 @@ Assert-True ($tZeilen[12] -cmatch "Interfaces {27}Description$" -and $tZeilen[14
 $tTab = [AnonTool.AnonEngine]::ProcessText("Port`tNative`tDescription`n1/1/1`t1`tUplink-Weber`nshow logging ohne Tabulator`n1/1/2`t1`tLog-Zeile`n", $kCfg, (New-Object AnonTool.AnonState))
 Assert-True (-not $tTab.Contains("Uplink-Weber") -and $tTab.Contains("Log-Zeile")) "Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator"
 $tTrenn = [AnonTool.AnonEngine]::ProcessText((@("Port      Native  Type   Description", $sep, "1/1/1     1       1GbT   Uplink-Weber", $sep, "1/1/9     1       1GbT   Nach-Trennlinie", "") -join "`n"), $kCfg, (New-Object AnonTool.AnonState))
-Assert-True (-not $tTrenn.Contains("Uplink-Weber") -and $tTrenn.Contains("Nach-Trennlinie")) "Fix 1: Trennlinie nach Datenzeilen beendet die Tabelle"
+Assert-True (-not $tTrenn.Contains("Uplink-Weber") -and -not $tTrenn.Contains("Nach-Trennlinie")) "Fail-safe: Trennlinie nach Datenzeilen beendet die Tabelle nicht"
+# Zeile außerhalb des Rasters ohne Ankerfeld: trotzdem ersetzt und zusätzlich als Fund gemeldet
+$unsicherText = (@($sep, "Port      Native  Mode   Type           Enabled Status  Reason                  Speed   Description", $sep,
+    "1/1/1     1       access 1GbT           yes     up                              1000    Uplink-Weber",
+    "1/1/7     1       access 1GbT           yes     down    Link flap detected (err-disabled) Kiosk Wagner",
+    "1/1/8     1       access 1GbT           yes     up                              1000    Telefon Wolf", "") -join "`n")
+$uState = New-Object AnonTool.AnonState
+$uAus = [AnonTool.AnonEngine]::ProcessText($unsicherText, $kCfg, $uState)
+Assert-True (-not $uAus.Contains("Wagner") -and -not $uAus.Contains("Wolf") -and -not $uAus.Contains("Uplink-Weber")) "Fail-safe: Zeile außerhalb des Rasters wird ersetzt, Tabelle läuft weiter"
+$uFunde = @([AnonTool.AnonEngine]::AuditTextDetail($uAus, "u.txt", $kCfg, $uState, [int[]]$uState.UnsichereTabellenzeilen.ToArray()).Funde | Where-Object { $_.Kategorie -eq "Rest-Tabellenzeile" })
+Assert-True ($uFunde.Count -eq 1 -and $uFunde[0].Zeile -eq 5) "Fail-safe: nicht eindeutige Zeile wird als Fund gemeldet ($($uFunde.Count))"
+Assert-Equal ([AnonTool.AnonEngine]::FreigabeKategorie("Rest-Tabellenzeile", "x", $null)) "Tabellenfeld" "Fail-safe: nicht eindeutige Zeile ist nach Prüfung freigebbar"
+$nUnsicher = @([AnonTool.AnonEngine]::Nachpruefen($unsicherText, "u.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
+Assert-True (($nUnsicher -join "|") -ceq "Uplink-Weber|Kiosk Wagner|Telefon Wolf") "Nachprüfung: Freitext in der letzten Spalte jeder Zeile ($($nUnsicher -join ' | '))"
+$vText = "VLAN Name                             Status    Ports`n---- -------------------------------- --------- ------`n1    default                          active    Gi0/1`n10   VLAN0010                         active    Gi0/3`n1002 fddi-default                     act/unsup`n"
+Assert-True ([AnonTool.AnonEngine]::ProcessText($vText, $kCfg, (New-Object AnonTool.AnonState)) -ceq $vText -and @([AnonTool.AnonEngine]::Nachpruefen($vText, "v.txt", $kCfg)).Count -eq 0) "show vlan: Standardnamen (default, VLAN0010, fddi-default) bleiben, kein Fund"
 $tPrompt = @([AnonTool.AnonEngine]::Nachpruefen((@("Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", "") -join "`n"), "p.txt", $kCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-Beschreibung" } | ForEach-Object { $_.Fund })
 Assert-True ($tPrompt.Count -eq 1 -and $tPrompt[0] -ceq "Uplink-Weber") "Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle ($($tPrompt -join ' | '))"
 # Fix 2: eigene Platzhalter (auch mit Satzzeichen) sind kein Restfund der Nachprüfung

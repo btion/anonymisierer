@@ -1026,7 +1026,8 @@
         "(?i)(?<![A-Za-z0-9_])(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)[0-9]+(?:[/:.-][0-9]+)*|(?:bridge|bonding)[0-9]*)(?![A-Za-z0-9_])",
         "(?<![0-9A-Fa-f:])[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-][0-9]{2}:?[0-9]{2}))?(?![0-9A-Fa-f:])",
         "(?<![A-Za-z0-9_])(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)(?![A-Za-z0-9_])",
-        "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)"
+        "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)",
+        "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$"
       ]
     },
     "pruefung": {
@@ -1458,6 +1459,52 @@
             "name": "Number",
             "vorkommen": 2,
             "kategorie": "SERIAL"
+          }
+        ]
+      },
+      {
+        "name": "Aruba AOS-CX show vlan (Spalte Name)",
+        "kopf": [
+          "VLAN",
+          "Name",
+          "Status",
+          "Reason",
+          "Type",
+          "Interfaces"
+        ],
+        "spalten": [
+          {
+            "name": "Name",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "Cisco show vlan brief (Spalte Name)",
+        "kopf": [
+          "VLAN",
+          "Name",
+          "Status",
+          "Ports"
+        ],
+        "spalten": [
+          {
+            "name": "Name",
+            "kategorie": "TEXT"
+          }
+        ]
+      },
+      {
+        "name": "HPE Comware display vlan brief (Spalte Name)",
+        "kopf": [
+          "VLAN ID",
+          "Name",
+          "Port"
+        ],
+        "spalten": [
+          {
+            "name": "Name",
+            "kategorie": "TEXT"
           }
         ]
       }
@@ -2610,10 +2657,10 @@
   function istBefehlszeile(line) {
     return RxBefehlszeile.test(line);
   }
-  // Spaltenraster: Beginn jeder Kopfzelle (Zellen durch mindestens zwei Leerzeichen getrennt)
+  // Spaltenraster: Beginn jedes Worts der Kopfzeile
   function kopfRaster(line) {
     const starts = [];
-    for (const m of line.matchAll(/[^ \t]+(?: [^ \t]+)*/g)) starts.push(m.index);
+    for (const m of line.matchAll(/[^ \t]+/g)) starts.push(m.index);
     return starts;
   }
   // Eine Zeile passt zum Raster, wenn höchstens ein Wort über eine Spaltengrenze reicht
@@ -2625,26 +2672,49 @@
     }
     return verstoesse <= 1;
   }
-  // Folgt innerhalb von drei Zeilen nach dem Kopf eine Trennlinie? (Zeilen davor gehören zum Kopf)
-  function trennlinieFolgt(zeilen, kopfIndex) {
-    for (let t = kopfIndex + 1; t <= kopfIndex + 3 && t < zeilen.length; t++) {
-      if (isTableSeparatorLine(zeilen[t])) return true;
-      if (zeilen[t].trim() === "") return false;
+
+  // Ankerfeld vor der Zielspalte (z. B. Speed vor Description): Zahl, Zahl mit Einheit, "--", "auto"
+  const RxAnkerFeld = /^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|-{1,2}|auto|n\/a|a-[0-9]+[KMGT]?)$/i;
+
+  // Wert einer Zeile außerhalb des Spaltenrasters (z. B. überlanger Reason verschiebt Speed und Description):
+  // Beschreibung nach dem Ankerfeld; ohne eindeutigen Anker nach Position. Nicht eindeutig -> unsicher (wird gemeldet).
+  function feldAusserhalbRaster(line, col) {
+    const tokens = Array.from(line.matchAll(/[^ \t]+/g)).map(m => ({ a: m.index, b: m.index + m[0].length, t: m[0] }));
+    const anker = tokens.filter((tk, i) => i > 0 && RxAnkerFeld.test(tk.t));
+    let s = -1;
+    let unsicher = false;
+    const kandidaten = col.ankerStart >= 0 ? anker.filter(tk => tk.a >= col.ankerStart - 1) : [];
+    if (kandidaten.length > 0) {
+      s = kandidaten[0].b;
+      unsicher = kandidaten.length !== 1;
+    } else {
+      // nach Position; liegt die Spalte hinter dem Zeilenende, nach dem letzten Ankerfeld der Zeile
+      s = Math.min(col.start, line.length);
+      while (s > 0 && s < line.length && !isBlankCh(line[s - 1])) s++;
+      if (s >= line.length && col.letzte && anker.length > 0) s = anker[anker.length - 1].b;
+      unsicher = true;
     }
-    return false;
+    while (s < line.length && isBlankCh(line[s])) s++;
+    let e = line.length;
+    if (!col.letzte) {
+      const luecke = line.slice(s).search(/[ \t]{2,}/);
+      if (luecke >= 0) e = s + luecke;
+      unsicher = true;
+    }
+    while (e > s && isBlankCh(line[e - 1])) e--;
+    if (e <= s) return null;
+    return { s, e, unsicher };
   }
 
+  // Tabellenspalten: Die Tabelle endet nur an einer Leerzeile, einer Befehls-/Promptzeile oder einer neuen Kopfzeile
+  // (fail-safe: Zeilen außerhalb des Spaltenrasters und Trennlinien beenden sie nicht)
   function findTableFields(text, cfg) {
     const result = [];
     if (!text || !cfg.tabellenSpalten || cfg.tabellenSpalten.length === 0) return result;
     let cols = null;
+    let raster = [];
     let pos = 0;
     let lineNo = 0;
-    // Tabellenende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
-    let raster = [];
-    let trennErwartet = false;
-    let daten = false;
-    const alleZeilen = text.split("\n").map(z => z.endsWith("\r") ? z.slice(0, -1) : z);
     while (pos <= text.length) {
       const nl = text.indexOf("\n", pos);
       const lineEnd = nl < 0 ? text.length : nl;
@@ -2658,8 +2728,8 @@
         if (rule.kopf.length === 0 || rule.spalten.length === 0) continue;
         if (!rule.kopf.every(w => findHeaderWord(line, w) >= 0)) continue;
         const newCols = [];
-        // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
         if (line.indexOf("\t") >= 0) {
+          // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
           const felder = line.split("\t").map(x => x.trim());
           for (const sp of rule.spalten) {
             let n = 0;
@@ -2670,58 +2740,56 @@
               }
             }
           }
-          newCols.sort((a, b) => a.feld - b.feld);
-          cols = newCols;
+          newCols.sort((x, y) => x.feld - y.feld);
           raster = [];
-          trennErwartet = trennlinieFolgt(alleZeilen, lineNo - 1);
-          daten = false;
-          isHeader = true;
-          break;
-        }
-        for (const sp of rule.spalten) {
-          const s = findHeaderWordNth(line, sp.name, sp.vorkommen);
-          if (s < 0) continue;
-          let e = -1;
-          for (let p = s + sp.name.length; p < line.length; p++) {
-            if (!isBlankCh(line[p]) && isBlankCh(line[p - 1])) { e = p; break; }
+        } else {
+          raster = kopfRaster(line);
+          for (const sp of rule.spalten) {
+            const st = findHeaderWordNth(line, sp.name, sp.vorkommen);
+            if (st < 0) continue;
+            let e = -1;
+            for (let q = st + sp.name.length; q < line.length; q++) {
+              if (!isBlankCh(line[q]) && isBlankCh(line[q - 1])) { e = q; break; }
+            }
+            // Ankerfeld: Wort der Kopfzeile direkt vor der Zielspalte
+            let ankerStart = -1;
+            for (const r of raster) if (r < st) ankerStart = r;
+            let ins = 0;
+            while (ins < newCols.length && newCols[ins].start <= st) ins++;
+            newCols.splice(ins, 0, { start: st, end: e, feld: -1, kategorie: sp.kategorie, ankerStart, letzte: e < 0 });
           }
-          let ins = 0;
-          while (ins < newCols.length && newCols[ins].start <= s) ins++;
-          newCols.splice(ins, 0, { start: s, end: e, feld: -1, kategorie: sp.kategorie });
         }
         cols = newCols;
-        raster = kopfRaster(line);
-        trennErwartet = trennlinieFolgt(alleZeilen, lineNo - 1);
-        daten = false;
         isHeader = true;
         break;
       }
 
       if (!isHeader && cols) {
-        const trimmed = line.trim();
-        const tabModus = cols.length > 0 && cols[0].feld >= 0;
-        if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("total") || istBefehlszeile(line)) {
+        const kat = (col) => col.kategorie ? col.kategorie : "TEXT";
+        if (line.trim().length === 0 || istBefehlszeile(line)) {
           cols = null;
         } else if (isTableSeparatorLine(line)) {
-          if (daten) cols = null;
-          else trennErwartet = false;
-        } else if (tabModus ? line.indexOf("\t") < 0 : !passtZumRaster(line, raster)) {
-          cols = null;
-        } else if (tabModus) {
-          if (!trennErwartet) daten = true;
-          const teile = line.split("\t");
+          // Trennlinien gehören nicht zu den Daten, beenden die Tabelle aber nicht
+        } else if (cols.length > 0 && cols[0].feld >= 0) {
+          if (line.indexOf("\t") >= 0) {
+            const teile = line.split("\t");
+            for (const col of cols) {
+              if (col.feld >= teile.length) continue;
+              let s = 0;
+              for (let fi = 0; fi < col.feld; fi++) s += teile[fi].length + 1;
+              let e = s + teile[col.feld].length;
+              while (s < e && isBlankCh(line[s])) s++;
+              while (e > s && isBlankCh(line[e - 1])) e--;
+              if (e <= s) continue;
+              result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: kat(col), wert: line.slice(s, e) });
+            }
+          }
+        } else if (!passtZumRaster(line, raster)) {
           for (const col of cols) {
-            if (col.feld >= teile.length) continue;
-            let s = 0;
-            for (let fi = 0; fi < col.feld; fi++) s += teile[fi].length + 1;
-            let e = s + teile[col.feld].length;
-            while (s < e && isBlankCh(line[s])) s++;
-            while (e > s && isBlankCh(line[e - 1])) e--;
-            if (e <= s) continue;
-            result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: col.kategorie ? col.kategorie : "TEXT", wert: line.slice(s, e) });
+            const f = feldAusserhalbRaster(line, col);
+            if (f) result.push({ start: pos + f.s, length: f.e - f.s, zeile: lineNo, kategorie: kat(col), wert: line.slice(f.s, f.e), unsicher: f.unsicher });
           }
         } else {
-          if (!trennErwartet) daten = true;
           let lastEnd = 0;
           for (const col of cols) {
             let s = col.start;
@@ -2737,13 +2805,7 @@
             }
             while (e > s && isBlankCh(line[e - 1])) e--;
             if (e <= s) continue;
-            result.push({
-              start: pos + s,
-              length: e - s,
-              zeile: lineNo,
-              kategorie: col.kategorie ? col.kategorie : "TEXT",
-              wert: line.slice(s, e)
-            });
+            result.push({ start: pos + s, length: e - s, zeile: lineNo, kategorie: kat(col), wert: line.slice(s, e) });
             lastEnd = e;
           }
         }
@@ -2934,6 +2996,8 @@
   }
 
   function processText(input, cfg, state) {
+    // Zeilen, deren Tabellenwert nicht eindeutig bestimmt werden konnte (für die Prüfung dieses Durchlaufs)
+    if (state) state.unsichereTabellenzeilen = [];
     if (!input) return input;
     // JSON-Escapes für die Erkennung dekodieren (Ergebnis bleibt gültiges JSON)
     let text = decodeJsonStringEscapes(input);
@@ -2982,6 +3046,7 @@
         const parts = [];
         let lastPos = 0;
         for (const f of fields) {
+          if (f.unsicher && state.unsichereTabellenzeilen.indexOf(f.zeile) < 0) state.unsichereTabellenzeilen.push(f.zeile);
           if (isTableValueExempt(f.wert, cfg)) continue;
           // Geheimnisse zuerst entfernen: das Original in der Tabelle darf kein Geheimnis enthalten
           const wert = removeSecretsPlain(f.wert, cfg);
@@ -3574,6 +3639,44 @@
   // Huawei/H3C-Prompt "<name>" gefolgt von einem Befehl (auch ohne sysname-Zeile)
   const RxNachPrompt = /^<([A-Za-z0-9._-]{2,64})>[ \t]*(?=(?:display|disp|dis|sys|system-view|quit|return|save|undo|ping|tracert|reset|screen-length)(?![A-Za-z0-9_-]))/i;
   const RxNachSchnittstellenKopf = /^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$/i;
+  // Eigene Erkennung einer Befehls-/Promptzeile für die Nachprüfung
+  const RxNachBefehl = /^\s*(?:show|display|dis)\s+\S|^[^\s<>\[\]#]{1,64}(?:\([^)]*\))?[#>]|^\s*<[^<>\s]+>|^\s*\[[^\[\]\s]+\]/i;
+  // Zahlen-/"--"-Feld vor der letzten Spalte (Speed, TTL)
+  const RxNachAnker = /^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|--?|auto|n\/a)$/i;
+  // Bekannte Statuswerte und Standardnamen sind kein Freitext
+  const NACH_STATUSWERTE = new Set(["up", "down", "yes", "no", "auto", "access", "trunk", "routed", "enabled", "disabled", "active", "inactive", "ok",
+    "static", "dynamic", "default", "err-disabled", "act/unsup", "suspend", "suspended", "connected", "notconnect", "half", "full", "admin", "n/a", "none", "unknown"]);
+  const RxNachStandardName = /^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|(?:fddi|token-ring|fddinet|trnet)-default)$/i;
+
+  // Kopfzeile einer Tabelle mit Beschreibungs- oder Namensspalte: { tab, spalten: [{ start, ende, feld, art }] } oder null
+  function nachTabellenKopf(kopf) {
+    if (/[:=]/.test(kopf)) return null;
+    const tab = kopf.indexOf("\t") >= 0;
+    const kandidaten = [];
+    const woerter = [];
+    if (tab) {
+      kopf.split("\t").forEach((t, fi) => { if (t.trim()) kandidaten.push({ text: t.trim(), start: fi, feld: fi }); });
+    } else {
+      for (const m of kopf.matchAll(/[^ \t]+/g)) { woerter.push(m.index); kandidaten.push({ text: m[0], start: m.index }); }
+      for (const m of kopf.matchAll(/[^ \t]+(?: [^ \t]+)+/g)) kandidaten.push({ text: m[0], start: m.index });
+      for (const m of kopf.matchAll(/[^ \t]+ [^ \t]+/g)) kandidaten.push({ text: m[0], start: m.index });
+    }
+    if ((tab ? kandidaten.length : woerter.length) < 3) return null;
+    const texte = kandidaten.map(k => k.text);
+    const schnittstelle = texte.some(t => RxNachSchnittstellenKopf.test(t));
+    const vlan = texte.some(t => t === "VLAN" || t === "VLAN ID");
+    const spalten = [];
+    for (const k of kandidaten) {
+      let art = NACH_TABELLEN_SPALTEN[k.text];
+      if (k.text === "Name" && vlan) art = "T";
+      if (!art || (art === "T" && k.text !== "Name" && !schnittstelle)) continue;
+      if (spalten.some(sp => sp.start === k.start)) continue;
+      let ende = -1;
+      if (!tab) for (const w of woerter) if (w > k.start + k.text.length) { ende = w; break; }
+      spalten.push({ start: k.start, ende, feld: k.feld, art });
+    }
+    return spalten.length > 0 ? { tab, spalten } : null;
+  }
   const NACH_TYPWOERTER = new Set(["0", "5", "6", "7", "8", "9", "ciphertext", "plaintext", "encrypted", "unencrypted", "cipher", "simple", "enc", "hash", "sha", "sha256", "sha512", "md5", "basic", "bearer", "invalid", "illegal", "secure"]);
   const NACH_STRUKTURWOERTER = new Set(["chain", "generate", "zeroize", "rsa", "ecdsa", "dsa", "ed25519", "exchange", "config-key", "string", "id", "lifetime", "timeout", "recovery", "encryption", "length", "min-length", "minimum-length", "policy", "complexity", "aging", "history", "change", "prompt", "required", "attempts", "lockout", "add", "set", "remove", "print", "group", "profile", "role", "privilege", "level", "view", "mode", "type", "auth", "priv", "none", "no", "yes", "true", "false", "null", "on", "off", "enable", "disable", "enabled", "disabled", "read", "write", "read-only", "read-write", "ro", "rw", "authentication"]);
   const RxNachSid = /(?<![A-Za-z0-9-])S-1-5-21(?:-[0-9]+){3,4}(?![A-Za-z0-9-])/g;
@@ -3602,15 +3705,6 @@
     if (fest.has(low)) return true;
     // Aus Platzhaltern zusammengesetzt (HOST-1.DOMAIN-2, DOMAIN-1\USER-3, USER-1@DOMAIN-1)
     return v.split(/[.\\@]/).every(t => t.length > 0 && (RxNachPlatzhalter.test(t) || fest.has(t.toLowerCase())));
-  }
-
-  // Höchstens ein Wort reicht über eine Spaltengrenze der Kopfzeile
-  function nachPasstZumRaster(z, raster) {
-    let v = 0;
-    for (const g of raster) {
-      if (g > 0 && g < z.length && !/[ \t]/.test(z[g - 1]) && !/[ \t]/.test(z[g])) v++;
-    }
-    return v <= 1;
   }
 
   // Nächster Wert nach einem Feldnamen: Wert in Anführungszeichen oder ein Wort
@@ -3647,6 +3741,9 @@
     // Beschreibung/Name: leer, "--" und Werte ohne Buchstaben sind kein Fund; erlaubt, wenn jedes Wort erlaubt ist
     const pruefeBeschreibung = (ln, art, wert) => {
       if (!wert || !/[A-Za-z]/.test(wert) || /^-+$/.test(wert)) return;
+      if (RxNachStandardName.test(wert)) return;
+      const nurStatus = wert.split(/[ \t,;]+/).every(t => { const r = t.replace(/^[(\[{<"'`]+|[)\]}>"'`,;:.!?]+$/g, "").toLowerCase(); return !/[a-z]/.test(r) || NACH_STATUSWERTE.has(r); });
+      if (nurStatus) return;
       if (nachErlaubt(wert, cfg) || wert.split(/[ \t,;]+/).every(t => !/[A-Za-z]/.test(t) || nachErlaubt(t, cfg))) return;
       melde(ln, art, wert);
     };
@@ -3732,63 +3829,49 @@
         if (/[0-9]/.test(wert) && /[A-Za-z]/.test(wert) && !/^-+$/.test(wert)) pruefeWert(j + 1, "S", wert);
       }
     }
-    // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info):
-    // Kopfzeile ohne ":" / "=" mit mindestens drei Zellen; Daten bis zur nächsten Leerzeile
+    // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info, show vlan).
+    // Eigene, großzügige Endregel (unabhängig von der Engine): Ende nur an Leerzeile, Befehls-/Promptzeile oder
+    // neuer Kopfzeile. In der letzten Spalte ist jeder Freitext, der kein Platzhalter und kein Statuswert ist, ein Fund,
+    // auch in Zeilen, die nicht ins Spaltenraster passen (Wert nach dem letzten Zahlen-/"--"-Feld).
     for (let i = 0; i < zeilen.length; i++) {
-      const kopf = zeilen[i];
-      if (/[:=]/.test(kopf)) continue;
-      const tab = kopf.indexOf("\t") >= 0;
-      const zellen = [];
-      if (tab) {
-        let ab = 0;
-        for (const z of kopf.split("\t")) { zellen.push({ text: z.trim(), start: ab }); ab += z.length + 1; }
-      } else {
-        const rx = /[^ \t]+(?: [^ \t]+)*/g;
-        for (const m of kopf.matchAll(rx)) zellen.push({ text: m[0], start: m.index });
-      }
-      if (zellen.filter(z => z.text).length < 3) continue;
-      const spalten = [];
-      // Beschreibungsspalten nur in Schnittstellentabellen (show module: "Description" ist die Hardwarebezeichnung)
-      const schnittstelle = zellen.some(z => RxNachSchnittstellenKopf.test(z.text));
-      zellen.forEach((z, zi) => {
-        const art = NACH_TABELLEN_SPALTEN[z.text];
-        if (art && (art === "H" || schnittstelle)) spalten.push({ zi, art });
-      });
-      if (spalten.length === 0) continue;
-      // Ende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
-      const raster = zellen.map(z => z.start);
-      let trennErwartet = false;
-      for (let t = i + 1; t <= i + 3 && t < zeilen.length && zeilen[t].trim() !== ""; t++) {
-        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(zeilen[t])) { trennErwartet = true; break; }
-      }
-      let daten = false;
-      for (let j = i + 1; j < zeilen.length && j < i + 500 && zeilen[j].trim() !== ""; j++) {
+      const kopf = nachTabellenKopf(zeilen[i]);
+      if (!kopf) continue;
+      for (let j = i + 1; j < zeilen.length && j < i + 2000; j++) {
         const z = zeilen[j];
-        if (/^[ \t]*Total/i.test(z) || RxBefehlszeile.test(z)) break;
-        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z)) {
-          if (daten) break;
-          trennErwartet = false;
-          continue;
-        }
-        if (tab ? z.indexOf("\t") < 0 : !nachPasstZumRaster(z, raster)) break;
-        if (!trennErwartet) daten = true;
-        for (const sp of spalten) {
-          let wert = "";
-          if (tab) {
-            if (z.indexOf("\t") < 0) continue;
-            wert = (z.split("\t")[sp.zi] || "").trim();
+        if (z.trim() === "" || RxNachBefehl.test(z) || nachTabellenKopf(z)) break;
+        if (/^[ \t]*[-=+|]{3,}[-=+| \t]*$/.test(z)) continue;
+        for (const sp of kopf.spalten) {
+          const werte = [];
+          if (kopf.tab) {
+            if (z.indexOf("\t") >= 0) werte.push((z.split("\t")[sp.feld] || "").trim());
           } else {
-            let a = zellen[sp.zi].start;
-            if (a >= z.length) continue;
-            while (a > 0 && !/[ \t]/.test(z[a - 1])) a--;
-            while (a < z.length && /[ \t]/.test(z[a])) a++;
-            const naechste = sp.zi + 1 < zellen.length ? zellen[sp.zi + 1].start : z.length;
-            if (a >= naechste) continue;
-            let b = Math.min(naechste, z.length);
-            while (b < z.length && !/[ \t]/.test(z[b]) && !/[ \t]/.test(z[b - 1])) b++;
-            wert = z.slice(a, b).trim();
+            let a = sp.start;
+            let lage = "";
+            if (a < z.length) {
+              while (a > 0 && a < z.length && !/[ \t]/.test(z[a - 1])) a++;
+              while (a < z.length && /[ \t]/.test(z[a])) a++;
+              let b = sp.ende < 0 ? z.length : Math.min(sp.ende, z.length);
+              while (b < z.length && !/[ \t]/.test(z[b]) && !/[ \t]/.test(z[b - 1])) b++;
+              if (sp.ende >= 0 && b > a) { const l = z.slice(a, b).search(/[ \t]{2,}/); if (l > 0) b = a + l; }
+              lage = a < b ? z.slice(a, b).trim() : "";
+            }
+            let nachAnker = "";
+            if (sp.ende < 0) {
+              const tokens = Array.from(z.matchAll(/[^ \t]+/g));
+              let letzter = -1;
+              for (let t = 1; t < tokens.length; t++) if (RxNachAnker.test(tokens[t][0])) letzter = t;
+              if (letzter >= 0) nachAnker = z.slice(tokens[letzter].index + tokens[letzter][0].length).trim();
+            }
+            if (lage && nachAnker && lage !== nachAnker && (lage.endsWith(nachAnker) || nachAnker.endsWith(lage))) {
+              werte.push(lage.length <= nachAnker.length ? lage : nachAnker);
+            } else {
+              if (lage) werte.push(lage);
+              if (nachAnker && nachAnker !== lage) werte.push(nachAnker);
+            }
           }
-          if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else pruefeBeschreibung(j + 1, "T", wert);
+          for (const wert of werte) {
+            if (sp.art === "H") { if (wert && !/^-+$/.test(wert)) pruefeWert(j + 1, "H", wert); } else pruefeBeschreibung(j + 1, "T", wert);
+          }
         }
       }
     }
@@ -3827,7 +3910,7 @@
       case "Rest-MAC": return "MAC";
       case "Rest-EMail": return "EMail";
       case "Rest-Freitext": return "Freitext";
-      case "Rest-Tabellenfeld": return "Tabellenfeld";
+      case "Rest-Tabellenfeld": case "Rest-Tabellenzeile": return "Tabellenfeld";
       case "Nachpruefung-Beschreibung": return "Freitext";
       case "Nachpruefung-SID": return "SID";
       case "Verdacht-Geheimnis-Blob": case "Nachpruefung-Geheimnis": case "Nachpruefung-Teilmaskierung": return "Verdacht";
@@ -3847,8 +3930,16 @@
   }
 
   // Prüfmodus mit Freigaben: { funde, freigegeben } (freigegeben = Anzahl bewusst freigegebener Funde)
-  function auditTextDetail(text, fileName, cfg, state) {
+  // unsichereZeilen (optional): Zeilen, deren Tabellenwert beim Verarbeiten nicht eindeutig war (ersetzt, aber zu prüfen)
+  function auditTextDetail(text, fileName, cfg, state, unsichereZeilen) {
     const alle = auditTextRoh(text, fileName, cfg, state);
+    if (unsichereZeilen && unsichereZeilen.length > 0) {
+      const zeilen = String(text || "").split(/\r?\n/);
+      for (const n of unsichereZeilen) {
+        const z = (zeilen[n - 1] || "").trim();
+        alle.push({ datei: fileName, zeile: n, kategorie: "Rest-Tabellenzeile", fund: z, kontext: z });
+      }
+    }
     if (!cfg.freigegeben || cfg.freigegeben.size === 0) return { funde: alle, freigegeben: 0 };
     const funde = [];
     let freigegeben = 0;
@@ -5557,7 +5648,7 @@
       const origText = typeof item.text === "string" ? item.text : decodeBytesWithBom(bytes);
       const anonRelPath = processPath(item.path, cfg, state);
       const anonText = processText(origText, cfg, state);
-      results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
+      results.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [], unsichereZeilen: state.unsichereTabellenzeilen.slice() });
     }
     const pfadKollisionen = findPathCollisions(results.map(r => r.path));
     if (pfadKollisionen.length > 0) {
@@ -5566,7 +5657,7 @@
     // Prüfung mit allen im Lauf erkannten Werten
     let freigegeben = 0;
     for (const r of results) {
-      const detail = auditTextDetail(r.anonText, r.path, cfg, state);
+      const detail = auditTextDetail(r.anonText, r.path, cfg, state, r.unsichereZeilen);
       r.findings = detail.funde;
       r.freigegeben = detail.freigegeben;
       freigegeben += detail.freigegeben;
@@ -5643,6 +5734,7 @@
     "Rest-EMail": "E-Mail-Adresse",
     "Rest-Freitext": "Freitext (Beschreibung, Standort)",
     "Rest-Tabellenfeld": "Tabelleneintrag",
+    "Rest-Tabellenzeile": "Tabellenzeile nicht eindeutig (ersetzt, bitte prüfen)",
     "Rest-Bekannt": "Bereits erkannter Wert an weiterer Stelle",
     "Pfad-Bekannt": "Bereits erkannter Wert im Dateinamen",
     "Sperrbegriff": "Eigener Begriff (soll immer ersetzt werden)",
@@ -7182,12 +7274,12 @@
           item.status = "verarbeitet";
           item.meldung = "";
           item.anonPath = anonRelPath;
-          processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [] });
+          processedResults.push({ path: anonRelPath, originalPath: item.path, originalText: origText, anonText, findings: [], unsichereZeilen: runState.unsichereTabellenzeilen.slice() });
         }
         // Prüfung mit allen im Lauf erkannten Werten
         let bewusstFreigegeben = 0;
         for (const res of processedResults) {
-          const detail = auditTextDetail(res.anonText, res.path, cfg, runState);
+          const detail = auditTextDetail(res.anonText, res.path, cfg, runState, res.unsichereZeilen);
           res.findings = detail.funde;
           res.freigegeben = detail.freigegeben;
           bewusstFreigegeben += detail.freigegeben;

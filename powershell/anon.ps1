@@ -248,6 +248,8 @@ namespace AnonTool
         public Dictionary<string, string> Aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> Stats = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public string LoadedProtection = "NONE";
+        // Zeilen des letzten ProcessText, deren Tabellenwert nicht eindeutig war (für die Prüfung dieses Durchlaufs)
+        public List<int> UnsichereTabellenzeilen = new List<int>();
 
         public int NextCounter(string prefix)
         {
@@ -340,6 +342,7 @@ namespace AnonTool
         public int Zeile;
         public string Kategorie;
         public string Wert;
+        public bool Unsicher;
     }
 
     public class AuditFinding
@@ -830,11 +833,13 @@ namespace AnonTool
             return RxBefehlszeile.IsMatch(line);
         }
 
-        // Spaltenraster: Beginn jeder Kopfzelle (Zellen durch mindestens zwei Leerzeichen getrennt)
+        // Spaltenraster: Beginn jedes Worts der Kopfzeile
+        private static readonly Regex RxWort = new Regex("[^ \\t]+", RegexOptions.CultureInvariant, RxTimeout);
+
         private static List<int> KopfRaster(string line)
         {
             List<int> starts = new List<int>();
-            foreach (Match m in RxKopfZelle.Matches(line)) starts.Add(m.Index);
+            foreach (Match m in RxWort.Matches(line)) starts.Add(m.Index);
             return starts;
         }
 
@@ -850,32 +855,66 @@ namespace AnonTool
             return verstoesse <= 1;
         }
 
-        // Folgt innerhalb von drei Zeilen nach dem Kopf eine Trennlinie? (Zeilen davor gehören zum Kopf)
-        private static bool TrennlinieFolgt(string[] zeilen, int kopfIndex)
+        // Ankerfeld vor der Zielspalte (z. B. Speed vor Description): Zahl, Zahl mit Einheit, "--", "auto"
+        private static readonly Regex RxAnkerFeld = new Regex("^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|-{1,2}|auto|n/a|a-[0-9]+[KMGT]?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxLuecke = new Regex("[ \\t]{2,}", RegexOptions.CultureInvariant, RxTimeout);
+
+        // Wert einer Zeile außerhalb des Spaltenrasters (z. B. überlanger Reason verschiebt Speed und Description):
+        // Beschreibung nach dem Ankerfeld; ohne eindeutigen Anker nach Position. Nicht eindeutig -> unsicher (wird gemeldet).
+        // col: { start, end, feld, ankerStart, letzte }; liefert { s, e, unsicher } oder null
+        private static int[] FeldAusserhalbRaster(string line, int[] col)
         {
-            for (int t = kopfIndex + 1; t <= kopfIndex + 3 && t < zeilen.Length; t++)
+            List<Match> anker = new List<Match>();
+            int ti = 0;
+            foreach (Match m in RxWort.Matches(line))
             {
-                if (IsTableSeparatorLine(zeilen[t])) return true;
-                if (zeilen[t].Trim().Length == 0) return false;
+                if (ti > 0 && RxAnkerFeld.IsMatch(m.Value)) anker.Add(m);
+                ti++;
             }
-            return false;
+            bool letzte = col[4] == 1;
+            List<Match> kandidaten = new List<Match>();
+            if (col[3] >= 0) foreach (Match m in anker) if (m.Index >= col[3] - 1) kandidaten.Add(m);
+            int s;
+            bool unsicher;
+            if (kandidaten.Count > 0)
+            {
+                s = kandidaten[0].Index + kandidaten[0].Length;
+                unsicher = kandidaten.Count != 1;
+            }
+            else
+            {
+                // nach Position; liegt die Spalte hinter dem Zeilenende, nach dem letzten Ankerfeld der Zeile
+                s = Math.Min(col[0], line.Length);
+                while (s > 0 && s < line.Length && !IsBlank(line[s - 1])) s++;
+                if (s >= line.Length && letzte && anker.Count > 0) s = anker[anker.Count - 1].Index + anker[anker.Count - 1].Length;
+                unsicher = true;
+            }
+            while (s < line.Length && IsBlank(line[s])) s++;
+            int e = line.Length;
+            if (!letzte)
+            {
+                Match l = RxLuecke.Match(line, s);
+                if (l.Success) e = l.Index;
+                unsicher = true;
+            }
+            while (e > s && IsBlank(line[e - 1])) e--;
+            if (e <= s) return null;
+            return new int[] { s, e, unsicher ? 1 : 0 };
         }
 
+        // Tabellenspalten: Die Tabelle endet nur an einer Leerzeile, einer Befehls-/Promptzeile oder einer neuen Kopfzeile
+        // (fail-safe: Zeilen außerhalb des Spaltenrasters und Trennlinien beenden sie nicht)
         public static List<TableField> FindTableFields(string text, EngineConfig cfg)
         {
             List<TableField> result = new List<TableField>();
             if (string.IsNullOrEmpty(text) || cfg.TabellenSpalten.Count == 0) return result;
 
+            // Spalte: { start, end, feld, ankerStart, letzte (1/0) }
             List<int[]> cols = null;
             List<string> kats = null;
+            List<int> raster = new List<int>();
             int pos = 0;
             int lineNo = 0;
-            // Tabellenende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
-            List<int> raster = new List<int>();
-            bool trennErwartet = false;
-            bool daten = false;
-            string[] alleZeilen = text.Split('\n');
-            for (int zi = 0; zi < alleZeilen.Length; zi++) if (alleZeilen[zi].EndsWith("\r", StringComparison.Ordinal)) alleZeilen[zi] = alleZeilen[zi].Substring(0, alleZeilen[zi].Length - 1);
             while (pos <= text.Length)
             {
                 int nl = text.IndexOf('\n', pos);
@@ -898,9 +937,9 @@ namespace AnonTool
 
                     List<int[]> newCols = new List<int[]>();
                     List<string> newKats = new List<string>();
-                    // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
                     if (line.IndexOf('\t') >= 0)
                     {
+                        // Tabulatorgetrennte Tabelle: Spalte über die Feldnummer statt über die Zeichenposition
                         string[] felder = line.Split('\t');
                         foreach (TableColumnSpec sp in rule.Spalten)
                         {
@@ -911,89 +950,81 @@ namespace AnonTool
                                 {
                                     int ins = 0;
                                     while (ins < newCols.Count && newCols[ins][2] <= fi) ins++;
-                                    newCols.Insert(ins, new int[] { -1, -1, fi });
+                                    newCols.Insert(ins, new int[] { -1, -1, fi, -1, 0 });
                                     newKats.Insert(ins, sp.Kategorie);
                                     break;
                                 }
                             }
                         }
-                        cols = newCols;
-                        kats = newKats;
                         raster = new List<int>();
-                        trennErwartet = TrennlinieFolgt(alleZeilen, lineNo - 1);
-                        daten = false;
-                        isHeader = true;
-                        break;
                     }
-                    foreach (TableColumnSpec sp in rule.Spalten)
+                    else
                     {
-                        int s = FindHeaderWordNth(line, sp.Name, sp.Vorkommen);
-                        if (s < 0) continue;
-                        int e = -1;
-                        for (int p = s + sp.Name.Length; p < line.Length; p++)
+                        raster = KopfRaster(line);
+                        foreach (TableColumnSpec sp in rule.Spalten)
                         {
-                            if (!IsBlank(line[p]) && IsBlank(line[p - 1])) { e = p; break; }
+                            int st = FindHeaderWordNth(line, sp.Name, sp.Vorkommen);
+                            if (st < 0) continue;
+                            int e = -1;
+                            for (int q = st + sp.Name.Length; q < line.Length; q++)
+                            {
+                                if (!IsBlank(line[q]) && IsBlank(line[q - 1])) { e = q; break; }
+                            }
+                            // Ankerfeld: Wort der Kopfzeile direkt vor der Zielspalte
+                            int ankerStart = -1;
+                            foreach (int r in raster) if (r < st) ankerStart = r;
+                            int ins = 0;
+                            while (ins < newCols.Count && newCols[ins][0] <= st) ins++;
+                            newCols.Insert(ins, new int[] { st, e, -1, ankerStart, e < 0 ? 1 : 0 });
+                            newKats.Insert(ins, sp.Kategorie);
                         }
-                        // aufsteigend nach Spaltenbeginn einsortieren
-                        int ins = 0;
-                        while (ins < newCols.Count && newCols[ins][0] <= s) ins++;
-                        newCols.Insert(ins, new int[] { s, e, -1 });
-                        newKats.Insert(ins, sp.Kategorie);
                     }
                     cols = newCols;
                     kats = newKats;
-                    raster = KopfRaster(line);
-                    trennErwartet = TrennlinieFolgt(alleZeilen, lineNo - 1);
-                    daten = false;
                     isHeader = true;
                     break;
                 }
 
                 if (!isHeader && cols != null)
                 {
-                    string trimmed = line.Trim();
-                    bool tabModus = cols.Count > 0 && cols[0][2] >= 0;
-                    if (trimmed.Length == 0 || trimmed.StartsWith("Total", StringComparison.OrdinalIgnoreCase) || IstBefehlszeile(line))
+                    if (line.Trim().Length == 0 || IstBefehlszeile(line))
                     {
                         cols = null;
                         kats = null;
                     }
                     else if (IsTableSeparatorLine(line))
                     {
-                        if (daten) { cols = null; kats = null; }
-                        else trennErwartet = false;
+                        // Trennlinien gehören nicht zu den Daten, beenden die Tabelle aber nicht
                     }
-                    else if (tabModus ? line.IndexOf('\t') < 0 : !PasstZumRaster(line, raster))
+                    else if (cols.Count > 0 && cols[0][2] >= 0)
                     {
-                        cols = null;
-                        kats = null;
+                        if (line.IndexOf('\t') >= 0)
+                        {
+                            string[] teile = line.Split('\t');
+                            for (int ci = 0; ci < cols.Count; ci++)
+                            {
+                                int feld = cols[ci][2];
+                                if (feld >= teile.Length) continue;
+                                int s = 0;
+                                for (int fi = 0; fi < feld; fi++) s += teile[fi].Length + 1;
+                                int e = s + teile[feld].Length;
+                                while (s < e && IsBlank(line[s])) s++;
+                                while (e > s && IsBlank(line[e - 1])) e--;
+                                if (e <= s) continue;
+                                result.Add(NeuesFeld(pos, s, e, lineNo, kats[ci], line, false));
+                            }
+                        }
                     }
-                    else if (tabModus)
+                    else if (!PasstZumRaster(line, raster))
                     {
-                        if (!trennErwartet) daten = true;
-                        string[] teile = line.Split('\t');
                         for (int ci = 0; ci < cols.Count; ci++)
                         {
-                            int feld = cols[ci][2];
-                            if (feld >= teile.Length) continue;
-                            int s = 0;
-                            for (int fi = 0; fi < feld; fi++) s += teile[fi].Length + 1;
-                            int e = s + teile[feld].Length;
-                            while (s < e && IsBlank(line[s])) s++;
-                            while (e > s && IsBlank(line[e - 1])) e--;
-                            if (e <= s) continue;
-                            TableField f = new TableField();
-                            f.Start = pos + s;
-                            f.Length = e - s;
-                            f.Zeile = lineNo;
-                            f.Kategorie = string.IsNullOrEmpty(kats[ci]) ? "TEXT" : kats[ci];
-                            f.Wert = line.Substring(s, e - s);
-                            result.Add(f);
+                            int[] f = FeldAusserhalbRaster(line, cols[ci]);
+                            if (f != null) result.Add(NeuesFeld(pos, f[0], f[1], lineNo, kats[ci], line, f[2] == 1));
                         }
                     }
                     else
                     {
-                        if (!trennErwartet) daten = true;
                         int lastEnd = 0;
                         for (int ci = 0; ci < cols.Count; ci++)
                         {
@@ -1013,13 +1044,7 @@ namespace AnonTool
                             }
                             while (e > s && IsBlank(line[e - 1])) e--;
                             if (e <= s) continue;
-                            TableField f = new TableField();
-                            f.Start = pos + s;
-                            f.Length = e - s;
-                            f.Zeile = lineNo;
-                            f.Kategorie = string.IsNullOrEmpty(kats[ci]) ? "TEXT" : kats[ci];
-                            f.Wert = line.Substring(s, e - s);
-                            result.Add(f);
+                            result.Add(NeuesFeld(pos, s, e, lineNo, kats[ci], line, false));
                             lastEnd = e;
                         }
                     }
@@ -1029,6 +1054,18 @@ namespace AnonTool
                 pos = nl + 1;
             }
             return result;
+        }
+
+        private static TableField NeuesFeld(int pos, int s, int e, int lineNo, string kategorie, string line, bool unsicher)
+        {
+            TableField f = new TableField();
+            f.Start = pos + s;
+            f.Length = e - s;
+            f.Zeile = lineNo;
+            f.Kategorie = string.IsNullOrEmpty(kategorie) ? "TEXT" : kategorie;
+            f.Wert = line.Substring(s, e - s);
+            f.Unsicher = unsicher;
+            return f;
         }
 
         private static bool IsFullMatch(Regex r, string val)
@@ -1339,6 +1376,7 @@ namespace AnonTool
 
         public static string ProcessText(string input, EngineConfig cfg, AnonState state)
         {
+            if (state != null) state.UnsichereTabellenzeilen = new List<int>();
             if (string.IsNullOrEmpty(input)) return input;
 
             // JSON-Escapes für die Erkennung dekodieren (Ergebnis bleibt gültiges JSON)
@@ -1403,6 +1441,7 @@ namespace AnonTool
                     int lastPos = 0;
                     foreach (TableField f in fields)
                     {
+                        if (f.Unsicher && !state.UnsichereTabellenzeilen.Contains(f.Zeile)) state.UnsichereTabellenzeilen.Add(f.Zeile);
                         if (IsTableValueExempt(f.Wert, cfg)) continue;
                         // Geheimnisse zuerst entfernen: das Original in der Tabelle darf kein Geheimnis enthalten
                         string wert = RemoveSecretsPlain(f.Wert, cfg);
@@ -2199,7 +2238,7 @@ namespace AnonTool
                 case "Rest-MAC": return "MAC";
                 case "Rest-EMail": return "EMail";
                 case "Rest-Freitext": return "Freitext";
-                case "Rest-Tabellenfeld": return "Tabellenfeld";
+                case "Rest-Tabellenfeld": case "Rest-Tabellenzeile": return "Tabellenfeld";
                 case "Nachpruefung-Beschreibung": return "Freitext";
                 case "Nachpruefung-SID": return "SID";
                 case "Verdacht-Geheimnis-Blob": case "Nachpruefung-Geheimnis": case "Nachpruefung-Teilmaskierung": return "Verdacht";
@@ -2223,7 +2262,22 @@ namespace AnonTool
         // Prüfmodus mit Freigaben: Funde und Anzahl bewusst freigegebener Funde
         public static AuditResult AuditTextDetail(string text, string fileName, EngineConfig cfg, AnonState state)
         {
+            return AuditTextDetail(text, fileName, cfg, state, null);
+        }
+
+        // unsichereZeilen (optional): Zeilen, deren Tabellenwert beim Verarbeiten nicht eindeutig war (ersetzt, aber zu prüfen)
+        public static AuditResult AuditTextDetail(string text, string fileName, EngineConfig cfg, AnonState state, IList<int> unsichereZeilen)
+        {
             List<AuditFinding> alle = AuditTextRoh(text, fileName, cfg, state);
+            if (unsichereZeilen != null && unsichereZeilen.Count > 0)
+            {
+                string[] zeilen = Regex.Split(text ?? "", "\r?\n");
+                foreach (int n in unsichereZeilen)
+                {
+                    string z = n >= 1 && n <= zeilen.Length ? zeilen[n - 1].Trim() : "";
+                    alle.Add(new AuditFinding { Datei = fileName, Zeile = n, Kategorie = "Rest-Tabellenzeile", Fund = z, Kontext = z });
+                }
+            }
             AuditResult res = new AuditResult();
             if (cfg.Freigegeben.Count == 0) { res.Funde = alle; return res; }
             foreach (AuditFinding f in alle)
@@ -2690,7 +2744,65 @@ namespace AnonTool
             { "Description", "T" }, { "DESCRIPTION", "T" }, { "PORT-DESC", "T" }, { "Port-Desc", "T" }, { "Port Description", "T" },
             { "SYS-NAME", "H" }, { "System-Name", "H" }, { "System Name", "H" } };
         private static readonly Regex RxNachSchnittstellenKopf = new Regex("^(?:Port|Interface|Intf|LOCAL-PORT|Local[ -]?(?:Port|Intf|Intrfce))$", NachOpt, RxTimeout);
-        private static readonly Regex RxNachKopfZelle = new Regex("[^ \\t]+(?: [^ \\t]+)*", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachWortKopf = new Regex("[^ \\t]+", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachLauf = new Regex("[^ \\t]+(?: [^ \\t]+)+", RegexOptions.CultureInvariant, RxTimeout);
+        private static readonly Regex RxNachPaar = new Regex("[^ \\t]+ [^ \\t]+", RegexOptions.CultureInvariant, RxTimeout);
+        // Eigene Erkennung einer Befehls-/Promptzeile für die Nachprüfung
+        private static readonly Regex RxNachBefehl = new Regex("^\\s*(?:show|display|dis)\\s+\\S|^[^\\s<>\\[\\]#]{1,64}(?:\\([^)]*\\))?[#>]|^\\s*<[^<>\\s]+>|^\\s*\\[[^\\[\\]\\s]+\\]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+        // Zahlen-/"--"-Feld vor der letzten Spalte (Speed, TTL)
+        private static readonly Regex RxNachAnker = new Regex("^(?:[0-9]+(?:[.,][0-9]+)?[KMGT]?|--?|auto|n/a)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+        // Bekannte Statuswerte und Standardnamen sind kein Freitext
+        private static readonly HashSet<string> NachStatuswerte = new HashSet<string>(new string[] { "up", "down", "yes", "no", "auto", "access", "trunk", "routed", "enabled", "disabled", "active", "inactive", "ok",
+            "static", "dynamic", "default", "err-disabled", "act/unsup", "suspend", "suspended", "connected", "notconnect", "half", "full", "admin", "n/a", "none", "unknown" }, StringComparer.Ordinal);
+        private static readonly Regex RxNachStandardName = new Regex("^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|(?:fddi|token-ring|fddinet|trnet)-default)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RxTimeout);
+
+        private class NachSpalte { public int Start; public int Ende; public int Feld; public string Art; }
+        private class NachKopf { public bool Tab; public List<NachSpalte> Spalten = new List<NachSpalte>(); }
+
+        // Kopfzeile einer Tabelle mit Beschreibungs- oder Namensspalte, sonst null
+        private static NachKopf NachTabellenKopf(string kopf)
+        {
+            if (kopf.IndexOf(':') >= 0 || kopf.IndexOf('=') >= 0) return null;
+            bool tab = kopf.IndexOf('\t') >= 0;
+            List<string> kText = new List<string>();
+            List<int> kStart = new List<int>();
+            List<int> woerter = new List<int>();
+            if (tab)
+            {
+                string[] felder = kopf.Split('\t');
+                for (int fi = 0; fi < felder.Length; fi++) if (felder[fi].Trim().Length > 0) { kText.Add(felder[fi].Trim()); kStart.Add(fi); }
+            }
+            else
+            {
+                foreach (Match m in RxNachWortKopf.Matches(kopf)) { woerter.Add(m.Index); kText.Add(m.Value); kStart.Add(m.Index); }
+                foreach (Match m in RxNachLauf.Matches(kopf)) { kText.Add(m.Value); kStart.Add(m.Index); }
+                foreach (Match m in RxNachPaar.Matches(kopf)) { kText.Add(m.Value); kStart.Add(m.Index); }
+            }
+            if ((tab ? kText.Count : woerter.Count) < 3) return null;
+            bool schnittstelle = false;
+            bool vlan = false;
+            foreach (string t in kText)
+            {
+                if (RxNachSchnittstellenKopf.IsMatch(t)) schnittstelle = true;
+                if (t == "VLAN" || t == "VLAN ID") vlan = true;
+            }
+            NachKopf res = new NachKopf();
+            res.Tab = tab;
+            for (int k = 0; k < kText.Count; k++)
+            {
+                string art;
+                if (!NachTabellenSpalten.TryGetValue(kText[k], out art)) art = null;
+                if (kText[k] == "Name" && vlan) art = "T";
+                if (art == null || (art == "T" && kText[k] != "Name" && !schnittstelle)) continue;
+                bool doppelt = false;
+                foreach (NachSpalte sp0 in res.Spalten) if (sp0.Start == kStart[k]) doppelt = true;
+                if (doppelt) continue;
+                int ende = -1;
+                if (!tab) foreach (int w in woerter) if (w > kStart[k] + kText[k].Length) { ende = w; break; }
+                res.Spalten.Add(new NachSpalte { Start = kStart[k], Ende = ende, Feld = kStart[k], Art = art });
+            }
+            return res.Spalten.Count > 0 ? res : null;
+        }
         private static readonly Regex RxNachTabellenTrenner = new Regex("^[ \\t]*[-=+|]{3,}[-=+| \\t]*$", RegexOptions.CultureInvariant, RxTimeout);
         private static readonly Regex RxNachTrennlinie = new Regex("^[ \\t]*[-=+]{3,}[-=+ \\t]*$", RegexOptions.CultureInvariant, RxTimeout);
 
@@ -2736,17 +2848,6 @@ namespace AnonTool
             return true;
         }
 
-        // Höchstens ein Wort reicht über eine Spaltengrenze der Kopfzeile
-        private static bool NachPasstZumRaster(string z, List<int> raster)
-        {
-            int v = 0;
-            foreach (int g in raster)
-            {
-                if (g > 0 && g < z.Length && z[g - 1] != ' ' && z[g - 1] != '\t' && z[g] != ' ' && z[g] != '\t') v++;
-            }
-            return v <= 1;
-        }
-
         public static List<AuditFinding> Nachpruefen(string text, string fileName, EngineConfig cfg)
         {
             List<AuditFinding> funde = new List<AuditFinding>();
@@ -2780,6 +2881,14 @@ namespace AnonTool
             Action<int, string, string> pruefeBeschreibung = (ln, art, wert) =>
             {
                 if (string.IsNullOrEmpty(wert) || !Regex.IsMatch(wert, "[A-Za-z]") || Regex.IsMatch(wert, "^-+$")) return;
+                if (RxNachStandardName.IsMatch(wert)) return;
+                bool nurStatus = true;
+                foreach (string t in Regex.Split(wert, "[ \\t,;]+"))
+                {
+                    string r = RxNachRandzeichen.Replace(t, "").ToLowerInvariant();
+                    if (Regex.IsMatch(r, "[a-z]") && !NachStatuswerte.Contains(r)) { nurStatus = false; break; }
+                }
+                if (nurStatus) return;
                 if (NachErlaubt(wert, cfg, fest)) return;
                 bool alleErlaubt = true;
                 foreach (string t in Regex.Split(wert, "[ \\t,;]+"))
@@ -2892,81 +3001,70 @@ namespace AnonTool
                 }
             }
 
-            // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info):
-            // Kopfzeile ohne ":" / "=" mit mindestens drei Zellen; Daten bis zur nächsten Leerzeile
+            // Tabellen mit Beschreibungs- oder Namensspalte (show interface brief, show lldp neighbor-info, show vlan).
+            // Eigene, großzügige Endregel (unabhängig von der Engine): Ende nur an Leerzeile, Befehls-/Promptzeile oder
+            // neuer Kopfzeile. In der letzten Spalte ist jeder Freitext, der kein Platzhalter und kein Statuswert ist, ein Fund,
+            // auch in Zeilen, die nicht ins Spaltenraster passen (Wert nach dem letzten Zahlen-/"--"-Feld).
             for (int i = 0; i < zeilen.Length; i++)
             {
-                string kopf = zeilen[i];
-                if (kopf.IndexOf(':') >= 0 || kopf.IndexOf('=') >= 0) continue;
-                bool tab = kopf.IndexOf('\t') >= 0;
-                List<string> zText = new List<string>();
-                List<int> zStart = new List<int>();
-                if (tab)
-                {
-                    int ab = 0;
-                    foreach (string z in kopf.Split('\t')) { zText.Add(z.Trim()); zStart.Add(ab); ab += z.Length + 1; }
-                }
-                else
-                {
-                    foreach (Match m in RxNachKopfZelle.Matches(kopf)) { zText.Add(m.Value); zStart.Add(m.Index); }
-                }
-                int belegt = 0;
-                foreach (string zt in zText) if (zt.Length > 0) belegt++;
-                if (belegt < 3) continue;
-                // Beschreibungsspalten nur in Schnittstellentabellen (show module: "Description" ist die Hardwarebezeichnung)
-                bool schnittstelle = false;
-                foreach (string zt in zText) if (RxNachSchnittstellenKopf.IsMatch(zt)) { schnittstelle = true; break; }
-                List<int> spZi = new List<int>();
-                List<string> spArt = new List<string>();
-                for (int zi = 0; zi < zText.Count; zi++)
-                {
-                    string art;
-                    if (NachTabellenSpalten.TryGetValue(zText[zi], out art) && (art == "H" || schnittstelle)) { spZi.Add(zi); spArt.Add(art); }
-                }
-                if (spZi.Count == 0) continue;
-                // Ende: Leerzeile, "Total", Befehlszeile, Trennlinie nach Datenzeilen, Zeile außerhalb des Spaltenrasters
-                bool trennErwartet = false;
-                for (int t = i + 1; t <= i + 3 && t < zeilen.Length && zeilen[t].Trim() != ""; t++)
-                {
-                    if (RxNachTabellenTrenner.IsMatch(zeilen[t])) { trennErwartet = true; break; }
-                }
-                bool daten = false;
-                for (int j = i + 1; j < zeilen.Length && j < i + 500 && zeilen[j].Trim() != ""; j++)
+                NachKopf kopf = NachTabellenKopf(zeilen[i]);
+                if (kopf == null) continue;
+                for (int j = i + 1; j < zeilen.Length && j < i + 2000; j++)
                 {
                     string z = zeilen[j];
-                    if (Regex.IsMatch(z, "^[ \\t]*Total", RegexOptions.IgnoreCase) || RxBefehlszeile.IsMatch(z)) break;
-                    if (RxNachTabellenTrenner.IsMatch(z))
+                    if (z.Trim().Length == 0 || RxNachBefehl.IsMatch(z) || NachTabellenKopf(z) != null) break;
+                    if (RxNachTabellenTrenner.IsMatch(z)) continue;
+                    foreach (NachSpalte sp in kopf.Spalten)
                     {
-                        if (daten) break;
-                        trennErwartet = false;
-                        continue;
-                    }
-                    if (tab ? z.IndexOf('\t') < 0 : !NachPasstZumRaster(z, zStart)) break;
-                    if (!trennErwartet) daten = true;
-                    for (int k = 0; k < spZi.Count; k++)
-                    {
-                        int zi = spZi[k];
-                        string wert = "";
-                        if (tab)
+                        List<string> werte = new List<string>();
+                        if (kopf.Tab)
                         {
-                            if (z.IndexOf('\t') < 0) continue;
-                            string[] teile = z.Split('\t');
-                            wert = zi < teile.Length ? teile[zi].Trim() : "";
+                            if (z.IndexOf('\t') >= 0)
+                            {
+                                string[] teile = z.Split('\t');
+                                werte.Add(sp.Feld < teile.Length ? teile[sp.Feld].Trim() : "");
+                            }
                         }
                         else
                         {
-                            int a = zStart[zi];
-                            if (a >= z.Length) continue;
-                            while (a > 0 && z[a - 1] != ' ' && z[a - 1] != '\t') a--;
-                            while (a < z.Length && (z[a] == ' ' || z[a] == '\t')) a++;
-                            int naechste = zi + 1 < zStart.Count ? zStart[zi + 1] : z.Length;
-                            if (a >= naechste) continue;
-                            int b = Math.Min(naechste, z.Length);
-                            while (b < z.Length && z[b] != ' ' && z[b] != '\t' && z[b - 1] != ' ' && z[b - 1] != '\t') b++;
-                            wert = z.Substring(a, b - a).Trim();
+                            int a = sp.Start;
+                            string lage = "";
+                            if (a < z.Length)
+                            {
+                                while (a > 0 && a < z.Length && z[a - 1] != ' ' && z[a - 1] != '\t') a++;
+                                while (a < z.Length && (z[a] == ' ' || z[a] == '\t')) a++;
+                                int b = sp.Ende < 0 ? z.Length : Math.Min(sp.Ende, z.Length);
+                                while (b < z.Length && z[b] != ' ' && z[b] != '\t' && z[b - 1] != ' ' && z[b - 1] != '\t') b++;
+                                if (sp.Ende >= 0 && b > a)
+                                {
+                                    Match l = Regex.Match(z.Substring(a, b - a), "[ \\t]{2,}");
+                                    if (l.Success && l.Index > 0) b = a + l.Index;
+                                }
+                                lage = a < b ? z.Substring(a, b - a).Trim() : "";
+                            }
+                            string nachAnker = "";
+                            if (sp.Ende < 0)
+                            {
+                                MatchCollection tokens = Regex.Matches(z, "[^ \\t]+");
+                                int letzter = -1;
+                                for (int t = 1; t < tokens.Count; t++) if (RxNachAnker.IsMatch(tokens[t].Value)) letzter = t;
+                                if (letzter >= 0) nachAnker = z.Substring(tokens[letzter].Index + tokens[letzter].Length).Trim();
+                            }
+                            if (lage.Length > 0 && nachAnker.Length > 0 && lage != nachAnker && (lage.EndsWith(nachAnker, StringComparison.Ordinal) || nachAnker.EndsWith(lage, StringComparison.Ordinal)))
+                            {
+                                werte.Add(lage.Length <= nachAnker.Length ? lage : nachAnker);
+                            }
+                            else
+                            {
+                                if (lage.Length > 0) werte.Add(lage);
+                                if (nachAnker.Length > 0 && nachAnker != lage) werte.Add(nachAnker);
+                            }
                         }
-                        if (spArt[k] == "H") { if (wert.Length > 0 && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "H", wert, null); }
-                        else pruefeBeschreibung(j + 1, "T", wert);
+                        foreach (string wert in werte)
+                        {
+                            if (sp.Art == "H") { if (wert.Length > 0 && !Regex.IsMatch(wert, "^-+$")) pruefeWert(j + 1, "H", wert, null); }
+                            else pruefeBeschreibung(j + 1, "T", wert);
+                        }
                     }
                 }
             }
@@ -4299,6 +4397,7 @@ try {
         try {
             $text = [AnonTool.TarGzHelper]::DecodeTextWithBom($bytes)
             $anonText = [AnonTool.AnonEngine]::ProcessText($text, $cfg, $state)
+            $unsichereZeilen = $state.UnsichereTabellenzeilen.ToArray()
         } catch {
             Stop-MitNummer -Nummer $dateiNr -Schritt "Anonymisieren" -Fehler $_
         }
@@ -4333,12 +4432,13 @@ try {
             Text      = $anonText
             DateiStat = $dateiStat
             Gesamt    = $gesamtInDatei
+            Unsicher  = $unsichereZeilen
         })
     }
 
     # Automatische Nachprüfung jeder anonymisierten Datei inkl. Dateipfad, mit allen im Lauf erkannten Werten
     foreach ($erg in $anonErgebnisse) {
-        $detail = [AnonTool.AnonEngine]::AuditTextDetail($erg.Text, $erg.Pfad, $cfg, $state)
+        $detail = [AnonTool.AnonEngine]::AuditTextDetail($erg.Text, $erg.Pfad, $cfg, $state, [int[]]$erg.Unsicher)
         $funde = $detail.Funde
         $bewusstFreigegeben += $detail.Freigegeben
         foreach ($fd in $funde) { $allePruefFunde.Add($fd) }

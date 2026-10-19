@@ -96,7 +96,8 @@
       "(?i)(?<![A-Za-z0-9_])(?:(?:Ethernet|GigabitEthernet|TenGigabitEthernet|TwentyFiveGigE|Twenty-FiveGigE|FortyGigE|HundredGigE|M-GigabitEthernet|Bridge-Aggregation|Route-Aggregation|Vlan-interface|Port-Channel|PortChannel|Vlan|Loopback|Tunnel|Mgmt|Management|sfp-sfpplus|qsfpplus|pppoe-out|combo|ether|wlan|sfp|lag|eth|xe-|ge-|et-|po|Gi|Te|Fa|Fo|Hu|XGE|FGE|GE)[0-9]+(?:[/:.-][0-9]+)*|(?:bridge|bonding)[0-9]*)(?![A-Za-z0-9_])",
       "(?<![0-9A-Fa-f:])[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]{1,6})?(?:[ \\t]*(?:UTC|CET|CEST|MESZ|MEZ|Z|[+-][0-9]{2}:?[0-9]{2}))?(?![0-9A-Fa-f:])",
       "(?<![A-Za-z0-9_])(?:255\\.255\\.255\\.(?:0|128|192|224|240|248|252|254|255)|255\\.255\\.(?:0|128|192|224|240|248|252|254|255)\\.0|255\\.(?:0|128|192|224|240|248|252|254|255)\\.0\\.0|0\\.0\\.0\\.0|255\\.255\\.255\\.255)(?![A-Za-z0-9_])",
-      "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)"
+      "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)",
+      "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$"
     ]
   },
   "pruefung": {
@@ -528,6 +529,52 @@
           "name": "Number",
           "vorkommen": 2,
           "kategorie": "SERIAL"
+        }
+      ]
+    },
+    {
+      "name": "Aruba AOS-CX show vlan (Spalte Name)",
+      "kopf": [
+        "VLAN",
+        "Name",
+        "Status",
+        "Reason",
+        "Type",
+        "Interfaces"
+      ],
+      "spalten": [
+        {
+          "name": "Name",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "Cisco show vlan brief (Spalte Name)",
+      "kopf": [
+        "VLAN",
+        "Name",
+        "Status",
+        "Ports"
+      ],
+      "spalten": [
+        {
+          "name": "Name",
+          "kategorie": "TEXT"
+        }
+      ]
+    },
+    {
+      "name": "HPE Comware display vlan brief (Spalte Name)",
+      "kopf": [
+        "VLAN ID",
+        "Name",
+        "Port"
+      ],
+      "spalten": [
+        {
+          "name": "Name",
+          "kategorie": "TEXT"
         }
       ]
     }

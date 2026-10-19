@@ -1559,7 +1559,24 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       const tTab = core.processText("Port\tNative\tDescription\n1/1/1\t1\tUplink-Weber\nshow logging ohne Tabulator\n1/1/2\t1\tLog-Zeile\n", kCfg, new core.AnonState());
       assert(tTab.indexOf("Uplink-Weber") < 0 && tTab.indexOf("Log-Zeile") >= 0, `Fix 1: tabulatorgetrennte Tabelle endet an einer Zeile ohne Tabulator (${JSON.stringify(tTab)})`);
       const tTrenn = core.processText(["Port      Native  Type   Description", sep, "1/1/1     1       1GbT   Uplink-Weber", sep, "1/1/9     1       1GbT   Nach-Trennlinie", ""].join("\n"), kCfg, new core.AnonState());
-      assert(tTrenn.indexOf("Uplink-Weber") < 0 && tTrenn.indexOf("Nach-Trennlinie") >= 0, "Fix 1: Trennlinie nach Datenzeilen beendet die Tabelle");
+      assert(tTrenn.indexOf("Uplink-Weber") < 0 && tTrenn.indexOf("Nach-Trennlinie") < 0, "Fail-safe: Trennlinie nach Datenzeilen beendet die Tabelle nicht");
+      // Zeile außerhalb des Rasters ohne Ankerfeld: trotzdem ersetzt und zusätzlich als Fund gemeldet
+      const unsicherText = [sep, "Port      Native  Mode   Type           Enabled Status  Reason                  Speed   Description", sep,
+        "1/1/1     1       access 1GbT           yes     up                              1000    Uplink-Weber",
+        "1/1/7     1       access 1GbT           yes     down    Link flap detected (err-disabled) Kiosk Wagner",
+        "1/1/8     1       access 1GbT           yes     up                              1000    Telefon Wolf", ""].join("\n");
+      const uAus = core.processText(unsicherText, kCfg, new core.AnonState());
+      assert(uAus.indexOf("Wagner") < 0 && uAus.indexOf("Wolf") < 0 && uAus.indexOf("Uplink-Weber") < 0, `Fail-safe: Zeile außerhalb des Rasters wird ersetzt, Tabelle läuft weiter (${uAus.split("\n")[4]})`);
+      const uLauf = core.reprocessFilesWithState([{ path: "u.txt", text: unsicherText }], diskRules, {}, new core.AnonState(), { overrides: { netzerhaltend: true } });
+      const uFunde = uLauf.findings.filter(f => f.kategorie === "Rest-Tabellenzeile");
+      assert(uFunde.length === 1 && uFunde[0].zeile === 5, `Fail-safe: nicht eindeutige Zeile wird als Fund gemeldet (${JSON.stringify(uFunde.map(f => f.zeile))})`);
+      assert(core.freigabeKategorie("Rest-Tabellenzeile", "x") === "Tabellenfeld", "Fail-safe: nicht eindeutige Zeile ist nach Prüfung freigebbar");
+      // Nachprüfung meldet Freitext in der letzten Spalte auch nach Zeilen außerhalb des Rasters, Statuswerte nicht
+      const nUnsicher = core.nachpruefen(unsicherText, "u.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
+      assert(JSON.stringify(nUnsicher) === '["Uplink-Weber","Kiosk Wagner","Telefon Wolf"]', `Nachprüfung: Freitext in der letzten Spalte jeder Zeile (${JSON.stringify(nUnsicher)})`);
+      // Standardnamen von VLANs bleiben stehen und sind kein Restfund
+      const vText = "VLAN Name                             Status    Ports\n---- -------------------------------- --------- ------\n1    default                          active    Gi0/1\n10   VLAN0010                         active    Gi0/3\n1002 fddi-default                     act/unsup\n";
+      assert(core.processText(vText, kCfg, new core.AnonState()) === vText && core.nachpruefen(vText, "v.txt", kCfg).length === 0, "show vlan: Standardnamen (default, VLAN0010, fddi-default) bleiben, kein Fund");
       const tPrompt = core.nachpruefen(["Port      Native  Type   Description", "1/1/1     1       1GbT   Uplink-Weber", "<brw-core07>display current-configuration", "sw-x1# show clock     10:00:00 Description-Spalte", ""].join("\n"), "p.txt", kCfg).filter(f => f.kategorie === "Nachpruefung-Beschreibung").map(f => f.fund);
       assert(JSON.stringify(tPrompt) === '["Uplink-Weber"]', `Fix 1: Prompt-Zeilen (<name>, name#) beenden die Tabelle (${JSON.stringify(tPrompt)})`);
     }
