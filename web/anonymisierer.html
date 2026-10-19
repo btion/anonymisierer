@@ -527,6 +527,20 @@
             </div>
             <div id="tableLoadStatus" class="small-muted" role="status" aria-live="polite" style="margin-top:8px;">Aktuell aktive Zuordnungen: 0</div>
           </div>
+          <div class="card" id="ipSchluesselKarte">
+            <h2>IP-Schlüssel</h2>
+            <div class="small-muted" style="margin-bottom:8px;">Im Schlüsselmodus werden IP-Adressen mit einem Schlüssel präfixerhaltend verfremdet: Netze bleiben rechnerisch korrekt, private Netze bleiben privat. Mit demselben Schlüssel werden Adressen in jedem Lauf gleich abgebildet. Der Schlüssel liegt nur im Arbeitsspeicher; dauerhaft nur als verschlüsselte <code>.anonkey</code>-Datei (auch von <code>anon.ps1</code> lesbar).</div>
+            <label class="small-muted" for="ipKeyPass">Passwort der Schlüsseldatei (mindestens 12 Zeichen):</label>
+            <input type="password" id="ipKeyPass" autocomplete="off" style="margin:6px 0 4px 0;">
+            <div class="btn-row">
+              <button type="button" id="btnIpKeyLaden">Schlüsseldatei (.anonkey) laden</button>
+              <input type="file" id="inputIpKeyFile" accept=".anonkey,.json" style="display:none">
+              <button type="button" id="btnIpKeyNeu">Neuen Schlüssel erzeugen</button>
+              <button type="button" id="btnIpKeySpeichern">Schlüssel als .anonkey speichern</button>
+            </div>
+            <div id="ipKeyMeldung" class="meldung" role="alert"></div>
+            <div id="ipKeyStatus" class="small-muted" role="status" aria-live="polite" style="margin-top:8px;">Kein IP-Schlüssel geladen. Beim Verarbeiten wird ein neuer erzeugt.</div>
+          </div>
         </div>
 
         <div class="card">
@@ -570,6 +584,7 @@
           </div>
           <div id="progressStatus" class="small-muted" role="status" aria-live="polite">Bereit.</div>
           <div id="laufMeldung" class="meldung" role="alert"></div>
+          <div id="ipLaufHinweis" class="small-muted" role="status" aria-live="polite" hidden></div>
           <details class="erweitert">
             <summary>Erweitert</summary>
             <div class="small-muted" style="margin:6px 0;">Der Trockenlauf verarbeitet und prüft mit einer Kopie der Zuordnung. Er speichert keine neuen Zuordnungen und gibt nichts zur Weitergabe frei.</div>
@@ -767,7 +782,7 @@
       <div class="card">
         <h2>Rückübersetzen</h2>
         <div class="small-muted" style="margin-bottom:10px;">
-          Die Antwort einer KI oder eines externen Experten enthält Platzhalter. Mit der Zuordnung werden sie lokal wieder durch die Originalwerte ersetzt, zum Beispiel <code>HOST-1</code> wieder durch den ursprünglichen Gerätenamen und <code>NET-1.H2</code> durch die ursprüngliche IP-Adresse. Der Text verlässt dabei den Rechner nicht.
+          Die Antwort einer KI oder eines externen Experten enthält Platzhalter. Mit der Zuordnung werden sie lokal wieder durch die Originalwerte ersetzt, zum Beispiel <code>HOST-1</code> wieder durch den ursprünglichen Gerätenamen und <code>NET-1.H2</code> durch die ursprüngliche IP-Adresse. Verfremdete IP-Adressen (Schlüsselmodus) werden über die Zuordnung zurückübersetzt, sonst über den geladenen IP-Schlüssel. Der Text verlässt dabei den Rechner nicht.
         </div>
         <div class="small-muted" id="reverseTableInfo" style="margin-bottom:6px;">Aktive Zuordnungen: 0</div>
         <div class="btn-row" style="margin-bottom:10px; align-items:center;">
@@ -797,6 +812,12 @@
         <div id="einstellungsZusammenfassung2" class="einstellungen-kurz"></div>
         <details id="kategorienDetails" class="erweitert">
           <summary>Kategorien und Optionen ändern</summary>
+          <fieldset class="wahl" id="ipModusWahl" style="margin:10px 0;">
+            <legend style="font-weight:600;">IP-Adressen</legend>
+            <label><input type="radio" name="ipModus" id="optIpModusSchluessel" value="schluessel" checked> Schlüsselbasiert verfremden (präfixerhaltend, Netze rechnerisch korrekt)</label>
+            <label><input type="radio" name="ipModus" id="optIpModusPlatzhalter" value="platzhalter"> Platzhalter (alter Modus, z. B. NET-1.H17/24)</label>
+          </fieldset>
+          <div class="small-muted">Nur im alten Modus:</div>
           <div style="margin:10px 0;">
             <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
               <input type="checkbox" id="optNetzerhaltend" checked>
@@ -931,6 +952,7 @@
   const DEFAULT_RULES = {
     "version": "1.0",
     "optionen": {
+      "ipModus": "schluessel",
       "netzerhaltend": true,
       "ipPrivatOeffentlichTrennen": true,
       "subnetzmaskenBehalten": true,
@@ -6046,7 +6068,8 @@
   function collectNetTokensUpper(st) {
     const res = new Set();
     for (const [fk, token] of st.forward.entries()) {
-      if (fk.startsWith("ipv4net|")) res.add(String(token).toUpperCase());
+      // Netz-Platzhalter und verfremdete IP-Adressen (Schlüsselmodus) sind nicht änderbar
+      if (fk.startsWith("ipv4net|") || /^ipk[46]/.test(fk)) res.add(String(token).toUpperCase());
     }
     return res;
   }
@@ -6195,6 +6218,7 @@
       return { ok: false, error: `Platzhalter '${oldPlaceholder}' ist nicht (mehr) aktiv.`, customTerms: ct };
     }
     if (collectNetTokensUpper(state).has(oldUpper)) {
+      if (ip4Lesen(oldUpper) || ip6Lesen(oldUpper)) return { ok: false, error: "Verfremdete IP-Adressen (Schlüsselmodus) können nicht umbenannt werden.", customTerms: ct };
       return { ok: false, error: "Netz-Platzhalter können nicht umbenannt werden (einzelne Hosts wie NET-1.H2 schon).", customTerms: ct };
     }
     const err = validateNewPlaceholder(state, newPh, baseRules, ct);
@@ -6237,6 +6261,7 @@
       return { ok: false, error: `Platzhalter '${placeholder}' ist nicht (mehr) aktiv.`, customTerms: ct };
     }
     if (collectNetTokensUpper(state).has(upper)) {
+      if (ip4Lesen(upper) || ip6Lesen(upper)) return { ok: false, error: "Verfremdete IP-Adressen (Schlüsselmodus) können nicht entfernt werden; Ausnahmen bitte unter „Nicht anonymisieren“ eintragen.", customTerms: ct };
       return { ok: false, error: "Netz-Platzhalter können nicht entfernt werden – bitte einzelne Hosts entfernen.", customTerms: ct };
     }
     const original = String(state.reverse.get(upper));
@@ -6681,8 +6706,9 @@
     const aktiv = o.kategorien instanceof Set ? o.kategorien : new Set(o.kategorien || STANDARD_KATEGORIEN);
     const liste = [];
     for (const k of STANDARD_KATEGORIEN) if (!aktiv.has(k)) liste.push(KATEGORIE_AUS_TEXTE[k]);
-    if (o.netzerhaltend === false) liste.push("IP-Adressen ohne Netzbezug (IP-n statt NET-n.Hn)");
-    if (o.ipPrivPub === false) liste.push("Private und öffentliche IP-Adressen werden nicht unterschieden");
+    if (o.ipModus === "platzhalter") liste.push("IP-Adressen als Platzhalter (alter Modus NET-n.Hm statt schlüsselbasiert)");
+    if (o.ipModus !== "schluessel" && o.netzerhaltend === false) liste.push("IP-Adressen ohne Netzbezug (IP-n statt NET-n.Hn)");
+    if (o.ipModus !== "schluessel" && o.ipPrivPub === false) liste.push("Private und öffentliche IP-Adressen werden nicht unterschieden");
     if (o.regelnGeaendert) liste.push("Regeldatei weicht vom Standard ab");
     if (o.eigeneErsetzungen > 0) liste.push(`${o.eigeneErsetzungen} eigene Ersetzung${o.eigeneErsetzungen === 1 ? "" : "en"} aktiv`);
     if (o.freigaben > 0) liste.push(`${o.freigaben} bewusst freigegebene${o.freigaben === 1 ? "r Wert" : " Werte"}`);
@@ -6739,6 +6765,27 @@
     const $ = (id) => document.getElementById(id);
     let currentRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
     let currentState = new AnonState();
+    // IP-Schlüssel nur im Arbeitsspeicher (nie im Browser-Speicher): { schluessel: Uint8Array(32), kennung, neu, gespeichert }
+    let ipSchluesselAktiv = null;
+    function ipModusGewaehlt() {
+      const r = document.getElementById("optIpModusPlatzhalter");
+      return r && r.checked ? "platzhalter" : "schluessel";
+    }
+    function zeigeIpSchluesselStatus() {
+      const el = document.getElementById("ipKeyStatus");
+      if (!el) return;
+      if (!ipSchluesselAktiv) { el.textContent = "Kein IP-Schlüssel geladen. Beim Verarbeiten wird ein neuer erzeugt."; return; }
+      let t = (ipSchluesselAktiv.neu ? "Neuer IP-Schlüssel" : "IP-Schlüssel geladen") + ` (Kennung ${ipSchluesselAktiv.kennung}).`;
+      if (ipSchluesselAktiv.neu) {
+        t += " " + IP_SCHLUESSEL_HINWEIS_NEU + (ipSchluesselAktiv.gespeichert ? " Als .anonkey gespeichert." : " Noch nicht gespeichert: ohne .anonkey ist die Rückübersetzung nur über die Zuordnungstabelle möglich.");
+      }
+      el.textContent = t;
+    }
+    async function setzeIpSchluessel(bytes, neu) {
+      if (ipSchluesselAktiv && ipSchluesselAktiv.schluessel) ipSchluesselAktiv.schluessel.fill(0);
+      ipSchluesselAktiv = { schluessel: bytes, kennung: await ipSchluesselKennung(bytes), neu, gespeichert: !neu };
+      zeigeIpSchluesselStatus();
+    }
     let loadedInputFiles = []; // [{ id, path, bytes, typ, status, meldung }]; bytes = null bei Fehler
     let naechsteDateiId = 1;
     let processedResults = []; // [{ path, originalPath, originalText, anonText, findings, freigegeben }]
@@ -6978,6 +7025,7 @@
       const norm = normalizeCustomInputRows(ct);
       const abw = einstellungsAbweichungen({
         kategorien: aktiveKategorien(),
+        ipModus: ipModusGewaehlt(),
         netzerhaltend: $("optNetzerhaltend").checked,
         ipPrivPub: $("optIpPrivPub").checked,
         regelnGeaendert: rulesTextarea.value !== STANDARD_REGELN_TEXT,
@@ -6996,7 +7044,7 @@
         el.appendChild(kopf);
         const kurz = document.createElement("div");
         kurz.className = "small-muted";
-        kurz.textContent = "Ersetzt werden IP-Adressen (netzerhaltend), MAC-Adressen, Gerätenamen und Domains, Benutzernamen, Seriennummern, Freitext und eigene Ersetzungen; Geheimnisse werden zu *****.";
+        kurz.textContent = "Ersetzt werden IP-Adressen (schlüsselbasiert verfremdet, Netze rechnerisch korrekt), MAC-Adressen, Gerätenamen und Domains, Benutzernamen, Seriennummern, Freitext und eigene Ersetzungen; Geheimnisse werden zu *****.";
         if (abw.length === 0 || nurZaehler) el.appendChild(kurz);
         if (abw.length > 0) {
           const ul = document.createElement("ul");
@@ -7912,10 +7960,14 @@
       updateReleaseUI();
 
       try {
+        const ipModus = ipModusGewaehlt();
+        if (ipModus === "schluessel" && !ipSchluesselAktiv) await setzeIpSchluessel(ipSchluesselErzeugen(), true);
         const cfg = buildEngineConfig(effectiveRules, {
           netzerhaltend: $("optNetzerhaltend").checked,
           ipPrivatOeffentlichTrennen: $("optIpPrivPub").checked,
-          kategorien: aktiveKategorien()
+          kategorien: aktiveKategorien(),
+          ipModus,
+          ipSchluessel: ipModus === "schluessel" ? ipSchluesselAktiv.schluessel : null
         });
 
         const runState = isProbe ? AnonState.fromJSON(currentState.toJSON()) : currentState;
@@ -8064,6 +8116,9 @@
           zeitstempel: new Date().toISOString(),
           modus: isProbe ? "PROBE" : "ANONYMISIERUNG",
           netzerhaltend: cfg.netzerhaltend,
+          ipModus: cfg.ipModus,
+          ipSchluesselKennung: cfg.ipModus === "schluessel" ? ipSchluesselAktiv.kennung : null,
+          ipHinweis: cfg.ipModus === "schluessel" ? IP_HINWEIS_VERFREMDET : null,
           verarbeiteteDateien: processedResults.length,
           nichtVerarbeitet,
           uebersprungeneBinaer: skippedBinaryFiles,
@@ -8072,6 +8127,15 @@
           pruefTrefferAnzahl: allFindings.length,
           bewusstFreigegeben
         };
+        const ipHinweisEl = $("ipLaufHinweis");
+        if (cfg.ipModus === "schluessel") {
+          ipHinweisEl.textContent = `${IP_HINWEIS_VERFREMDET} IP-Schlüssel ${ipSchluesselAktiv.kennung}.` +
+            (ipSchluesselAktiv.neu && !ipSchluesselAktiv.gespeichert ? " " + IP_SCHLUESSEL_HINWEIS_NEU + " Bitte unter „IP-Schlüssel“ als .anonkey speichern." : "");
+          ipHinweisEl.hidden = false;
+        } else {
+          ipHinweisEl.textContent = "";
+          ipHinweisEl.hidden = true;
+        }
 
         let fehler = "";
         if (pfadKollisionen.length > 0) {
@@ -8500,7 +8564,8 @@
       try { rules = JSON.parse(rulesTextarea.value); } catch (e) { markiereFeld("rulesTextarea", true); statusEl.textContent = "Die Regeldatei ist kein gültiges JSON: " + e.message; return; }
       const mergeRes = validateAndMergeEigeneBegriffe(rules, readCustomTermsFromUI());
       if (!mergeRes.valid) { statusEl.textContent = "Die eigenen Ersetzungen enthalten Fehler: " + verstaendlich(mergeRes.errors.join(" | ")); refreshCustomTermsValidationUI(); return; }
-      const cfg = buildEngineConfig(mergeRes.mergedRules, {});
+      // Strukturvorlage ersetzt Werte durch ihre Form; IP-Schlüssel wird dafür nicht gebraucht
+      const cfg = buildEngineConfig(mergeRes.mergedRules, { ipModus: "platzhalter" });
       const keywords = keywordSetFromVorlage(STRUKTUR_VORLAGE);
       const enc = new TextEncoder();
       const sortiert = nutzbar.slice().sort((a, b) => (a.path < b.path ? -1 : (a.path > b.path ? 1 : 0)));
@@ -8544,6 +8609,45 @@
     const beiOption = () => { markiereGeaendert("optionen"); aktualisiereEinstellungsZusammenfassung(); };
     $("optNetzerhaltend").addEventListener("change", beiOption);
     $("optIpPrivPub").addEventListener("change", beiOption);
+    document.querySelectorAll('input[name="ipModus"]').forEach(r => r.addEventListener("change", beiOption));
+    // IP-Schlüssel: erzeugen, aus .anonkey laden, als .anonkey speichern (nie im Browser-Speicher)
+    $("btnIpKeyNeu").addEventListener("click", async () => {
+      zeigeMeldung("ipKeyMeldung", "");
+      await setzeIpSchluessel(ipSchluesselErzeugen(), true);
+      if (ipModusGewaehlt() === "schluessel") markiereGeaendert("ipschluessel");
+    });
+    $("btnIpKeyLaden").addEventListener("click", () => $("inputIpKeyFile").click());
+    $("inputIpKeyFile").addEventListener("change", async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const pw = $("ipKeyPass").value;
+      $("ipKeyPass").value = "";
+      try {
+        const k = await ipSchluesselDateiLesen(await f.text(), pw);
+        const vorher = ipSchluesselAktiv ? ipSchluesselAktiv.kennung : null;
+        await setzeIpSchluessel(k.schluessel, false);
+        zeigeMeldung("ipKeyMeldung", "");
+        if (vorher !== k.kennung && ipModusGewaehlt() === "schluessel") markiereGeaendert("ipschluessel");
+      } catch (e) {
+        zeigeMeldung("ipKeyMeldung", "Schlüsseldatei nicht geladen: " + e.message);
+      }
+      ev.target.value = "";
+    });
+    $("btnIpKeySpeichern").addEventListener("click", async () => {
+      const pw = $("ipKeyPass").value;
+      if (!ipSchluesselAktiv) { zeigeMeldung("ipKeyMeldung", "Kein IP-Schlüssel vorhanden. Bitte erzeugen oder laden."); return; }
+      if (!pw || pw.length < MIN_PASSWORD_LENGTH) { zeigeMeldung("ipKeyMeldung", `Das Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.`); return; }
+      try {
+        const text = await ipSchluesselDateiErstellen(ipSchluesselAktiv.schluessel, pw);
+        $("ipKeyPass").value = "";
+        triggerDownload(text, `ip-schluessel-${ipSchluesselAktiv.kennung}.anonkey`, "application/json");
+        ipSchluesselAktiv.gespeichert = true;
+        zeigeMeldung("ipKeyMeldung", "IP-Schlüssel als .anonkey gespeichert. Vertraulich aufbewahren, nie weitergeben.", "ok");
+        zeigeIpSchluesselStatus();
+      } catch (e) {
+        zeigeMeldung("ipKeyMeldung", "Speichern fehlgeschlagen: " + e.message);
+      }
+    });
     document.querySelectorAll(".cat-toggle").forEach(cb => cb.addEventListener("change", beiOption));
     $("btnApplyRules").addEventListener("click", () => {
       try {
@@ -8687,17 +8791,24 @@
 
     // Rückübersetzen
     $("btnRunDeanonymize").addEventListener("click", () => {
-      if (currentState.reverse.size === 0) {
+      if (currentState.reverse.size === 0 && !ipSchluesselAktiv) {
         zeigeMeldung("reverseMeldung", "Keine Zuordnung geladen. Bitte zuerst die Zuordnungstabelle laden (Passwort eingeben, dann „Zuordnungstabelle laden“).");
       } else {
         zeigeMeldung("reverseMeldung", "");
       }
       const inp = $("reverseInput").value;
-      const out = deanonymizeText(inp, currentState);
-      $("reverseOutput").value = out;
+      // IP-Adressen: zuerst über die Zuordnung, sonst über den geladenen IP-Schlüssel
+      const ks = ipSchluesselAktiv ? cryptoPanSchluessel(ipSchluesselAktiv.schluessel) : null;
+      const erg = deanonymizeTextDetail(inp, currentState, ks);
+      $("reverseOutput").value = erg.text;
+      if (erg.ueberSchluessel > 0) {
+        zeigeMeldung("reverseMeldung", `${erg.ueberSchluessel} IP-Adresse${erg.ueberSchluessel === 1 ? "" : "n"} nur über den IP-Schlüssel zurückübersetzt (nicht in der Zuordnung). Auch Adressen, die nicht aus der Anonymisierung stammen (z. B. von der KI ergänzt), werden dabei umgerechnet.`);
+      }
     });
 
     // Anfangszustand
+    if ((DEFAULT_RULES.optionen || {}).ipModus === "platzhalter") $("optIpModusPlatzhalter").checked = true;
+    zeigeIpSchluesselStatus();
     aktualisiereZuordnungsWahl();
     updateTableStatusUI();
     aktualisiereDateiInfo();

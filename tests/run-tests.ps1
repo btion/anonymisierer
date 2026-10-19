@@ -16,6 +16,14 @@ $testDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $testDir
 $anonScript = Join-Path (Join-Path $rootDir "powershell") "anon.ps1"
 $rulesPath = Join-Path (Join-Path $rootDir "regeln") "anon-regeln.json"
+# Standard ist der IP-Schlüsselmodus; die bestehenden Tests laufen ausdrücklich im alten Modus (Platzhalter NET-n.Hm)
+# über eine Kopie der Regeldatei. Die Tests des Schlüsselmodus übergeben -IpModus schluessel.
+$rulesPathStandard = $rulesPath
+$rulesAltDir = Join-Path $testDir "_tmp_regeln"
+if (-not (Test-Path -LiteralPath $rulesAltDir)) { [void](New-Item -ItemType Directory -Path $rulesAltDir -Force) }
+$rulesStandardText = [System.IO.File]::ReadAllText($rulesPathStandard, [System.Text.Encoding]::UTF8)
+$rulesPath = Join-Path $rulesAltDir "anon-regeln.json"
+[System.IO.File]::WriteAllText($rulesPath, $rulesStandardText.Replace('"ipModus": "schluessel"', '"ipModus": "platzhalter"'), (New-Object System.Text.UTF8Encoding($false)))
 $casesPath = Join-Path $testDir "faelle.json"
 $beispieleDir = Join-Path $testDir "beispiele"
 $erwartetDir = Join-Path $testDir "erwartet"
@@ -61,6 +69,7 @@ function ConvertFrom-TestIp4 { param([string]$Ip) return ,([byte[]]($Ip.Split(".
 function ConvertTo-TestIp4 { param([byte[]]$Bytes) return (($Bytes | ForEach-Object { [string]$_ }) -join ".") }
 
 Write-Host "=== 1. Initialisiere AnonTool.AnonEngine über anon.ps1 (Trockenlauf) ===" -ForegroundColor Cyan
+Assert-True ($rulesStandardText.Contains('"ipModus": "schluessel"') -and [System.IO.File]::ReadAllText($rulesPath).Contains('"ipModus": "platzhalter"')) "Regeln: Standard-IP-Modus 'schluessel', Testkopie ausdrücklich im alten Modus"
 & $anonScript -Eingabe (Join-Path $beispieleDir "01-aruba-aoscx.txt") -Regeln $rulesPath -Probe > $null
 Assert-True ($LASTEXITCODE -eq 0) "Trockenlauf auf sauberer Beispieldatei liefert Exit-Code 0"
 Assert-True ($null -ne ("AnonTool.AnonEngine" -as [type])) "C# AnonEngine erfolgreich geladen"
@@ -1490,6 +1499,7 @@ $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners
 if (Test-Path -LiteralPath $tempRunRoot) { Remove-Item -LiteralPath $tempRunRoot -Recurse -Force }
+if (Test-Path -LiteralPath $rulesAltDir) { Remove-Item -LiteralPath $rulesAltDir -Recurse -Force }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "TESTERGEBNIS (PowerShell): $passed bestanden, $failed fehlgeschlagen" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Red" })

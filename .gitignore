@@ -3,6 +3,7 @@ anon-regeln.lokal.json
 *.lokal.json
 *.anon-tab
 *.anontab
+*.anonkey
 tabellen/
 Tabellen/
 roh/

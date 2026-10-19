@@ -135,8 +135,17 @@ Erzeugt aus Eingabedateien Kopien, die nur die **Form** der Daten zeigen: Großb
 ```
 Die Ausgabedateien heißen `strukturvorlage-001.txt` usw. (Originalnamen können Werte enthalten). Ohne `-Ausgabe`: `%LOCALAPPDATA%\Anon\struktur\<Zeitstempel>\`. In `anonymisierer.html`: Karte „4. Strukturvorlage“ im ersten Reiter (Download als `strukturvorlage.zip`).
 
-### IP-Modus (`-Netzerhaltend` / `-NichtNetzerhaltend`)
-Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldatei: `-Netzerhaltend` erzeugt `NET-1.H17/24`, `-NichtNetzerhaltend` erzeugt `IP-PRIV-n` / `IP-PUB-n`. Beide zusammen werden abgelehnt.
+### IP-Modus (`-IpModus`, `-IpSchluessel`)
+Standard ist der **Schlüsselmodus** (`optionen.ipModus: "schluessel"`): IP-Adressen werden schlüsselbasiert und präfixerhaltend verfremdet (Crypto-PAn nach Xu, Fan, Ammar, Moon 2002). Netze bleiben rechnerisch korrekt; Bericht und Konsole melden „IP-Adressen sind schlüsselbasiert verfremdet, Netze rechnerisch korrekt.“
+- **Klassen bleiben erhalten:** private Blöcke (10/8, 172.16/12, 192.168/16, 100.64/10, 169.254/16) bleiben im Block, öffentliche Adressen landen nie in einem Sonderbereich. Das **letzte Oktett** privater und öffentlicher Adressen bleibt (feste Grenze /24): `.1` und `.255` bleiben, Adressen im selben /24 bleiben im selben /24. Dokumentations- und Sondernetze (192.0.2/24, 198.51.100/24, 203.0.113/24, 192.0.0/24, 198.18/15, 192.88.99/24) bleiben im Block und werden ganz umgerechnet.
+- **Unverändert:** Masken, Wildcards (z. B. `0.0.0.15`), Präfixlängen, `0.0.0.0`, `255.255.255.255`, 0/8, 127/8, 224/4, 240/4, `::`, `::1`, `ff00::/8`.
+- **Bekannte Präfixlänge:** `10.0.0.0/23` wird als Netzadresse, `10.0.1.255/23` als Broadcast des verfremdeten Netzes ausgegeben.
+- **IPv6:** normalisiert (RFC 5952, Kurz- und Langform ergeben dasselbe), präfixerhaltend; feste Grenze /120 (letztes Byte bleibt), `2001:db8::/32` ganz umgerechnet, ULA und Link-Local bleiben im Block.
+- **Schlüssel:** Arbeitsbereich-Schlüssel `%LOCALAPPDATA%\Anon\schluessel\arbeitsbereich.anonkey` oder pro Fall `-IpSchluessel C:\Faelle\fall01.anonkey`. Fehlt die Datei, wird ein neuer Schlüssel erzeugt und mit DPAPI (Windows) bzw. mit dem Passwort aus `-MitPasswort` (Format `ANON-AES256-2`, auch im Browser ladbar) geschützt; unverschlüsselt wird er nie gespeichert. **Neuer Schlüssel = andere Abbildung als frühere Läufe** (Hinweis auf der Konsole). Der Schlüssel darf nicht im Ausgabeordner oder in einer Eingabe liegen. `-Probe` nutzt ohne Schlüsseldatei einen temporären Schlüssel und speichert nichts. Der Bericht enthält Modus, Hinweis und die Kennung des Schlüssels (Fingerabdruck, kein Schlüsselmaterial).
+- **Alter Modus:** `-IpModus platzhalter` (oder `-Netzerhaltend` / `-NichtNetzerhaltend`) erzeugt `NET-1.H17/24` bzw. `IP-PRIV-n` / `IP-PUB-n`. `-Netzerhaltend` und `-NichtNetzerhaltend` zusammen oder zusammen mit `-IpModus schluessel` werden abgelehnt.
+```powershell
+.\anon.ps1 -Eingabe "C:\Faelle\Eingang" -Ausgabe "C:\Faelle\Ausgang" -IpSchluessel "C:\Faelle\fall01.anonkey" -MitPasswort
+```
 
 ### Trockenlauf (`-Probe`) und reiner Prüfmodus (`-Pruefen`)
 ```powershell
@@ -146,6 +155,7 @@ Beide sind Schalter und überschreiben `optionen.netzerhaltend` aus der Regeldat
 # Reiner Prüfmodus auf einem bereits anonymisierten Ordner (Exit-Code 0 = KEINE_RESTFUNDE, Exit-Code 2 = RESTFUNDE_VORHANDEN)
 .\anon.ps1 -Eingabe "C:\Faelle\Ausgang\anonym" -LokaleRegeln ".\anon-regeln.lokal.json" -Pruefen
 ```
+Im Schlüsselmodus sehen verfremdete Adressen wie echte aus. Mit `-TabellenPfad` (Zuordnungstabelle des Laufs) gelten sie nicht als Restfund; ohne Tabelle meldet `-Pruefen` sie als `Rest-IPv4` / `Rest-IPv6`.
 
 ### Rückübersetzen einer KI-Antwort (`-Zurueck`)
 Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `%LOCALAPPDATA%\Anon\klartext\rueck-<Zeitstempel>-001.txt` (ACL nur Ihr Benutzer). Ein Ziel unterhalb eines Ordners `anonym\` oder in einem Ausgabeordner eines Laufs (erkennbar an `anonym\` und `bericht.json`) wird abgelehnt.
@@ -154,6 +164,7 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
            -Ausgabe "C:\Klartext\ki-antwort-echt.txt" `
            -Tabelle "$env:LOCALAPPDATA\Anon\Tabellen\fall01.json"
 ```
+Verfremdete IP-Adressen werden zuerst über die Tabelle zurückübersetzt, sonst über `-IpSchluessel` (oder mit `-IpModus schluessel` über den Arbeitsbereich-Schlüssel); das geht auch ganz ohne Tabelle. Jede Adresse wird genau einmal umgerechnet. Werden Adressen nur über den Schlüssel übersetzt, nennt ein Hinweis die Anzahl: dabei werden auch Adressen umgerechnet, die nicht aus der Anonymisierung stammen (z. B. von der KI ergänzt). Bei `-Zurueck` wird nie ein neuer Schlüssel erzeugt.
 
 ---
 
@@ -179,7 +190,9 @@ Der Klartext wird nie auf der Konsole ausgegeben. Ohne `-Ausgabe` landet er in `
    - „Getroffene Entscheidungen“ und „Alle Einzelfunde“ sind eingeklappt, solange sie leer sind.
 4. **Herunterladen:** **Anonymisierte Dateien – zur Weitergabe**: Ergebnis-ZIP (nur `anonym/...`, ohne Bericht und Zuordnung) und Liste aller Dateien mit Einzel-Download (anonymisierter Name, ursprünglicher Dateityp); bei nur einer Datei ist der Einzel-Download der Hauptknopf. Gleiche Sperrregeln für ZIP und Einzeldateien; ein unvollständiger Lauf (nicht verarbeitete Dateien) sperrt den Download, bis diese Dateien entfernt und neu verarbeitet sind. Außerdem **Verschlüsselte Zuordnungstabelle – vertraulich aufbewahren** (Passwort mit mindestens 12 Zeichen, Format `ANON-AES256-2`, auch in `anon.ps1` ladbar; Hinweis, wenn sich die Zuordnung seit dem letzten Speichern geändert hat) und **Technischer Bericht (ohne Werte)** mit `bewusstFreigegeben`. Ein gesperrter Download nennt immer den Grund und den nächsten Schritt. Freigegeben wird nur nach einem vollständigen Lauf mit „Keine Restfunde nach aktivem Regelwerk“; jede Änderung an Dateien, Einstellungen, Regeln oder Zuordnung macht das Ergebnis veraltet.
 
-**Rückübersetzen:** Antwort der KI einfügen; Platzhalter werden lokal wieder zu Originalwerten, z. B. `HOST-1` wieder zum ursprünglichen Gerätenamen.
+**IP-Schlüssel (Schritt 1):** Im Schlüsselmodus (Standard, Einstellungen › „IP-Adressen“) werden IP-Adressen wie in `anon.ps1` verfremdet. Karte „IP-Schlüssel“: Schlüsseldatei `.anonkey` laden (Passwort zuerst eingeben), neuen Schlüssel erzeugen oder den Schlüssel als `.anonkey` speichern (Passwort mindestens 12 Zeichen, Format `ANON-AES256-2`, auch in `anon.ps1` ladbar; DPAPI-Dateien nur in `anon.ps1`). Ohne geladenen Schlüssel erzeugt das Verarbeiten einen neuen; der Hinweis „Neuer IP-Schlüssel: IP-Adressen werden anders abgebildet als in früheren Läufen.“ erscheint. Der Schlüssel liegt nur im Arbeitsspeicher, nie im Browser-Speicher. Ein Wechsel des Schlüssels macht das Ergebnis veraltet. Nach dem Lauf und im Bericht steht „IP-Adressen sind schlüsselbasiert verfremdet, Netze rechnerisch korrekt.“ mit der Kennung des Schlüssels. Der alte Modus (Platzhalter `NET-n.Hm`) ist unter Einstellungen wählbar und wird als Abweichung angezeigt.
+
+**Rückübersetzen:** Antwort der KI einfügen; Platzhalter werden lokal wieder zu Originalwerten, z. B. `HOST-1` wieder zum ursprünglichen Gerätenamen. Verfremdete IP-Adressen kommen über die Zuordnung zurück, sonst über den geladenen IP-Schlüssel (mit Hinweis auf die Anzahl).
 
 **Einstellungen:** Kategorien und Optionen, **Eigene Ersetzungen** (`festeZuordnung`), **Firmen und Standorte**, **Interne Domains**, **Nicht anonymisieren** (`ausnahmen.exakteWoerter`) und **Bewusst freigegebene Werte**; unter „Erweitert“ Regeldatei, eigene Gerätenamen-Muster, Strukturvorlage, ein Verweis auf die Ersetzungen in Schritt 3 und Angaben zur Verschlüsselung. Ältere Browser-Tabellen (`ANON-WEBCRYPTO-AESGCM-1`) bleiben ladbar; einmal neu speichern, um sie in `anon.ps1` zu nutzen.
 
@@ -332,8 +345,10 @@ Nicht ersetzt werden u. a. Versionen (`10.13.1020`), Portnamen, VLAN-IDs, Produk
 2. **Regex-Timeouts (Variante A vs. Variante B):**
    In Variante A (`anon.ps1` / .NET) sind sämtliche regulären Ausdrücke mit einem harten `MatchTimeout` von **5 Sekunden** gegen katastrophales Backtracking (ReDoS) bei selbstgebauten Regeln abgesichert. In Variante B (`anonymisierer.html`) unterstützt die JavaScript-Engine (`RegExp`) des Browsers nativ **kein** Regex-Timeout; achten Sie beim Erweitern eigener Muster in `anon-regeln.lokal.json` daher auf eindeutige Begrenzungen ohne geschachtelte Quantifizierer.
 3. **Netzwerk-Topologie und Struktur bleiben erkennbar:**
-   Durch konsistente Platzhalter (`NET-1.H1/24`, `CORE-A`, `MAC-1`) bleibt die logische Struktur für die Fehlersuche erhalten.
-4. **Freitext immer selbst sichten:**
+   Durch konsistente Platzhalter (`CORE-A`, `MAC-1`) und präfixerhaltend verfremdete IP-Adressen bleibt die logische Struktur für die Fehlersuche erhalten.
+4. **Der IP-Schlüssel ist so vertraulich wie die Zuordnungstabelle:**
+   Wer Schlüssel und Ausgabe besitzt, kann alle verfremdeten IP-Adressen zurückrechnen. Präfixerhaltung bedeutet außerdem: Gemeinsame Präfixe, Netzgrößen, Blockzugehörigkeit (privat, öffentlich, Dokumentationsnetz) und das letzte Oktett bleiben sichtbar. Wer einzelne Paare aus Original und Ausgabe kennt, erfährt daraus die Abbildung der zugehörigen Präfixe. Pro Fall einen eigenen Schlüssel verwenden, wenn Ausgaben verschiedener Kunden nicht verknüpfbar sein sollen.
+5. **Freitext immer selbst sichten:**
    Unstrukturierter Freitext (z. B. ungewöhnliche Log-Meldungen, Skript-Kommentare ohne Schlüsselwort) kann Begriffe enthalten, die keiner bekannten Regel entsprechen. Eine manuelle Sichtprüfung vor der Weitergabe ist daher unverzichtbar.
 
 ---
@@ -358,6 +373,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 - `tests\erwartet\` ist der committete Sollstand. `run-tests.js` vergleicht nur; neu erzeugen bei gewollter Änderung: `node tests/run-tests.js --aktualisieren`.
 - In `anon-regeln.json` sind `\w`, `\d` und `\b` verboten (in .NET Unicode, in JavaScript nur ASCII). Stattdessen `[0-9]`, `[A-Za-z0-9_]`, `(?<![A-Za-z0-9_])` / `(?![A-Za-z0-9_])`. Ersetzungstexte dürfen nur `$1` bis `$9` verwenden.
 - Alle `.ps1`-Dateien sind UTF-8 **mit BOM** gespeichert (sonst liest PS 5.1 sie als ANSI) und enthalten keine Gedankenstriche.
+- Private IPv4 in Testdaten nur aus 10.0.0.0/23, 172.16.0.0/24, 172.22.0.0/24 (Beispiel 172.22.0.230/24) und 192.168.0.0/24, sonst Dokumentationsnetze. In `tests/ip-testvektoren.json` werden nur die Eingaben geprüft; die Ausgaben sind Rechenergebnisse.
+- **IP-Modell:** `tests/ip-testvektoren.json` enthält AES-128 (FIPS-197), Crypto-PAn (veröffentlichtes yacryptopan-Beispiel und Sollwerte einer unabhängigen Referenz mit OpenSSL-AES), IPv6, Klassen-Vektoren, eine Prüfsumme über 2000 öffentliche Adressen und einen Engine-Vektor. JS und `anon.ps1` müssen alle gleich liefern. Die bestehenden Tests laufen ausdrücklich im alten IP-Modus (`run-tests.js`: `diskRules.optionen.ipModus`, `run-tests.ps1`: Kopie der Regeldatei, Browser: Auswahl „Platzhalter“).
 
 Der Ordner `tests\` enthält **87 synthetische Test- und Grenzfälle** (`tests\faelle.json`), die automatisch sowohl als LF- als auch als CRLF-Variante geprüft werden, realistische Beispieldateien (`tests\beispiele\`), erwartete Referenzausgaben (`tests\erwartet\`) sowie dedizierte Tests für alle Sicherheits- und Randfälle.
 
@@ -391,6 +408,8 @@ Der Ordner `tests\` enthält **87 synthetische Test- und Grenzfälle** (`tests\f
 
 - **Lizenz des Projekts:** In [`LICENSE`](./LICENSE) ist **Apache-2.0 als Platzhalter** eingetragen. Die Entscheidung über die endgültige Lizenz ist noch **offen**.
 - **ZIP- und TAR/GZIP-Verarbeitung in `anonymisierer.html`:** Direkt eingebetteter Minimal-Codec auf Basis der standardisierten Browser-APIs (`DecompressionStream`, `DataView`, `Uint8Array`, `WebCrypto API`) ohne externe Fremdbibliotheken.
+- **AES-128 in `core/ip/cryptopan.js`:** eigene Umsetzung nach FIPS-197, nur Verschlüsselung einzelner Blöcke (WebCrypto bietet kein AES-ECB und arbeitet nur asynchron). Geprüft gegen die FIPS-197-Beispiele, gegen OpenSSL (`node:crypto`, Zufallsblöcke) und über die gemeinsamen Vektoren gegen .NET (`anon.ps1`). Eine fertige Bibliothek (z. B. aes-js) lag nicht vor.
+- **Crypto-PAn:** Algorithmus nach J. Xu, J. Fan, M. Ammar, S. B. Moon, „Prefix-Preserving IP Address Anonymization“ (ICNP 2002), eigene Umsetzung in JS und C# mit Erweiterung um Adressklassen und feste Grenze.
 
 ### Inspiriert von
 Konzepte (kein Code) wurden übernommen aus:
@@ -405,7 +424,7 @@ Details: [`docs/lese-auftrag-netconan-presidio.md`](./docs/lese-auftrag-netconan
 
 | Ordner | Inhalt |
 |---|---|
-| `core/` | gemeinsamer Kern für die Browser-Seiten: `text/text-engine.js`, `tabelle/zuordnung.js` (Zuordnungstabelle, Rückübersetzung), `tabelle/krypto.js` (ANON-AES256-2) |
+| `core/` | gemeinsamer Kern für die Browser-Seiten: `text/text-engine.js`, `tabelle/zuordnung.js` (Zuordnungstabelle, Rückübersetzung), `tabelle/krypto.js` (ANON-AES256-2), `ip/cryptopan.js` (AES-128, Crypto-PAn, Adressklassen), `ip/schluessel.js` (IP-Schlüssel, `.anonkey`) |
 | `web/` | `anonymisierer.html` (Netzwerkdaten) und `text/text-anonymisierer.html` (Freitext), jeweils eine eigenständige Datei |
 | `powershell/` | `anon.ps1` (Variante A, Windows PowerShell 5.1 und PowerShell 7) |
 | `regeln/` | `anon-regeln.json` (Basisregelwerk, nur Beispielwerte), `strukturvorlage.json` (feste Schlüsselwortliste der Strukturvorlage) |

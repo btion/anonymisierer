@@ -4,7 +4,7 @@
     Kompatibel mit Windows PowerShell 5.1+ und PowerShell 7+, ohne externe Module und ohne Netzwerkzugriffe.
 
 .DESCRIPTION
-    Ersetzt sensible Infrastruktur-Daten (IPv4/IPv6 inkl. netzerhaltendem Modus NET-x.Hy, MAC-Adressen,
+    Ersetzt sensible Infrastruktur-Daten (IPv4/IPv6 schlüsselbasiert und präfixerhaltend verfremdet oder als Platzhalter NET-x.Hy, MAC-Adressen,
     Hostnamen, FQDNs, E-Mail-Adressen, URLs, Benutzernamen, Seriennummern, Freitext-Felder sowie
     pflegbare Begriffe aus anon-regeln.json) konsistent über alle Dateien eines Laufs.
     Entfernt Geheimnisse (Passwörter, Hashes, Keys, SNMP-Communities, PEM-Zertifikate, Hex/Base64-Blobs)
@@ -68,10 +68,10 @@
     Pfad zur Schlüsselwortliste (Standard: strukturvorlage.json neben anon.ps1, sonst ..\regeln\).
 
 .PARAMETER Netzerhaltend
-    Schalter: netzerhaltender Modus (NET-x.Hy) unabhängig von der Einstellung 'netzerhaltend' in anon-regeln.json.
+    Schalter: alter IP-Modus (Platzhalter), netzerhaltend (NET-x.Hy) unabhängig von der Einstellung 'netzerhaltend' in anon-regeln.json.
 
 .PARAMETER NichtNetzerhaltend
-    Schalter: IPs als IP-PRIV-n / IP-PUB-n statt netzerhaltend. Nicht zusammen mit -Netzerhaltend verwendbar.
+    Schalter: alter IP-Modus (Platzhalter), IPs als IP-PRIV-n / IP-PUB-n statt netzerhaltend. Nicht zusammen mit -Netzerhaltend verwendbar.
 
 .PARAMETER Kategorien
     Kommagetrennte Liste aktiver Kategorien (z.B. "ip,mac,hostnamen,geheimnisseEntfernen").

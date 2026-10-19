@@ -86,6 +86,10 @@ assert(
   JSON.stringify(diskRules) === JSON.stringify(core.DEFAULT_RULES),
   "anon-regeln.json und DEFAULT_RULES in anonymisierer.html sind 100 % identisch"
 );
+// Standard ist der IP-Schlüsselmodus; die bestehenden Tests laufen ausdrücklich im alten Modus (Platzhalter NET-n.Hm),
+// der Schlüsselmodus hat eigene Tests (Abschnitt 19)
+assert(diskRules.optionen.ipModus === "schluessel", "Regeln: Standard-IP-Modus ist 'schluessel'");
+diskRules.optionen.ipModus = "platzhalter";
 
 // Regex-Dialekt: .NET wertet \w, \d und \b als Unicode, JavaScript als ASCII. Deshalb sind sie in
 // anon-regeln.json verboten; erlaubt sind explizite ASCII-Klassen wie [0-9] oder (?<![A-Za-z0-9_]).
@@ -1147,7 +1151,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     const jsAnonOut = core.processText(sampleParityInput, jsCfg, jsState);
 
     // PowerShell CLI mit -LokaleRegeln
-    const psCmd = `& "${PS1_PATH.replace(/\\/g, "\\\\")}" -Eingabe "${testInputPath.replace(/\\/g, "\\\\")}" -Ausgabe "${testOutDir.replace(/\\/g, "\\\\")}" -Regeln "${RULES_PATH.replace(/\\/g, "\\\\")}" -LokaleRegeln "${lokalRulesPath.replace(/\\/g, "\\\\")}" -TabellenPfad "${testTabPath.replace(/\\/g, "\\\\")}" -Unverschluesselt > $null`;
+    const psCmd = `& "${PS1_PATH.replace(/\\/g, "\\\\")}" -Eingabe "${testInputPath.replace(/\\/g, "\\\\")}" -Ausgabe "${testOutDir.replace(/\\/g, "\\\\")}" -Regeln "${RULES_PATH.replace(/\\/g, "\\\\")}" -LokaleRegeln "${lokalRulesPath.replace(/\\/g, "\\\\")}" -TabellenPfad "${testTabPath.replace(/\\/g, "\\\\")}" -Unverschluesselt -IpModus platzhalter > $null`;
     const psRun = spawnSync("pwsh", ["-NoProfile", "-Command", psCmd], { encoding: "utf8" });
     assert(psRun.status === 0, `anon.ps1 mit -LokaleRegeln beendet mit Exit-Code 0 (${psRun.stderr || "ok"})`);
 
@@ -1235,7 +1239,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
       fs.writeFileSync(lokalMusterPath, lokalMusterJson, "utf8");
       fs.writeFileSync(musterInPath, lokalMusterInput, "utf8");
       const esc = (p) => p.replace(/\\/g, "\\\\");
-      const psMusterCmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(musterInPath)}" -Ausgabe "${esc(musterOutDir)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lokalMusterPath)}" -TabellenPfad "${esc(musterTabPath)}" -Unverschluesselt > $null; exit $LASTEXITCODE`;
+      const psMusterCmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(musterInPath)}" -Ausgabe "${esc(musterOutDir)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lokalMusterPath)}" -TabellenPfad "${esc(musterTabPath)}" -Unverschluesselt -IpModus platzhalter > $null; exit $LASTEXITCODE`;
       const psMusterRun = spawnSync("pwsh", ["-NoProfile", "-Command", psMusterCmd], { encoding: "utf8" });
       assert(psMusterRun.status === 0, `anon.ps1 mit lokalen Mustern endet ohne Restfunde mit Exit-Code 0 (${psMusterRun.status})`);
       const psMusterOut = fs.readFileSync(path.join(musterOutDir, "anonym", "eingabe.txt"), "utf8");
@@ -1745,7 +1749,7 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
         const lok = path.join(frDir, name + ".lokal.json");
         fs.writeFileSync(lok, JSON.stringify({ ausnahmen: { freigegeben: liste } }), "utf8");
         const aus = path.join(frDir, "aus-" + name);
-        const cmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(path.join(frDir, "ein.txt"))}" -Ausgabe "${esc(aus)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lok)}" -TabellenPfad "${esc(path.join(frDir, "tab-" + name + ".json"))}" -Unverschluesselt; exit $LASTEXITCODE`;
+        const cmd = `& "${esc(PS1_PATH)}" -Eingabe "${esc(path.join(frDir, "ein.txt"))}" -Ausgabe "${esc(aus)}" -Regeln "${esc(RULES_PATH)}" -LokaleRegeln "${esc(lok)}" -TabellenPfad "${esc(path.join(frDir, "tab-" + name + ".json"))}" -Unverschluesselt -IpModus platzhalter; exit $LASTEXITCODE`;
         const r = spawnSync("pwsh", ["-NoProfile", "-Command", cmd], { encoding: "utf8" });
         const berPfad = path.join(aus, "bericht.json");
         return { code: r.status, bericht: fs.existsSync(berPfad) ? JSON.parse(fs.readFileSync(berPfad, "utf8")) : null, konsole: r.stdout || "" };
@@ -2083,6 +2087,9 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     const ks = core.cryptoPanSchluessel(kBytes);
     const vf = (t, p) => core.ipTextVerfremden(ks, t, p === undefined ? null : p, false);
     const ov = { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: kBytes };
+    let stdFehler = null;
+    try { core.buildEngineConfig(core.DEFAULT_RULES, {}); } catch (e) { stdFehler = e; }
+    assert(stdFehler && /Schlüssel/.test(stdFehler.message), "IP-Modell: Standard ist der Schlüsselmodus (ohne Schlüssel kein stiller Rückfall auf Platzhalter)");
     let ohneSchluessel = null;
     try { core.buildEngineConfig(diskRules, { ipModus: "schluessel" }); } catch (e) { ohneSchluessel = e; }
     assert(ohneSchluessel && /Schlüssel/.test(ohneSchluessel.message), "IP-Modell: Schlüsselmodus ohne Schlüssel wird abgelehnt");

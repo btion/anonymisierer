@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "optionen": {
+    "ipModus": "schluessel",
     "netzerhaltend": true,
     "ipPrivatOeffentlichTrennen": true,
     "subnetzmaskenBehalten": true,
