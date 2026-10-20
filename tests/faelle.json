@@ -204,7 +204,7 @@
     "id": "TC26",
     "name": "Interne Domains und FQDNs ersetzen",
     "eingabe": "ntp server ntp01.intern.example.invalid domain-name intern.example.invalid",
-    "erwartet": "ntp server HOST-1 domain-name DOMAIN-1",
+    "erwartet": "ntp server HOST-1.DOMAIN-1 domain-name DOMAIN-1",
     "netzerhaltend": true,
     "sauber": true
   },
@@ -800,6 +800,14 @@
     "name": "A2-Folge 2: Mehrdeutiger Benutzer (backup) nur im Feldkontext ersetzt, nicht als freies Wort",
     "eingabe": "user backup group operators password ciphertext AQBx12\nusername backup role operator\nshow backup status\nbackup completed",
     "erwartet": "user USER-1 group operators password ciphertext *****\nusername USER-1 role operator\nshow backup status\nbackup completed",
+    "netzerhaltend": true,
+    "sauber": true
+  },
+  {
+    "id": "TC90",
+    "name": "Domain-Lernen: Feldkontext, FQDN-Suffix, Zertifikat, LDAP-DN, Windows-Domäne, Herstellerdomains bleiben",
+    "eingabe": "hostname sw-kbx01\nip domain-name klinik-nord.local\ndns-domain-list KLINIK-NORD.LOCAL\nntp server sw-kbx02.klinik-nord.local\nssl certificate subject CN=sw-kbx01.klinik-nord.local\nldap base-dn dc=klinik-nord,dc=local\nLogon KLINIK\\bwagner\nAccount Name: bwagner Account Domain: KLINIK\nip domain-list cisco.com\nclock server 0.pool.ntp.org\n",
+    "erwartet": "hostname HOST-1\nip domain-name DOMAIN-1\ndns-domain-list DOMAIN-1\nntp server HOST-2.DOMAIN-1\nssl certificate subject CN=HOST-1.DOMAIN-1\nldap base-dn dc=DOMAIN-1\nLogon DOMAIN-2\\USER-1\nAccount Name: USER-1 Account Domain: DOMAIN-2\nip domain-list cisco.com\nclock server 0.pool.ntp.org\n",
     "netzerhaltend": true,
     "sauber": true
   }

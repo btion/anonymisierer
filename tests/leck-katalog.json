@@ -900,6 +900,70 @@
           "art": "identitaet"
         }
       ]
+    },
+    {
+      "id": "K37",
+      "quelle": "Fix Domain-Lernen: Domain aus Feldkontext, FQDN-Suffix, Windows, Zertifikat, LDAP",
+      "ipModus": "platzhalter",
+      "eingabe": "hostname sw-kbx01\nip domain-name klinik-nord.local\ndomain-name klinik-nord.local\nip domain-list klinik-nord.local\ndns-domain-list klinik-nord.local\nntp server sw-kbx02.klinik-nord.local\nAn account was successfully logged on. Account Name: bwagner Account Domain: KLINIK\nLogon KLINIK\\bwagner from 192.0.2.10\nUPN bwagner@klinik-nord.local\nssl certificate subject CN=sw-kbx01.klinik-nord.local\nldap base-dn dc=klinik-nord,dc=local\n",
+      "ziele": [
+        {
+          "wert": "klinik-nord.local",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        },
+        {
+          "wert": "sw-kbx02.klinik-nord.local",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        },
+        {
+          "wert": "KLINIK",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        },
+        {
+          "wert": "dc=klinik-nord,dc=local",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        },
+        {
+          "wert": "bwagner",
+          "kategorie": "Benutzer",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K38",
+      "quelle": "Fix Domain-Lernen: nur FQDN-Suffix eines bekannten Hosts (ohne Domain-Feld)",
+      "ipModus": "platzhalter",
+      "eingabe": "hostname sw-kbx01\nlldp neighbor sw-kbx01.klinik-nord.local\nntp server sw-kbx02.klinik-nord.local\n",
+      "ziele": [
+        {
+          "wert": "sw-kbx02.klinik-nord.local",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K39",
+      "quelle": "Fix Domain-Lernen: öffentliche Domain nur aus domain-name gelernt, Herstellerdomains bleiben",
+      "ipModus": "platzhalter",
+      "eingabe": "ip domain-name klinik-nord.invalid\nntp server ntp1.klinik-nord.invalid\nntp server 0.pool.ntp.org\nsnmp-server contact netz-admin@klinik-nord.invalid\n",
+      "ziele": [
+        {
+          "wert": "klinik-nord.invalid",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        },
+        {
+          "wert": "ntp1.klinik-nord.invalid",
+          "kategorie": "Domaene",
+          "art": "identitaet"
+        }
+      ]
     }
   ]
 }

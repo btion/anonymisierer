@@ -132,5 +132,22 @@
   "K35/K35.txt|5|Nachpruefung-IP|010.000.000.013",
   "K35/K35.txt|6|Nachpruefung-IP|10.0.0.013",
   "K36/K36.txt|5|Nachpruefung-IP|010.000.000.013",
-  "K36/K36.txt|6|Nachpruefung-IP|10.0.0.013"
+  "K36/K36.txt|6|Nachpruefung-IP|10.0.0.013",
+  "K37/K37.txt|1|Nachpruefung-Hostname|sw-kbx01",
+  "K37/K37.txt|2|Nachpruefung-Domaene|klinik-nord.local",
+  "K37/K37.txt|3|Nachpruefung-Domaene|klinik-nord.local",
+  "K37/K37.txt|4|Nachpruefung-Domaene|klinik-nord.local",
+  "K37/K37.txt|5|Nachpruefung-Domaene|klinik-nord.local",
+  "K37/K37.txt|6|Nachpruefung-Domaene|sw-kbx02.klinik-nord.local",
+  "K37/K37.txt|7|Nachpruefung-Domaene|KLINIK",
+  "K37/K37.txt|7|Nachpruefung-Benutzer|bwagner",
+  "K37/K37.txt|8|Nachpruefung-Domaene|KLINIK",
+  "K37/K37.txt|8|Nachpruefung-Benutzer|bwagner",
+  "K37/K37.txt|10|Nachpruefung-Domaene|sw-kbx01.klinik-nord.local",
+  "K37/K37.txt|11|Nachpruefung-Domaene|dc=klinik-nord,dc=local",
+  "K38/K38.txt|1|Nachpruefung-Hostname|sw-kbx01",
+  "K38/K38.txt|2|Nachpruefung-Domaene|sw-kbx01.klinik-nord.local",
+  "K38/K38.txt|3|Nachpruefung-Domaene|sw-kbx02.klinik-nord.local",
+  "K39/K39.txt|1|Nachpruefung-Domaene|klinik-nord.invalid",
+  "K39/K39.txt|2|Nachpruefung-Domaene|ntp1.klinik-nord.invalid"
 ]

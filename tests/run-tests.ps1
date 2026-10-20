@@ -109,6 +109,7 @@ function New-TestConfig {
     foreach ($x in $RulesObj.eigeneBegriffe.firmenUndStandorte) { $cfg.FirmenUndStandorte.Add([string]$x) }
     foreach ($x in $RulesObj.eigeneBegriffe.interneDomains) { $cfg.InterneDomains.Add([string]$x) }
     foreach ($x in $RulesObj.ausnahmen.exakteWoerter) { [void]$cfg.ExakteAusnahmen.Add([string]$x) }
+    foreach ($x in $RulesObj.ausnahmen.domainAusnahmen) { $cfg.DomainAusnahmen.Add(([string]$x).Trim().ToLowerInvariant()) }
     foreach ($x in $RulesObj.ausnahmen.versionKontext) { $cfg.VersionKontextRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.ausnahmen.musterRegex) { $cfg.AusnahmenRegex.Add((New-Object System.Text.RegularExpressions.Regex ([string]$x, $rxOpts, $rxTimeout))) }
     foreach ($x in $RulesObj.pruefung.erlaubtListe) { [void]$cfg.PruefungErlaubtListe.Add([string]$x) }

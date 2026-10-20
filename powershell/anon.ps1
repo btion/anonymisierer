@@ -824,6 +824,8 @@ namespace AnonTool
         public List<string> FirmenUndStandorte = new List<string>();
         public List<string> InterneDomains = new List<string>();
         public HashSet<string> ExakteAusnahmen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Öffentliche Standard- und Herstellerdomains: werden nie als interne Domain gelernt (auch Subdomains)
+        public List<string> DomainAusnahmen = new List<string>();
         public List<Regex> VersionKontextRegex = new List<Regex>();
         public List<Regex> AusnahmenRegex = new List<Regex>();
         public HashSet<string> PruefungErlaubtListe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1034,6 +1036,9 @@ namespace AnonTool
         // IPv6 (Standard, komprimiert ::, fe80::, 2001:db8:: usw., keine einfachen Uhrzeiten wie 12:34:56)
         // IPv6 mit eingebetteter IPv4 (gemischte Schreibweise x:x::a.b.c.d) als EINE Adresse; Gültigkeit prüft CryptoPan.Ip6Lesen
         private static readonly Regex RxIpv6Gemischt = new Regex(@"(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f.]|:[0-9A-Fa-f])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxNachWinDomain = new Regex(@"(?<![A-Za-z0-9-])(?:Account[ \t]+Domain|Logon[ \t]+Domain|Domain(?:[ \t]+Name)?)[ \t]*[:=][ \t]*""?([A-Za-z0-9][A-Za-z0-9.-]{1,62})", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxNachKontoName = new Regex(@"(?<![A-Za-z0-9_])Account[ \t]+Name[ \t]*:[ \t]*([A-Za-z0-9._-]{2,32})(?=[ \t]|$)", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxNachLdap = new Regex(@"(?<![A-Za-z0-9])dc=[A-Za-z0-9-]+(?:[ \t]*,[ \t]*dc=[A-Za-z0-9-]+)+", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
         private static readonly Regex RxNachIpRest = new Regex(@"(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}([0-9A-Fa-f]{1,4}(?:\.[0-9]{1,3}){3})(?![0-9A-Za-z.])", RegexOptions.Compiled, RxTimeout);
         private static readonly Regex RxNachIpNullen = new Regex(@"(?<![0-9A-Za-z.:])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?![0-9A-Za-z]|\.[0-9])", RegexOptions.Compiled, RxTimeout);
         private static readonly Regex RxIpv6 = new Regex(@"(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])", RegexOptions.Compiled, RxTimeout);
@@ -1941,6 +1946,131 @@ namespace AnonTool
             return result;
         }
 
+        // ------------------------------------------------------------------
+        // Domain-Lernen (identisch zu anonymisierer.html): Domains aus Feldkontext (domain-name, domain-list, dns-domain-list,
+        // realm, DHCP-Option), Windows (DOMAIN\\user, Account Domain), LDAP-DN (dc=...,dc=...), Kontakt-E-Mails, FQDN mit
+        // internem Suffix (.local, .intern, .lan, ...) und FQDN-Suffix eines bekannten Hosts. Nie gelernt: example.* und
+        // ausnahmen.domainAusnahmen.
+        // ------------------------------------------------------------------
+        private static readonly HashSet<string> DomainTldIntern = new HashSet<string>(new string[] { "local", "intern", "internal", "lan", "corp", "home", "localdomain", "private" }, StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> DomainTldOeffentlich = new HashSet<string>(new string[] { "com", "net", "org", "de", "at", "ch", "eu", "io", "info", "biz", "gov", "edu", "uk", "fr", "nl", "it", "es", "pl", "be", "dk", "se", "no", "fi", "cz", "us", "cloud", "online", "invalid" }, StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> NetbiosAusnahmen = new HashSet<string>(new string[] { "nt", "authority", "builtin", "workgroup", "windows", "system32", "hklm", "hkcu", "hkey_local_machine", "hkey_current_user", "localhost", "local" }, StringComparer.OrdinalIgnoreCase);
+        private static readonly Regex RxDomainForm = new Regex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxPlatzhalterLabel = new Regex(@"^(?:HOST|DOMAIN|USER|TEXT|MAIL|URL|NET|IP6?|IP-PRIV|IP-PUB|SERIAL|FIRMA|KONTAKT|ORT|PERSON|BANNER|SW-EIGEN|SSHKEY|MAC)-[0-9]", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxNetbiosForm = new Regex(@"^[A-Za-z][A-Za-z0-9-]{1,14}$", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxTldForm = new Regex(@"^[A-Za-z]{2,24}$", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxLernDomainFeld = new Regex(@"(?<![A-Za-z0-9-])(?:(?:ip[ \t]+)?domain[- ](?:name|list)|dns-domain-list|dns-server[ \t]+domain|dns[ \t]+domain|option[ \t]+domain(?:-name)?|realm|search)[ \t]*[:=]?[ \t]+(?:vrf[ \t]+[^ \t\r\n]+[ \t]+)?""?([A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9])", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxLernWinDomain = new Regex(@"(?<![A-Za-z0-9-])(?:Account[ \t]+Domain|Logon[ \t]+Domain|Domain(?:[ \t]+Name)?|(?:Target|Subject)DomainName)[ \t]*[:=][ \t]*""?([A-Za-z0-9][A-Za-z0-9.-]{1,62})", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxLernWinXml = new Regex(@"<Data[ \t]+Name=""(?:Target|Subject)DomainName"">([^<\r\n]+)</Data>", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxLernNetbios = new Regex(@"(?<![A-Za-z0-9\\])([A-Z][A-Z0-9-]{1,14})\\([A-Za-z][A-Za-z0-9._-]{1,31})(?![A-Za-z0-9])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxLernLdap = new Regex(@"(?<![A-Za-z0-9])dc=([A-Za-z0-9-]+)((?:[ \t]*,[ \t]*dc=[A-Za-z0-9-]+)+)", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxLernKontaktMail = new Regex(@"(?<![A-Za-z0-9-])(?:contact|e-?mail|mail(?:-?to)?|admin(?:-email)?|sender|recipient|location)[^\r\n@]{0,60}?[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,24})", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+        private static readonly Regex RxLernMailDomain = new Regex(@"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,24})(?![A-Za-z0-9.-])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxLernFqdn = new Regex(@"(?<![A-Za-z0-9._@/\\-])((?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24})(?![A-Za-z0-9-]|\.[A-Za-z0-9])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxLdapTrenner = new Regex(@"[ \t]*,[ \t]*dc=", RegexOptions.Compiled | RegexOptions.IgnoreCase, RxTimeout);
+
+        private static bool DomainAusgenommen(string d, EngineConfig cfg)
+        {
+            string l = d.ToLowerInvariant();
+            string[] teile = l.Split('.');
+            if (teile.Length >= 2 && teile[teile.Length - 2] == "example") return true;
+            foreach (string a in cfg.DomainAusnahmen) if (l == a || l.EndsWith("." + a, StringComparison.Ordinal)) return true;
+            return cfg.ExakteAusnahmen.Contains(l);
+        }
+
+        // netbios: Domäne ohne Punkt (KLINIK in KLINIK\\user oder "Account Domain: KLINIK")
+        public static bool DomainLernbar(string d, EngineConfig cfg, bool netbios)
+        {
+            string v = (d ?? "").Trim().TrimEnd('.');
+            if (v.Length == 0 || v.IndexOf('\u0002') >= 0) return false;
+            foreach (string t in v.Split('.')) if (RxPlatzhalterLabel.IsMatch(t)) return false;
+            if (netbios) return RxNetbiosForm.IsMatch(v) && !NetbiosAusnahmen.Contains(v) && !cfg.ExakteAusnahmen.Contains(v);
+            if (!RxDomainForm.IsMatch(v) || CryptoPan.Ip4LesenNullen(v) != null) return false;
+            string[] lab = v.Split('.');
+            if (!RxTldForm.IsMatch(lab[lab.Length - 1])) return false;
+            return !DomainAusgenommen(v, cfg);
+        }
+
+        private static void LerneDomain(string d, EngineConfig cfg, AnonState state, bool netbios)
+        {
+            string v = (d ?? "").Trim().TrimEnd('.');
+            if (!DomainLernbar(v, cfg, netbios)) return;
+            if (!state.Forward.ContainsKey("DOMAIN|" + v.ToLowerInvariant())) state.GetOrCreateToken("DOMAIN", v, "DOMAIN");
+        }
+
+        private static void LerneDomainsAusText(string text, EngineConfig cfg, AnonState state)
+        {
+            foreach (Match m in RxLernDomainFeld.Matches(text)) LerneDomain(m.Groups[1].Value, cfg, state, false);
+            foreach (Match m in RxLernWinDomain.Matches(text)) LerneDomain(m.Groups[1].Value, cfg, state, m.Groups[1].Value.IndexOf('.') < 0);
+            foreach (Match m in RxLernWinXml.Matches(text)) LerneDomain(m.Groups[1].Value, cfg, state, m.Groups[1].Value.IndexOf('.') < 0);
+            foreach (Match m in RxLernNetbios.Matches(text))
+            {
+                LerneDomain(m.Groups[1].Value, cfg, state, true);
+                // Benutzer aus DOMAIN\\user (im ganzen Lauf ersetzt, Stufe 11)
+                if (DomainLernbar(m.Groups[1].Value, cfg, true) && cfg.CatBenutzer && IsLearnable("USER", m.Groups[2].Value, cfg)) state.GetOrCreateToken("USER", m.Groups[2].Value, "USER");
+            }
+            foreach (Match m in RxLernLdap.Matches(text))
+            {
+                List<string> labels = new List<string>();
+                labels.Add(m.Groups[1].Value);
+                foreach (string t in RxLdapTrenner.Split(m.Groups[2].Value)) if (t.Length > 0) labels.Add(t);
+                LerneDomain(string.Join(".", labels.ToArray()), cfg, state, false);
+            }
+            foreach (Match m in RxLernKontaktMail.Matches(text)) LerneDomain(m.Groups[1].Value, cfg, state, false);
+            foreach (Match m in RxLernMailDomain.Matches(text))
+            {
+                string[] lab = m.Groups[1].Value.Split('.');
+                if (DomainTldIntern.Contains(lab[lab.Length - 1])) LerneDomain(m.Groups[1].Value, cfg, state, false);
+            }
+            LerneDomainSuffixe(text, cfg, state);
+        }
+
+        // FQDN mit internem Suffix und FQDN, dessen erstes Label ein bekannter Host ist; Hosts mit Punkt liefern ihr Suffix
+        private static void LerneDomainSuffixe(string text, EngineConfig cfg, AnonState state)
+        {
+            foreach (Match m in RxLernFqdn.Matches(text))
+            {
+                string[] labels = m.Groups[1].Value.Split('.');
+                string tld = labels[labels.Length - 1];
+                if (DomainTldIntern.Contains(tld))
+                    LerneDomain(labels.Length >= 3 ? string.Join(".", labels, 1, labels.Length - 1) : m.Groups[1].Value, cfg, state, false);
+                else if (labels.Length >= 3 && state.Forward.ContainsKey("HOST|" + labels[0].ToLowerInvariant()))
+                    LerneDomain(string.Join(".", labels, 1, labels.Length - 1), cfg, state, false);
+            }
+            foreach (string k in new List<string>(state.Forward.Keys))
+            {
+                if (!k.StartsWith("HOST|", StringComparison.OrdinalIgnoreCase)) continue;
+                string[] labels = k.Substring(5).Split('.');
+                if (labels.Length >= 3) LerneDomain(string.Join(".", labels, 1, labels.Length - 1), cfg, state, false);
+            }
+        }
+
+        // Gelernte und konfigurierte Domains, längste zuerst
+        private static List<string> AlleDomains(EngineConfig cfg, AnonState state)
+        {
+            Dictionary<string, string> m = new Dictionary<string, string>(StringComparer.Ordinal);
+            List<string> reihe = new List<string>();
+            foreach (string d in cfg.InterneDomains)
+            {
+                if (string.IsNullOrWhiteSpace(d)) continue;
+                string k = d.Trim().ToLowerInvariant();
+                if (!m.ContainsKey(k)) { m[k] = d.Trim(); reihe.Add(k); }
+            }
+            foreach (KeyValuePair<string, string> kv in state.Forward)
+            {
+                if (!kv.Key.StartsWith("DOMAIN|", StringComparison.OrdinalIgnoreCase)) continue;
+                string v = kv.Key.Substring(7).ToLowerInvariant();
+                if (m.ContainsKey(v)) continue;
+                string orig;
+                m[v] = state.Reverse.TryGetValue(kv.Value, out orig) && orig != null ? orig : v;
+                reihe.Add(v);
+            }
+            List<string> liste = new List<string>();
+            foreach (string k in reihe) liste.Add(m[k]);
+            // stabil sortieren: längste zuerst, bei gleicher Länge in Einfügereihenfolge (wie Array.sort in JS)
+            return liste.Select((x, i) => new { x, i }).OrderByDescending(a => a.x.Length).ThenBy(a => a.i).Select(a => a.x).ToList();
+        }
+
         public static string ProcessText(string input, EngineConfig cfg, AnonState state)
         {
             if (state != null) state.UnsichereTabellenzeilen = new List<int>();
@@ -1995,6 +2125,9 @@ namespace AnonTool
                 }
                 return true;
             };
+
+            // Domains vorab aus dem Rohtext lernen (ersetzt wird in Stufe 10, im ganzen Lauf)
+            if (cfg.CatHostnamen) LerneDomainsAusText(text, cfg, state);
 
             // ----------------------------------------------------------------
             // STUFE 0a: SSH Public Keys (ssh-rsa, ssh-ed25519, ecdsa-sha2-*, sk-*) samt Kommentar -> SSHKEY-n (rückübersetzbar)
@@ -2390,31 +2523,34 @@ namespace AnonTool
                     }, RegexOptions.IgnoreCase, RxTimeout);
                 }
 
-                // FQDNs und Subdomains auf Basis von interneDomains (z.B. srv01.intern.example.invalid)
-                var sortedDomains = cfg.InterneDomains.Where(d => !string.IsNullOrWhiteSpace(d)).OrderByDescending(d => d.Length).ToList();
-                foreach (string dom in sortedDomains)
+                // Suffixe der jetzt bekannten Hosts lernen, dann konfigurierte und gelernte Domains ersetzen:
+                // FQDN als HOST-n.DOMAIN-m, LDAP-DN dc=...,dc=... als dc=DOMAIN-m, Domäne ohne Punkt (KLINIK) mit Wortgrenzen
+                LerneDomainSuffixe(text, cfg, state);
+                foreach (string dom in AlleDomains(cfg, state))
                 {
                     string cleanDom = dom.Trim();
-                    // Erst FQDNs unterhalb dieser Domain (z.B. host.sub.domain.example.net)
+                    if (cfg.ExakteAusnahmen.Contains(cleanDom)) continue;
+                    Func<string> dTok = () => state.GetOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
+                    if (cleanDom.IndexOf('.') < 0)
+                    {
+                        string nbPat = @"(?<![A-Za-z0-9.-])" + Regex.Escape(cleanDom) + @"(?![A-Za-z0-9-]|\.[A-Za-z0-9])";
+                        text = Regex.Replace(text, nbPat, (Match m) => { state.AddStat("hostnamen", 1); return protect(dTok()); }, RegexOptions.IgnoreCase, RxTimeout);
+                        continue;
+                    }
+                    List<string> dnTeile = new List<string>();
+                    foreach (string l in cleanDom.Split('.')) dnTeile.Add(Regex.Escape(l));
+                    string dnPat = @"(?<![A-Za-z0-9])dc=" + string.Join(@"[ \t]*,[ \t]*dc=", dnTeile.ToArray()) + @"(?![A-Za-z0-9-])";
+                    text = Regex.Replace(text, dnPat, (Match m) => { state.AddStat("hostnamen", 1); return protect("dc=" + dTok()); }, RegexOptions.IgnoreCase, RxTimeout);
                     string fqdnPat = @"\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)\." + Regex.Escape(cleanDom) + @"\b";
                     text = Regex.Replace(text, fqdnPat, (Match m) =>
                     {
                         string hostPart = m.Groups[1].Value;
                         if (cfg.ExakteAusnahmen.Contains(m.Value) || cfg.ExakteAusnahmen.Contains(hostPart)) return m.Value;
                         state.AddStat("hostnamen", 1);
-                        string hTok = state.GetOrCreateToken("HOST", m.Value, "HOST");
-                        return protect(hTok);
+                        return protect(state.GetOrCreateToken("HOST", hostPart, "HOST") + "." + dTok());
                     }, RegexOptions.IgnoreCase, RxTimeout);
-
-                    // Dann die nackte Domain selbst
                     string domPat = @"\b" + Regex.Escape(cleanDom) + @"\b";
-                    text = Regex.Replace(text, domPat, (Match m) =>
-                    {
-                        if (cfg.ExakteAusnahmen.Contains(cleanDom)) return m.Value;
-                        state.AddStat("hostnamen", 1);
-                        string dTok = state.GetOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
-                        return protect(dTok);
-                    }, RegexOptions.IgnoreCase, RxTimeout);
+                    text = Regex.Replace(text, domPat, (Match m) => { state.AddStat("hostnamen", 1); return protect(dTok()); }, RegexOptions.IgnoreCase, RxTimeout);
                 }
             }
 
@@ -2755,6 +2891,13 @@ namespace AnonTool
             text = RxIpv6.Replace(text, (Match m) => zurueck(m.Value, true));
             text = RxIpv4.Replace(text, (Match m) => zurueck(m.Value, false));
             // Längste Platzhalter zuerst ersetzen (damit NET-1.H12 vor NET-1 und IP-PRIV-10 vor IP-PRIV-1 ersetzt wird!)
+            // LDAP-DN: dc=DOMAIN-n wieder zu dc=...,dc=...
+            text = Regex.Replace(text, @"(?<![A-Za-z0-9])dc=(DOMAIN-[0-9]+)(?![0-9])", (Match m) =>
+            {
+                string v;
+                if (ci.TryGetValue(m.Groups[1].Value, out v) && v != null && v.IndexOf('.') >= 0) return marke("dc=" + v.Replace(".", ",dc="));
+                return m.Value;
+            }, RegexOptions.IgnoreCase, RxTimeout);
             var sortedTokens = ci.Keys.Where(k => CryptoPan.Ip4Lesen(k) == null && CryptoPan.Ip6Lesen(k) == null).OrderByDescending(k => k.Length).ToList();
             if (sortedTokens.Count > 0)
             {
@@ -3861,6 +4004,34 @@ namespace AnonTool
                     }
                 }
             }
+            // Domains: Domain-Felder, Windows-Domäne (DOMAIN\\user, Account Domain), LDAP-DN, FQDN (intern ab 2, sonst ab 3 Labels)
+            Func<string, bool, bool> domainFund = (v, nb) => DomainLernbar(v, cfg, nb) && !NachErlaubt(v, cfg, fest);
+            for (int i = 0; i < zeilen.Length; i++)
+            {
+                string z = zeilen[i];
+                foreach (Match m in RxLernDomainFeld.Matches(z)) if (domainFund(m.Groups[1].Value, false)) melde(i + 1, "D", m.Groups[1].Value, null);
+                foreach (Match m in RxNachWinDomain.Matches(z)) if (domainFund(m.Groups[1].Value, m.Groups[1].Value.IndexOf('.') < 0)) melde(i + 1, "D", m.Groups[1].Value, null);
+                foreach (Match m in RxLernNetbios.Matches(z))
+                {
+                    if (!domainFund(m.Groups[1].Value, true)) continue;
+                    melde(i + 1, "D", m.Groups[1].Value, null);
+                    if (!NachErlaubt(m.Groups[2].Value, cfg, fest)) melde(i + 1, "B", m.Groups[2].Value, null);
+                }
+                foreach (Match m in RxNachKontoName.Matches(z)) if (!NachErlaubt(m.Groups[1].Value, cfg, fest) && !RxNachSystemkonto.IsMatch(m.Groups[1].Value)) melde(i + 1, "B", m.Groups[1].Value, null);
+                foreach (Match m in RxNachLdap.Matches(z))
+                {
+                    List<string> labels = new List<string>();
+                    foreach (string t in Regex.Split(m.Value, "[ \\t]*,[ \\t]*")) labels.Add(Regex.Replace(t, "^dc=", "", RegexOptions.IgnoreCase));
+                    if (domainFund(string.Join(".", labels.ToArray()), false)) melde(i + 1, "D", m.Value, null);
+                }
+                foreach (Match m in RxLernFqdn.Matches(z))
+                {
+                    string[] labels = m.Groups[1].Value.Split('.');
+                    string tld = labels[labels.Length - 1];
+                    bool fqdn = (DomainTldIntern.Contains(tld) && labels.Length >= 2) || (DomainTldOeffentlich.Contains(tld) && labels.Length >= 3);
+                    if (fqdn && domainFund(m.Groups[1].Value, false)) melde(i + 1, "D", m.Groups[1].Value, null);
+                }
+            }
             // IP-Sonderformen: Rest einer IPv4 an einer IPv6 (…:81ef.0.0.13) und Adressen mit führenden Nullen (010.000.000.013)
             for (int i = 0; i < zeilen.Length; i++)
             {
@@ -4047,6 +4218,10 @@ function Load-EngineConfig {
             foreach ($w in $exW) {
                 [void]$cfg.ExakteAusnahmen.Add([string]$w)
             }
+        }
+        $domAus = Get-JsonProp $aus "domainAusnahmen"
+        if ($null -ne $domAus) {
+            foreach ($w in $domAus) { if (-not [string]::IsNullOrWhiteSpace([string]$w)) { $cfg.DomainAusnahmen.Add(([string]$w).Trim().ToLowerInvariant()) } }
         }
     }
     foreach ($pat in (Get-MergedRuleList $jsonObj $lokalObj "ausnahmen" "versionKontext")) {

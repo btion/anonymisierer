@@ -1101,6 +1101,54 @@
         "(?im)^[ \\t]*board-name[ \\t]*[:=][ \\t]*[^\\r\\n]+(?=\\r?$)",
         "(?i)^(?:DEFAULT_VLAN(?:_[0-9]+)?|default|VLAN[ _]?[0-9]{1,4}|fddi-default|token-ring-default|fddinet-default|trnet-default)$",
         "(?i)^(?:systemd-[a-z0-9-]+|systemd\\+|messageb\\+|_[a-z0-9_-]+)$"
+      ],
+      "domainAusnahmen": [
+        "example.com",
+        "example.net",
+        "example.org",
+        "arubanetworks.com",
+        "hpe.com",
+        "hp.com",
+        "cisco.com",
+        "webex.com",
+        "juniper.net",
+        "fortinet.com",
+        "fortiguard.com",
+        "paloaltonetworks.com",
+        "huawei.com",
+        "h3c.com",
+        "mikrotik.com",
+        "ubnt.com",
+        "ui.com",
+        "microsoft.com",
+        "windows.com",
+        "windowsupdate.com",
+        "office.com",
+        "office365.com",
+        "azure.com",
+        "msftncsi.com",
+        "apple.com",
+        "google.com",
+        "googleapis.com",
+        "gstatic.com",
+        "amazonaws.com",
+        "cloudflare.com",
+        "ntp.org",
+        "pool.ntp.org",
+        "nist.gov",
+        "ptb.de",
+        "debian.org",
+        "ubuntu.com",
+        "canonical.com",
+        "redhat.com",
+        "letsencrypt.org",
+        "digicert.com",
+        "verisign.com",
+        "globalsign.com",
+        "sectigo.com",
+        "github.com",
+        "in-addr.arpa",
+        "ip6.arpa"
       ]
     },
     "pruefung": {
@@ -1409,7 +1457,8 @@
       "(?i)((?<![A-Za-z0-9_-])(?:for|by)[ \\t]+(?:invalid[ \\t]+|illegal[ \\t]+)?user(?:name)?[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
       "(?i)(\\[[ \\t]*user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)([ \\t]*\\])",
       "(?i)((?<![A-Za-z0-9_\\[-])user(?:name)?[ \\t]*:[ \\t]*)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t,;:)\\]]|\\.(?![A-Za-z0-9])|\\r?$)",
-      "(?i)((?<![A-Za-z0-9_-])snmp-server[ \\t]+user[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t])"
+      "(?i)((?<![A-Za-z0-9_-])snmp-server[ \\t]+user[ \\t]+)([A-Za-z0-9_@\\\\-](?:[A-Za-z0-9._@\\\\-]{0,30}[A-Za-z0-9_@\\\\-])?)()(?=[ \\t])",
+      "(?i)((?<![A-Za-z0-9_])Account[ \\t]+Name[ \\t]*:[ \\t]*)([A-Za-z0-9._-]{2,32})()(?=[ \\t]|\\r?$)"
     ],
     "benutzerMusterSchwach": [
       "(?im)((?<![A-Za-z0-9_])(?:username|user)[ \\t]+)([A-Za-z0-9._@-]{2,32})(?=[ \\t]*\\r?$)",
@@ -2614,6 +2663,8 @@
       firmenUndStandorte: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.firmenUndStandorte) || [],
       interneDomains: (rulesObj && rulesObj.eigeneBegriffe && rulesObj.eigeneBegriffe.interneDomains) || [],
       exakteAusnahmen: new Set(((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.exakteWoerter) || []).map(w => w.toLowerCase())),
+      // Öffentliche Standard- und Herstellerdomains: werden nie als interne Domain gelernt (auch Subdomains)
+      domainAusnahmen: ((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.domainAusnahmen) || []).map(w => String(w).trim().toLowerCase()).filter(Boolean),
       // Kategoriegebundene Freigaben: "Kategorie\u0000Wert" (exakt, Groß-/Kleinschreibung zählt)
       freigegeben: new Set(((rulesObj && rulesObj.ausnahmen && rulesObj.ausnahmen.freigegeben) || [])
         .filter(e => pruefeFreigabeEintrag(e) === null).map(e => e.kategorie + "\u0000" + e.wert.trim())),
@@ -3643,6 +3694,92 @@
     });
   }
 
+  // --------------------------------------------------------------------------
+  // Domain-Lernen (identisch zu anon.ps1): Domains aus Feldkontext (domain-name, domain-list, dns-domain-list, realm,
+  // DHCP-Option), Windows (DOMAIN\\user, Account Domain), LDAP-DN (dc=…,dc=…), Kontakt-E-Mails, FQDN mit internem
+  // Suffix (.local, .intern, .lan, …) und FQDN-Suffix eines bekannten Hosts. Nie gelernt: example.* und ausnahmen.domainAusnahmen.
+  // --------------------------------------------------------------------------
+  const DOMAIN_TLD_INTERN = new Set(["local", "intern", "internal", "lan", "corp", "home", "localdomain", "private"]);
+  const DOMAIN_TLD_OEFFENTLICH = new Set(["com", "net", "org", "de", "at", "ch", "eu", "io", "info", "biz", "gov", "edu", "uk", "fr", "nl", "it", "es", "pl", "be", "dk", "se", "no", "fi", "cz", "us", "cloud", "online", "invalid"]);
+  const NETBIOS_AUSNAHMEN = new Set(["nt", "authority", "builtin", "workgroup", "windows", "system32", "hklm", "hkcu", "hkey_local_machine", "hkey_current_user", "localhost", "local"]);
+  const RxDomainForm = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+  const RxPlatzhalterLabel = /^(?:HOST|DOMAIN|USER|TEXT|MAIL|URL|NET|IP6?|IP-PRIV|IP-PUB|SERIAL|FIRMA|KONTAKT|ORT|PERSON|BANNER|SW-EIGEN|SSHKEY|MAC)-[0-9]/i;
+  const RxLernDomainFeld = /(?<![A-Za-z0-9-])(?:(?:ip[ \t]+)?domain[- ](?:name|list)|dns-domain-list|dns-server[ \t]+domain|dns[ \t]+domain|option[ \t]+domain(?:-name)?|realm|search)[ \t]*[:=]?[ \t]+(?:vrf[ \t]+[^ \t\r\n]+[ \t]+)?"?([A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9])/gi;
+  const RxLernWinDomain = /(?<![A-Za-z0-9-])(?:Account[ \t]+Domain|Logon[ \t]+Domain|Domain(?:[ \t]+Name)?|(?:Target|Subject)DomainName)[ \t]*[:=][ \t]*"?([A-Za-z0-9][A-Za-z0-9.-]{1,62})/gi;
+  const RxLernWinXml = /<Data[ \t]+Name="(?:Target|Subject)DomainName">([^<\r\n]+)<\/Data>/g;
+  const RxLernNetbios = /(?<![A-Za-z0-9\\])([A-Z][A-Z0-9-]{1,14})\\([A-Za-z][A-Za-z0-9._-]{1,31})(?![A-Za-z0-9])/g;
+  const RxLernLdap = /(?<![A-Za-z0-9])dc=([A-Za-z0-9-]+)((?:[ \t]*,[ \t]*dc=[A-Za-z0-9-]+)+)/gi;
+  const RxLernKontaktMail = /(?<![A-Za-z0-9-])(?:contact|e-?mail|mail(?:-?to)?|admin(?:-email)?|sender|recipient|location)[^\r\n@]{0,60}?[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,24})/gi;
+  const RxLernMailDomain = /[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,24})(?![A-Za-z0-9.-])/g;
+  const RxLernFqdn = /(?<![A-Za-z0-9._@\/\\-])((?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24})(?![A-Za-z0-9-]|\.[A-Za-z0-9])/g;
+
+  function domainAusgenommen(d, cfg) {
+    const l = String(d).toLowerCase();
+    const teile = l.split(".");
+    if (teile.length >= 2 && teile[teile.length - 2] === "example") return true;
+    for (const a of (cfg.domainAusnahmen || [])) if (l === a || l.endsWith("." + a)) return true;
+    return cfg.exakteAusnahmen.has(l);
+  }
+
+  // netbios: Domäne ohne Punkt (KLINIK in KLINIK\\user oder "Account Domain: KLINIK")
+  function domainLernbar(d, cfg, netbios) {
+    const v = String(d || "").trim().replace(/\.$/, "");
+    if (!v || v.indexOf("\u0002") >= 0 || v.split(".").some(t => RxPlatzhalterLabel.test(t))) return false;
+    if (netbios) return /^[A-Za-z][A-Za-z0-9-]{1,14}$/.test(v) && /[A-Za-z]/.test(v) && !NETBIOS_AUSNAHMEN.has(v.toLowerCase()) && !cfg.exakteAusnahmen.has(v.toLowerCase());
+    if (!RxDomainForm.test(v) || ip4LesenNullen(v)) return false;
+    if (!/^[a-z]{2,24}$/i.test(v.split(".").pop())) return false;
+    return !domainAusgenommen(v, cfg);
+  }
+
+  function lerneDomain(d, cfg, state, netbios) {
+    const v = String(d || "").trim().replace(/\.$/, "");
+    if (!domainLernbar(v, cfg, netbios)) return;
+    if (!state.forward.has(("domain|" + v).toLowerCase())) state.getOrCreateToken("DOMAIN", v, "DOMAIN");
+  }
+
+  function lerneDomainsAusText(text, cfg, state) {
+    for (const m of text.matchAll(RxLernDomainFeld)) lerneDomain(m[1], cfg, state, false);
+    for (const m of text.matchAll(RxLernWinDomain)) lerneDomain(m[1], cfg, state, m[1].indexOf(".") < 0);
+    for (const m of text.matchAll(RxLernWinXml)) lerneDomain(m[1], cfg, state, m[1].indexOf(".") < 0);
+    for (const m of text.matchAll(RxLernNetbios)) {
+      lerneDomain(m[1], cfg, state, true);
+      // Benutzer aus DOMAIN\\user (im ganzen Lauf ersetzt, Stufe 11)
+      if (domainLernbar(m[1], cfg, true) && cfg.catBenutzer && isLearnable("USER", m[2], cfg)) state.getOrCreateToken("USER", m[2], "USER");
+    }
+    for (const m of text.matchAll(RxLernLdap)) {
+      const labels = [m[1]].concat(m[2].split(/[ \t]*,[ \t]*dc=/i).filter(Boolean));
+      lerneDomain(labels.join("."), cfg, state, false);
+    }
+    for (const m of text.matchAll(RxLernKontaktMail)) lerneDomain(m[1], cfg, state, false);
+    for (const m of text.matchAll(RxLernMailDomain)) {
+      if (DOMAIN_TLD_INTERN.has(m[1].split(".").pop().toLowerCase())) lerneDomain(m[1], cfg, state, false);
+    }
+    lerneDomainSuffixe(text, cfg, state);
+  }
+
+  // FQDN mit internem Suffix und FQDN, dessen erstes Label ein bekannter Host ist; Hosts mit Punkt liefern ihr Suffix
+  function lerneDomainSuffixe(text, cfg, state) {
+    for (const m of text.matchAll(RxLernFqdn)) {
+      const labels = m[1].split(".");
+      const tld = labels[labels.length - 1].toLowerCase();
+      if (DOMAIN_TLD_INTERN.has(tld)) lerneDomain((labels.length >= 3 ? labels.slice(1) : labels).join("."), cfg, state, false);
+      else if (labels.length >= 3 && state.forward.has(("host|" + labels[0]).toLowerCase())) lerneDomain(labels.slice(1).join("."), cfg, state, false);
+    }
+    for (const k of Array.from(state.forward.keys())) {
+      if (!k.startsWith("host|")) continue;
+      const labels = k.slice(5).split(".");
+      if (labels.length >= 3) lerneDomain(labels.slice(1).join("."), cfg, state, false);
+    }
+  }
+
+  // Gelernte und konfigurierte Domains, längste zuerst
+  function alleDomains(cfg, state) {
+    const m = new Map();
+    for (const d of cfg.interneDomains) if (d && d.trim()) m.set(d.trim().toLowerCase(), d.trim());
+    for (const k of state.forward.keys()) if (k.startsWith("domain|")) { const v = k.slice(7); if (!m.has(v)) m.set(v, state.reverse.get(String(state.forward.get(k)).toUpperCase()) || v); }
+    return Array.from(m.values()).sort((a, b) => b.length - a.length);
+  }
+
   function processText(input, cfg, state) {
     // Zeilen, deren Tabellenwert nicht eindeutig bestimmt werden konnte (für die Prüfung dieses Durchlaufs)
     if (state) state.unsichereTabellenzeilen = [];
@@ -3686,6 +3823,9 @@
       }
       return true;
     };
+
+    // Domains vorab aus dem Rohtext lernen (ersetzt wird in Stufe 10, im ganzen Lauf)
+    if (cfg.catHostnamen) lerneDomainsAusText(text, cfg, state);
 
     // STUFE 0a: SSH Public Keys (ssh-rsa, ssh-ed25519, ecdsa-sha2-*, sk-*) samt Kommentar -> SSHKEY-n (rückübersetzbar)
     text = text.replace(RxSshPublicKey, (m) => {
@@ -3988,24 +4128,28 @@
         });
       }
 
-      const sortedDomains = cfg.interneDomains.filter(d => d && d.trim()).sort((a, b) => b.length - a.length);
-      for (const dom of sortedDomains) {
+      // Suffixe der jetzt bekannten Hosts lernen, dann konfigurierte und gelernte Domains ersetzen:
+      // FQDN als HOST-n.DOMAIN-m, LDAP-DN dc=…,dc=… als dc=DOMAIN-m, Domäne ohne Punkt (KLINIK) mit Wortgrenzen
+      lerneDomainSuffixe(text, cfg, state);
+      for (const dom of alleDomains(cfg, state)) {
         const cleanDom = dom.trim();
+        if (cfg.exakteAusnahmen.has(cleanDom.toLowerCase())) continue;
+        const dTok = () => state.getOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
+        if (cleanDom.indexOf(".") < 0) {
+          const nbRx = new RegExp(`(?<![A-Za-z0-9.-])${escapeRegExp(cleanDom)}(?![A-Za-z0-9-]|\\.[A-Za-z0-9])`, "gi");
+          text = text.replace(nbRx, () => { state.addStat("hostnamen", 1); return protect(dTok()); });
+          continue;
+        }
+        const dnRx = new RegExp(`(?<![A-Za-z0-9])dc=${cleanDom.split(".").map(l => escapeRegExp(l)).join("[ \\t]*,[ \\t]*dc=")}(?![A-Za-z0-9-])`, "gi");
+        text = text.replace(dnRx, () => { state.addStat("hostnamen", 1); return protect("dc=" + dTok()); });
         const fqdnRx = new RegExp(`\\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)\\.${escapeRegExp(cleanDom)}\\b`, "gi");
         text = text.replace(fqdnRx, (m, hostPart) => {
           if (cfg.exakteAusnahmen.has(m.toLowerCase()) || cfg.exakteAusnahmen.has(hostPart.toLowerCase())) return m;
           state.addStat("hostnamen", 1);
-          const hTok = state.getOrCreateToken("HOST", m, "HOST");
-          return protect(hTok);
+          return protect(state.getOrCreateToken("HOST", hostPart, "HOST") + "." + dTok());
         });
-
         const domRx = new RegExp(`\\b${escapeRegExp(cleanDom)}\\b`, "gi");
-        text = text.replace(domRx, (m) => {
-          if (cfg.exakteAusnahmen.has(cleanDom.toLowerCase())) return m;
-          state.addStat("hostnamen", 1);
-          const dTok = state.getOrCreateToken("DOMAIN", cleanDom, "DOMAIN");
-          return protect(dTok);
-        });
+        text = text.replace(domRx, () => { state.addStat("hostnamen", 1); return protect(dTok()); });
       }
     }
 
@@ -4257,6 +4401,11 @@
     });
     text = text.replace(RxIpv6, (m) => zurueck(m, true));
     text = text.replace(RxIpv4, (m) => zurueck(m, false));
+    // LDAP-DN: dc=DOMAIN-n wieder zu dc=…,dc=…
+    text = text.replace(/(?<![A-Za-z0-9])dc=(DOMAIN-[0-9]+)(?![0-9])/gi, (m, t) => {
+      const v = rev.get(t.toUpperCase());
+      return v && v.indexOf(".") >= 0 ? marke("dc=" + v.split(".").join(",dc=")) : m;
+    });
     const tokens = Array.from(rev.keys()).filter(k => k && !ip4Lesen(k) && !ip6Lesen(k)).sort((a, b) => b.length - a.length);
     if (tokens.length > 0) {
       const combinedRx = new RegExp(`(?<![A-Za-z0-9])(?:${tokens.map(k => escapeRegExp(k)).join("|")})(?![0-9])`, "gi");
@@ -4662,6 +4811,29 @@
         }
       }
     }
+    // Domains: Domain-Felder, Windows-Domäne (DOMAIN\\user, Account Domain), LDAP-DN, FQDN (intern ab 2, sonst ab 3 Labels)
+    const domainFund = (v, netbios) => domainLernbar(v, cfg, netbios) && !nachErlaubt(v, cfg);
+    for (let i = 0; i < zeilen.length; i++) {
+      const z = zeilen[i];
+      for (const m of z.matchAll(RxNachDomainFeld)) if (domainFund(m[1], false)) melde(i + 1, "D", m[1]);
+      for (const m of z.matchAll(RxNachWinDomain)) if (domainFund(m[1], m[1].indexOf(".") < 0)) melde(i + 1, "D", m[1]);
+      for (const m of z.matchAll(RxNachNetbios)) {
+        if (!domainFund(m[1], true)) continue;
+        melde(i + 1, "D", m[1]);
+        if (!nachErlaubt(m[2], cfg)) melde(i + 1, "B", m[2]);
+      }
+      for (const m of z.matchAll(RxNachKontoName)) if (!nachErlaubt(m[1], cfg) && !RxNachSystemkonto.test(m[1])) melde(i + 1, "B", m[1]);
+      for (const m of z.matchAll(RxNachLdap)) {
+        const labels = m[0].split(/[ \t]*,[ \t]*/).map(t => t.replace(/^dc=/i, ""));
+        if (domainFund(labels.join("."), false)) melde(i + 1, "D", m[0]);
+      }
+      for (const m of z.matchAll(RxNachFqdn)) {
+        const labels = m[1].split(".");
+        const tld = labels[labels.length - 1].toLowerCase();
+        const fqdn = (DOMAIN_TLD_INTERN.has(tld) && labels.length >= 2) || (DOMAIN_TLD_OEFFENTLICH.has(tld) && labels.length >= 3);
+        if (fqdn && domainFund(m[1], false)) melde(i + 1, "D", m[1]);
+      }
+    }
     // IP-Sonderformen: Rest einer IPv4 an einer IPv6 (…:81ef.0.0.13) und Adressen mit führenden Nullen (010.000.000.013)
     for (let i = 0; i < zeilen.length; i++) {
       for (const m of zeilen[i].matchAll(RxNachIpRest)) {
@@ -4674,6 +4846,12 @@
     }
     return funde;
   }
+  const RxNachDomainFeld = /(?<![A-Za-z0-9-])(?:(?:ip[ \t]+)?domain[- ](?:name|list)|dns-domain-list|dns-server[ \t]+domain|dns[ \t]+domain|option[ \t]+domain(?:-name)?|realm|search)[ \t]*[:=]?[ \t]+(?:vrf[ \t]+[^ \t\r\n]+[ \t]+)?"?([A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9])/gi;
+  const RxNachWinDomain = /(?<![A-Za-z0-9-])(?:Account[ \t]+Domain|Logon[ \t]+Domain|Domain(?:[ \t]+Name)?)[ \t]*[:=][ \t]*"?([A-Za-z0-9][A-Za-z0-9.-]{1,62})/gi;
+  const RxNachNetbios = /(?<![A-Za-z0-9\\])([A-Z][A-Z0-9-]{1,14})\\([A-Za-z][A-Za-z0-9._-]{1,31})(?![A-Za-z0-9])/g;
+  const RxNachKontoName = /(?<![A-Za-z0-9_])Account[ \t]+Name[ \t]*:[ \t]*([A-Za-z0-9._-]{2,32})(?=[ \t]|$)/gi;
+  const RxNachLdap = /(?<![A-Za-z0-9])dc=[A-Za-z0-9-]+(?:[ \t]*,[ \t]*dc=[A-Za-z0-9-]+)+/gi;
+  const RxNachFqdn = /(?<![A-Za-z0-9._@\/\\-])((?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24})(?![A-Za-z0-9-]|\.[A-Za-z0-9])/g;
   const RxNachIpRest = /(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}([0-9A-Fa-f]{1,4}(?:\.[0-9]{1,3}){3})(?![0-9A-Za-z.])/g;
   const RxNachIpNullen = /(?<![0-9A-Za-z.:])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?![0-9A-Za-z]|\.[0-9])/g;
 

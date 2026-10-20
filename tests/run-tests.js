@@ -2372,6 +2372,45 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 19h. Fix Domain-Lernen: Domains aus Feldkontext, Windows, LDAP, FQDN-Suffix; Ersetzen im ganzen Lauf ---
+  console.log("--- 19h. Fix Domain-Lernen ---");
+  {
+    const ov = { overrides: { ipModus: "platzhalter" } };
+    const lauf = (dateien) => core.reprocessFilesWithState(dateien, diskRules, {}, new core.AnonState(), ov);
+    const ein = ["hostname sw-kbx01", "ip domain-name klinik-nord.local", "ntp server sw-kbx02.klinik-nord.local", "ssl certificate subject CN=sw-kbx01.klinik-nord.local",
+      "ldap base-dn dc=klinik-nord,dc=local", "Logon KLINIK\\bwagner", "Account Name: bwagner Account Domain: KLINIK", "clock server 0.pool.ntp.org", "update-url arubanetworks.com", ""].join("\n");
+    const st = new core.AnonState();
+    const l1 = core.reprocessFilesWithState([{ path: "a.cfg", text: ein }, { path: "b.log", text: "dns-domain-list KLINIK-NORD.LOCAL\nsyslog host sw-kbx03.Klinik-Nord.local\n" }], diskRules, {}, st, ov);
+    const a = l1.results[0].anonText.split("\n");
+    const b = l1.results[1].anonText;
+    const dom = st.forward.get("domain|klinik-nord.local");
+    assert(Boolean(dom) && a[1] === "ip domain-name " + dom, `Domain-Lernen: domain-name gelernt und ersetzt (${a[1]})`);
+    assert(/^ntp server HOST-[0-9]+\.DOMAIN-[0-9]+$/.test(a[2]) && a[2].endsWith("." + dom), `Domain-Lernen: FQDN als HOST-n.DOMAIN-m (${a[2]})`);
+    assert(a[3] === "ssl certificate subject CN=" + st.forward.get("host|sw-kbx01") + "." + dom, `Domain-Lernen: Zertifikats-CN (${a[3]})`);
+    assert(a[4] === "ldap base-dn dc=" + dom, `Domain-Lernen: LDAP-DN dc=…,dc=… (${a[4]})`);
+    assert(!/KLINIK|bwagner/i.test(a[5] + a[6]) && /DOMAIN-[0-9]+/.test(a[5]), `Domain-Lernen: Windows-Domäne und Benutzer ersetzt (${a[5]} | ${a[6]})`);
+    assert(a[7] === "clock server 0.pool.ntp.org" && a[8] === "update-url arubanetworks.com", "Domain-Lernen: Hersteller- und Standarddomains bleiben");
+    assert(!/klinik-nord/i.test(b) && b.indexOf(dom) >= 0, `Domain-Lernen: über alle Dateien, groß/klein unabhängig (${JSON.stringify(b)})`);
+    assert(!/klinik-nord|kbx02|bwagner/i.test(l1.results.map(r => r.anonText).join("\n")), "Domain-Lernen: kein Rest der Domain in der Ausgabe");
+    assert(l1.findings.filter(f => /Domaene|Hostname|Benutzer/.test(f.kategorie)).length === 0, `Domain-Lernen: Prüfung ohne Restfund (${JSON.stringify(l1.findings.map(f => f.kategorie + ":" + f.fund))})`);
+    // Rückübersetzung (inkl. LDAP-DN)
+    const r = core.deanonymizeText(l1.results[0].anonText, st);
+    assert(r.indexOf("ntp server sw-kbx02.klinik-nord.local") >= 0 && r.indexOf("ldap base-dn dc=klinik-nord,dc=local") >= 0 && r.indexOf("CN=sw-kbx01.klinik-nord.local") >= 0, `Domain-Lernen: Rückübersetzung (${JSON.stringify(r.split("\n").slice(2, 5))})`);
+    // Suffix eines bekannten Hosts, auch ohne Domain-Feld und ohne .local
+    const l2 = lauf([{ path: "c.cfg", text: "hostname sw-kbx01\nlldp neighbor sw-kbx01.klinik-nord.invalid\nntp server sw-kbx02.klinik-nord.invalid\n" }]);
+    assert(!/klinik-nord|kbx02/.test(l2.results[0].anonText), `Domain-Lernen: FQDN-Suffix eines bekannten Hosts gelernt (${JSON.stringify(l2.results[0].anonText)})`);
+    // Öffentliche Standard-Domains und Herstellerdomains werden nicht gelernt
+    const l3 = lauf([{ path: "d.cfg", text: "ip domain-name example.com\nip domain-list cisco.com\nntp server time.example.com\n" }]);
+    assert(l3.results[0].anonText === "ip domain-name example.com\nip domain-list cisco.com\nntp server time.example.com\n", `Domain-Lernen: example.* und Herstellerdomains bleiben (${JSON.stringify(l3.results[0].anonText)})`);
+    // Kontakt-E-Mail
+    const l4 = lauf([{ path: "e.cfg", text: "snmp-server contact netz-admin@klinik-nord.invalid\nntp server ntp1.klinik-nord.invalid\n" }]);
+    assert(!/klinik-nord/.test(l4.results[0].anonText), `Domain-Lernen: Domain aus Kontakt-E-Mail (${JSON.stringify(l4.results[0].anonText)})`);
+    // Nachprüfung unabhängig
+    const cfgN = core.buildEngineConfig(diskRules, { ipModus: "platzhalter" });
+    const n = core.nachpruefen(["dns-domain-list klinik-nord.invalid", "ntp server sw-kbx02.klinik-nord.invalid", "base dc=klinik-nord,dc=local", "peer srv9.intern", "ntp server 0.pool.ntp.org", "file running-config.cfg", "peer HOST-1.DOMAIN-1", ""].join("\n"), "n.txt", cfgN).filter(f => f.kategorie === "Nachpruefung-Domaene").map(f => f.fund);
+    assert(JSON.stringify(n) === JSON.stringify(["klinik-nord.invalid", "sw-kbx02.klinik-nord.invalid", "dc=klinik-nord,dc=local", "srv9.intern"]), `Nachprüfung: Domain-Felder, FQDN-Suffixe, LDAP-DN, interne Suffixe (${JSON.stringify(n)})`);
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);
