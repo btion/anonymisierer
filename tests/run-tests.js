@@ -2293,6 +2293,22 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(iidFehler === 0, `Sonderformen: kleine Schnittstellenkennungen bleiben, andere landen nie dort, umkehrbar (${iidFehler} abweichend)`);
   }
 
+  // --- 19g. Fix Crypto-PAn: unabhängige Kippbits im Klassenmodus (eindeutige AES-Eingabe je Stelle) ---
+  console.log("--- 19g. Fix Crypto-PAn: unabhängige Kippbits ---");
+  {
+    // Original-Crypto-PAn: ist ein Adressbit gleich dem Pad-Bit, sind zwei AES-Eingaben gleich und die Kippbits gekoppelt;
+    // ein umgerechnetes Oktett bliebe dann bei rund 7 % der Schlüssel unverändert statt bei 1/256
+    const N = 20000;
+    let doku = 0, privat = 0;
+    for (let i = 0; i < N; i++) {
+      const ks = core.cryptoPanSchluessel(Uint8Array.from(crypto.randomBytes(32)));
+      if (core.ipTextVerfremden(ks, "192.0.2.10", null, false) === "192.0.2.10") doku++;
+      if (core.ipTextVerfremden(ks, "172.22.0.230", null, false) === "172.22.0.230") privat++;
+    }
+    assert(doku / N < 0.007, `Crypto-PAn: Doku-Adresse bleibt nur mit ~1/256 unverändert (${(100 * doku / N).toFixed(2)} %, Soll unter 0,7 %)`);
+    assert(privat / N < 0.002, `Crypto-PAn: private Adresse (12 Bit) bleibt nur mit ~1/4096 unverändert (${(100 * privat / N).toFixed(3)} %, Soll unter 0,2 %)`);
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

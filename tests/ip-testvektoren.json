@@ -174,12 +174,12 @@
         [
           "192.0.2.1",
           null,
-          "192.0.2.17"
+          "192.0.2.18"
         ],
         [
           "192.0.2.255",
           null,
-          "192.0.2.255"
+          "192.0.2.177"
         ],
         [
           "192.0.2.0",
@@ -199,17 +199,17 @@
         [
           "198.51.100.7",
           null,
-          "198.51.100.25"
+          "198.51.100.84"
         ],
         [
           "198.51.100.200",
           null,
-          "198.51.100.188"
+          "198.51.100.154"
         ],
         [
           "203.0.113.9",
           null,
-          "203.0.113.197"
+          "203.0.113.219"
         ],
         [
           "203.0.113.0",
@@ -219,22 +219,22 @@
         [
           "10.0.0.1",
           null,
-          "10.35.191.1"
+          "10.210.162.1"
         ],
         [
           "10.0.0.255",
           null,
-          "10.35.191.255"
+          "10.210.162.255"
         ],
         [
           "10.0.0.0",
           23,
-          "10.35.190.0"
+          "10.210.162.0"
         ],
         [
           "10.0.1.255",
           23,
-          "10.35.191.255"
+          "10.210.163.255"
         ],
         [
           "10.0.0.0",
@@ -244,37 +244,37 @@
         [
           "10.0.1.9",
           null,
-          "10.35.190.9"
+          "10.210.163.9"
         ],
         [
           "172.16.0.30",
           null,
-          "172.24.100.30"
+          "172.21.126.30"
         ],
         [
           "172.22.0.230",
           24,
-          "172.30.7.230"
+          "172.16.204.230"
         ],
         [
           "172.22.0.0",
           24,
-          "172.30.7.0"
+          "172.16.204.0"
         ],
         [
           "172.22.0.230",
           null,
-          "172.30.7.230"
+          "172.16.204.230"
         ],
         [
           "192.168.0.100",
           null,
-          "192.168.253.100"
+          "192.168.209.100"
         ],
         [
           "192.168.0.200",
           null,
-          "192.168.253.200"
+          "192.168.209.200"
         ],
         [
           "192.168.0.0",
@@ -314,37 +314,37 @@
         [
           "2001:db8::1",
           null,
-          "2001:db8:3fc0:ff1e::1"
+          "2001:db8:9437:2f53::1"
         ],
         [
           "2001:db8:0:0:0:0:0:1",
           null,
-          "2001:db8:3fc0:ff1e::1"
+          "2001:db8:9437:2f53::1"
         ],
         [
           "2001:DB8::1",
           null,
-          "2001:db8:3fc0:ff1e::1"
+          "2001:db8:9437:2f53::1"
         ],
         [
           "2001:db8:0:1::",
           64,
-          "2001:db8:3fc0:ff1f::"
+          "2001:db8:9437:2f52::"
         ],
         [
           "2001:db8:0:1::10",
           null,
-          "2001:db8:3fc0:ff1f::10"
+          "2001:db8:9437:2f52::10"
         ],
         [
           "2001:db8:ffff::ffff",
           null,
-          "2001:db8:f606:fee6::ffff"
+          "2001:db8:5d87:2951::ffff"
         ],
         [
           "fd00::1",
           null,
-          "fdbd:e2cf:df4f:e7::1"
+          "fdc1:4330:ac45:f8bb::1"
         ],
         [
           "fe80::1",
@@ -368,13 +368,13 @@
     "beschreibung": "SHA-256 über die Ausgaben (eine je Zeile) für die ersten 2000 öffentlichen Adressen der Folge i * 2654435761 mod 2^32, i = 1, 2, ...",
     "schluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     "anzahl": 2000,
-    "sha256": "270c7b58563414b66fefb25225af30785e4066289413b1329fd933d1637fbb67"
+    "sha256": "800324858562cfb6e45f702f10a112b5fcf2d32c052a55a30e1c87e1f7455319"
   },
   "engine": {
     "beschreibung": "Ausgabe von processText im Schlüsselmodus (zwei Durchläufe, Regeln regeln/anon-regeln.json); anon.ps1 muss dieselbe Ausgabe liefern",
     "schluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     "eingabe": "hostname sw-ip01\ninterface Vlan10\n ip address 172.22.0.230 255.255.255.0\n ip helper-address 192.0.2.10\nip route 0.0.0.0 0.0.0.0 172.22.0.1\naccess-list 10 permit 10.0.0.0 0.0.0.255\naccess-list 11 permit 10.0.0.16 0.0.0.15\nip dhcp excluded-address 192.168.0.100 192.168.0.200\nip prefix-list LAN seq 5 permit 10.0.0.0/23\nip prefix-list LAN seq 6 permit 10.0.1.255/23\nipv6 address 2001:db8:0:1::10/64\nipv6 route 2001:0db8:0000:0000:0000:0000:0000:0001/128 Null0\nipv6 route 2001:DB8::1/128 Null0\nipv6 route 2001:db8:0:1::/64 Null0\nntp server 203.0.113.9\nlogging host 127.0.0.1\nsnmp-server host 198.51.100.7 version 2c *****\nneighbor fe80::1%vlan10\nroute-map X permit 10 match ip address 192.168.0.0/16\nmulticast 224.0.0.5 239.255.255.250\n",
-    "ausgabe": "hostname HOST-1\ninterface Vlan10\n ip address 172.30.7.230 255.255.255.0\n ip helper-address 192.0.2.24\nip route 0.0.0.0 0.0.0.0 172.30.7.1\naccess-list 10 permit 10.35.191.0 0.0.0.255\naccess-list 11 permit 10.35.191.16 0.0.0.15\nip dhcp excluded-address 192.168.253.100 192.168.253.200\nip prefix-list LAN seq 5 permit 10.35.190.0/23\nip prefix-list LAN seq 6 permit 10.35.191.255/23\nipv6 address 2001:db8:3fc0:ff1f::10/64\nipv6 route 2001:db8:3fc0:ff1e::1/128 Null0\nipv6 route 2001:db8:3fc0:ff1e::1/128 Null0\nipv6 route 2001:db8:3fc0:ff1f::/64 Null0\nntp server 203.0.113.197\nlogging host 127.0.0.1\nsnmp-server host 198.51.100.25 version 2c *****\nneighbor fe80::1%vlan10\nroute-map X permit 10 match ip address 192.168.0.0/16\nmulticast 224.0.0.5 239.255.255.250\n",
+    "ausgabe": "hostname HOST-1\ninterface Vlan10\n ip address 172.16.204.230 255.255.255.0\n ip helper-address 192.0.2.24\nip route 0.0.0.0 0.0.0.0 172.16.204.1\naccess-list 10 permit 10.210.162.0 0.0.0.255\naccess-list 11 permit 10.210.162.16 0.0.0.15\nip dhcp excluded-address 192.168.209.100 192.168.209.200\nip prefix-list LAN seq 5 permit 10.210.162.0/23\nip prefix-list LAN seq 6 permit 10.210.163.255/23\nipv6 address 2001:db8:9437:2f52::10/64\nipv6 route 2001:db8:9437:2f53::1/128 Null0\nipv6 route 2001:db8:9437:2f53::1/128 Null0\nipv6 route 2001:db8:9437:2f52::/64 Null0\nntp server 203.0.113.219\nlogging host 127.0.0.1\nsnmp-server host 198.51.100.84 version 2c *****\nneighbor fe80::1%vlan10\nroute-map X permit 10 match ip address 192.168.0.0/16\nmulticast 224.0.0.5 239.255.255.250\n",
     "rueckNurSchluessel": "hostname HOST-1\ninterface Vlan10\n ip address 172.22.0.230 255.255.255.0\n ip helper-address 192.0.2.10\nip route 0.0.0.0 0.0.0.0 172.22.0.1\naccess-list 10 permit 10.0.0.0 0.0.0.255\naccess-list 11 permit 10.0.0.16 0.0.0.15\nip dhcp excluded-address 192.168.0.100 192.168.0.200\nip prefix-list LAN seq 5 permit 10.0.0.0/23\nip prefix-list LAN seq 6 permit 10.0.1.255/23\nipv6 address 2001:db8:0:1::10/64\nipv6 route 2001:db8::1/128 Null0\nipv6 route 2001:db8::1/128 Null0\nipv6 route 2001:db8:0:1::/64 Null0\nntp server 203.0.113.9\nlogging host 127.0.0.1\nsnmp-server host 198.51.100.7 version 2c *****\nneighbor fe80::1%vlan10\nroute-map X permit 10 match ip address 192.168.0.0/16\nmulticast 224.0.0.5 239.255.255.250\n",
     "rueckNurSchluesselAnzahl": 17
   },
@@ -382,7 +382,7 @@
     "beschreibung": "IP-Sonderformen (eingebettete IPv4, ::ffff:hhhh:hhhh, führende Nullen, kleine Schnittstellenkennung): Ausgabe beider Modi und Rückübersetzung nur über den Schlüssel; anon.ps1 muss gleich liefern",
     "schluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     "eingabe": "a ::ffff:10.0.0.13\nb 64:ff9b::10.0.0.13\nc 2001:db8::10.0.0.13/64\nd ::ffff:0a00:000d\ne 010.000.000.013\nf 10.0.0.013\ng 10.0.0.13\nh fe80::1\ni 2001:db8:0:1::fe\nj ::ffff:127.0.0.1\nk ::FFFF:10.0.0.13/120\nl 255.255.255.000\n",
-    "ausgabeSchluessel": "a ::ffff:10.35.191.13\nb 64:ff9b::10.35.191.13\nc 2001:db8:3fc0:ff1e::a7f:f078/64\nd ::ffff:0a23:bf0d\ne 10.35.191.13\nf 10.35.191.13\ng 10.35.191.13\nh fe80::1\ni 2001:db8:3fc0:ff1f::fe\nj ::ffff:127.0.0.1\nk ::FFFF:10.35.191.13/120\nl 255.255.255.0\n",
+    "ausgabeSchluessel": "a ::ffff:10.210.162.13\nb 64:ff9b::10.210.162.13\nc 2001:db8:9437:2f53::b6a:cc31/64\nd ::ffff:0ad2:a20d\ne 10.210.162.13\nf 10.210.162.13\ng 10.210.162.13\nh fe80::1\ni 2001:db8:9437:2f52::fe\nj ::ffff:127.0.0.1\nk ::FFFF:10.210.162.13/120\nl 255.255.255.0\n",
     "ausgabePlatzhalter": "a ::ffff:NET-1.H1\nb 64:ff9b::NET-1.H1\nc IP6-PUB-1/64\nd ::ffff:NET-1.H1\ne NET-1.H1\nf NET-1.H1\ng NET-1.H1\nh IP6-PRIV-1\ni IP6-PUB-2\nj ::ffff:127.0.0.1\nk ::FFFF:NET-1.H1/120\nl 255.255.255.0\n",
     "rueckNurSchluessel": "a ::ffff:10.0.0.13\nb 64:ff9b::10.0.0.13\nc 2001:db8::a00:d/64\nd ::ffff:0a00:000d\ne 10.0.0.13\nf 10.0.0.13\ng 10.0.0.13\nh fe80::1\ni 2001:db8:0:1::fe\nj ::ffff:127.0.0.1\nk ::FFFF:10.0.0.13/120\nl 255.255.255.0\n"
   }

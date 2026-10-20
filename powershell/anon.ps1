@@ -337,15 +337,36 @@ namespace AnonTool
             return Block(inp)[0] >> 7;
         }
 
+        // Klassenmodus: eindeutige AES-Eingabe je Stelle: (erste pos Bit der Adresse, dann ein 1-Bit, dann Nullen) XOR Pad.
+        // Im Original-Crypto-PAn sind die Eingaben zweier Stellen gleich, wenn das Adressbit dem Pad-Bit gleicht; die Kippbits
+        // sind dann gekoppelt (ein Oktett bliebe bei rund 7 % der Schlüssel unverändert). Gleich core/ip/cryptopan.js.
+        private int PanBitGetrennt(byte[] adresse, int pos)
+        {
+            byte[] inp = new byte[16];
+            int voll = pos >> 3;
+            for (int j = 0; j < voll; j++) inp[j] = adresse[j];
+            int rest = pos & 7;
+            if (rest != 0) inp[voll] = (byte)(adresse[voll] & ((0xff << (8 - rest)) & 0xff));
+            inp[voll] = (byte)(inp[voll] | (0x80 >> rest));
+            for (int j = 0; j < 16; j++) inp[j] = (byte)(inp[j] ^ _pad[j]);
+            return Block(inp)[0] >> 7;
+        }
+
         // Bits von..bis-1 abbilden; erlaubt(praefix, pos) == false erzwingt "nicht kippen"; rueck kehrt die Abbildung um
         public byte[] Abbilden(byte[] adresse, int von, int bis, Func<byte[], int, bool> erlaubt, bool rueck)
+        {
+            return Abbilden(adresse, von, bis, erlaubt, rueck, false);
+        }
+
+        // getrennt = true: eindeutige AES-Eingabe je Stelle (Klassenmodus), sonst Original-Crypto-PAn
+        public byte[] Abbilden(byte[] adresse, int von, int bis, Func<byte[], int, bool> erlaubt, bool rueck, bool getrennt)
         {
             byte[] ein = (byte[])adresse.Clone();
             byte[] aus = (byte[])adresse.Clone();
             byte[] basis = rueck ? aus : ein;
             for (int pos = von; pos < bis; pos++)
             {
-                int kipp = PanBit(basis, pos);
+                int kipp = getrennt ? PanBitGetrennt(basis, pos) : PanBit(basis, pos);
                 if (kipp != 0 && erlaubt != null && !erlaubt(basis, pos)) kipp = 0;
                 BitSetzen(aus, pos, Bit(ein, pos) ^ kipp);
             }
@@ -617,10 +638,10 @@ namespace AnonTool
                 bool klein = KleineKennung(bytes);
                 Func<byte[], int, bool> kennung = null;
                 if (n == 16) kennung = KennungErlaubt;
-                if (art == "privat") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, grenze) : grenze, kennung, rueck);
-                else if (art == "block") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, n * 8) : n * 8, kennung, rueck);
-                else if (n == 16) aus = Abbilden(bytes, 0, klein ? Math.Min(64, grenze) : grenze, (pr, pos) => OeffentlichErlaubt(pr, pos) && KennungErlaubt(pr, pos), rueck);
-                else aus = Abbilden(bytes, 0, grenze, OeffentlichErlaubt, rueck);
+                if (art == "privat") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, grenze) : grenze, kennung, rueck, true);
+                else if (art == "block") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, n * 8) : n * 8, kennung, rueck, true);
+                else if (n == 16) aus = Abbilden(bytes, 0, klein ? Math.Min(64, grenze) : grenze, (pr, pos) => OeffentlichErlaubt(pr, pos) && KennungErlaubt(pr, pos), rueck, true);
+                else aus = Abbilden(bytes, 0, grenze, OeffentlichErlaubt, rueck, true);
             }
             lock (_memo) { _memo[schl] = (byte[])aus.Clone(); }
             return aus;

@@ -1542,6 +1542,19 @@ if ($ipKernDa) {
     Assert-Equal $iidFehler 0 "Sonderformen: kleine Schnittstellenkennungen bleiben, andere landen nie dort, umkehrbar"
 }
 
+Write-Host "=== Fix Crypto-PAn: unabhängige Kippbits im Klassenmodus ===" -ForegroundColor Cyan
+if ($ipKernDa) {
+    $rngK = New-Object System.Random 2718
+    $gleich = 0
+    for ($i = 0; $i -lt 3000; $i++) {
+        $kb = New-Object byte[] 32; $rngK.NextBytes($kb)
+        $kk = New-Object AnonTool.CryptoPan (,$kb)
+        if ($kk.TextVerfremden("192.0.2.10", -1, $false) -eq "192.0.2.10") { $gleich++ }
+        $kk.Dispose()
+    }
+    Assert-True ($gleich / 3000.0 -lt 0.015) "Crypto-PAn: Doku-Adresse bleibt nur mit ~1/256 unverändert ($gleich von 3000)"
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

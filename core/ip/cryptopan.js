@@ -107,15 +107,30 @@
     return aes128Block(ks.w, inp)[0] >> 7;
   }
 
+  // Klassenmodus: eindeutige AES-Eingabe je Stelle: (erste pos Bit der Adresse, dann ein 1-Bit, dann Nullen) XOR Pad.
+  // Im Original-Crypto-PAn sind die Eingaben zweier Stellen gleich, wenn das Adressbit dem Pad-Bit gleicht; die Kippbits
+  // sind dann gekoppelt (ein Oktett bliebe bei rund 7 % der Schlüssel unverändert). Die Polsterung ist umkehrbar eindeutig.
+  function cryptoPanBitGetrennt(ks, adresse, pos) {
+    const inp = new Uint8Array(16);
+    const voll = pos >> 3;
+    for (let j = 0; j < voll; j++) inp[j] = adresse[j];
+    const rest = pos & 7;
+    if (rest) inp[voll] = adresse[voll] & ((0xff << (8 - rest)) & 0xff);
+    inp[voll] |= 0x80 >> rest;
+    for (let j = 0; j < 16; j++) inp[j] ^= ks.pad[j];
+    return aes128Block(ks.w, inp)[0] >> 7;
+  }
+
   // Bits von..bis-1 der Adresse (4 oder 16 Byte) abbilden; Bits außerhalb bleiben.
   // erlaubt(praefix, pos): optional, false erzwingt an dieser Stelle "nicht kippen" (Klassen bleiben erhalten).
   // rueck = true kehrt die Abbildung um (aus den bereits zurückgewonnenen Bits folgt das nächste Kippbit).
-  function cryptoPanAbbilden(ks, adresse, von, bis, erlaubt, rueck) {
+  // getrennt = true: eindeutige AES-Eingabe je Stelle (Klassenmodus), sonst Original-Crypto-PAn
+  function cryptoPanAbbilden(ks, adresse, von, bis, erlaubt, rueck, getrennt) {
     const ein = Uint8Array.from(adresse);
     const aus = Uint8Array.from(adresse);
     const basis = rueck ? aus : ein;
     for (let pos = von; pos < bis; pos++) {
-      let kipp = cryptoPanBit(ks, basis, pos);
+      let kipp = getrennt ? cryptoPanBitGetrennt(ks, basis, pos) : cryptoPanBit(ks, basis, pos);
       if (kipp && erlaubt && !erlaubt(basis, pos)) kipp = 0;
       ipBitSetzen(aus, pos, ipBit(ein, pos) ^ kipp);
     }
@@ -301,9 +316,9 @@
     const ende = (voll) => (klein ? Math.min(64, voll) : voll);
     let aus;
     if (k.art === "fest") aus = Uint8Array.from(bytes);
-    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(IP_GRENZE[n]), kennung, !!rueck);
-    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(n * 8), kennung, !!rueck);
-    else aus = cryptoPanAbbilden(ks, bytes, 0, ende(IP_GRENZE[n]), n === 16 ? (p, pos) => ipOeffentlichErlaubt(p, pos) && ipKennungErlaubt(p, pos) : ipOeffentlichErlaubt, !!rueck);
+    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(IP_GRENZE[n]), kennung, !!rueck, true);
+    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(n * 8), kennung, !!rueck, true);
+    else aus = cryptoPanAbbilden(ks, bytes, 0, ende(IP_GRENZE[n]), n === 16 ? (p, pos) => ipOeffentlichErlaubt(p, pos) && ipKennungErlaubt(p, pos) : ipOeffentlichErlaubt, !!rueck, true);
     ks.memo.set(schl, Uint8Array.from(aus));
     return aus;
   }
