@@ -128,5 +128,9 @@
   "beispiele/03-cisco-fortigate-syslog.log|4|Nachpruefung-Benutzer|backupop",
   "beispiele/03-cisco-fortigate-syslog.log|4|Nachpruefung-Geheimnis|0822455D0A16",
   "beispiele/03-cisco-fortigate-syslog.log|7|Nachpruefung-Beschreibung|Verbindung zu fw-edge-01",
-  "beispiele/03-cisco-fortigate-syslog.log|13|Nachpruefung-Geheimnis|99887766554433221100aabbccddeeff"
+  "beispiele/03-cisco-fortigate-syslog.log|13|Nachpruefung-Geheimnis|99887766554433221100aabbccddeeff",
+  "K35/K35.txt|5|Nachpruefung-IP|010.000.000.013",
+  "K35/K35.txt|6|Nachpruefung-IP|10.0.0.013",
+  "K36/K36.txt|5|Nachpruefung-IP|010.000.000.013",
+  "K36/K36.txt|6|Nachpruefung-IP|10.0.0.013"
 ]

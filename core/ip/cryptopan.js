@@ -170,9 +170,27 @@
     return b[0] + "." + b[1] + "." + b[2] + "." + b[3];
   }
 
-  // IPv6 in 16 Byte (Kurz- und Langform, ohne Zonen-Index und ohne eingebettete IPv4-Schreibweise)
+  // IPv4 auch mit führenden Nullen in den Oktetten (010.000.000.013); null, wenn keine IPv4
+  function ip4LesenNullen(text) {
+    const t = String(text).split(".");
+    if (t.length !== 4) return null;
+    const b = new Uint8Array(4);
+    for (let i = 0; i < 4; i++) {
+      if (!/^[0-9]{1,3}$/.test(t[i]) || Number(t[i]) > 255) return null;
+      b[i] = Number(t[i]);
+    }
+    return b;
+  }
+
+  // IPv6 in 16 Byte (Kurz- und Langform, auch gemischt mit eingebetteter IPv4 wie ::ffff:192.0.2.1; ohne Zonen-Index)
   function ip6Lesen(text) {
-    const t = String(text).toLowerCase();
+    let t = String(text).toLowerCase();
+    if (t.indexOf(".") >= 0) {
+      const p = t.lastIndexOf(":");
+      const v4 = p >= 0 ? ip4LesenNullen(t.slice(p + 1)) : null;
+      if (!v4) return null;
+      t = t.slice(0, p + 1) + ((v4[0] << 8) | v4[1]).toString(16) + ":" + ((v4[2] << 8) | v4[3]).toString(16);
+    }
     if (!/^[0-9a-f:]+$/.test(t) || t.indexOf(":::") >= 0) return null;
     const teile = t.split("::");
     if (teile.length > 2) return null;
@@ -250,6 +268,26 @@
     return ipStruktur(n, bits + "0") === ipStruktur(n, bits + "1");
   }
 
+  // IPv6 mit eingebetteter IPv4: ::ffff:0:0/96 (IPv4-mapped) und 64:ff9b::/96 (NAT64); die IPv4 steht in Byte 12-15
+  function ipEingebetteteV4(bytes) {
+    if (!bytes || bytes.length !== 16) return false;
+    const mapped = bytes.slice(0, 10).every(x => x === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+    const nat64 = bytes[0] === 0 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b && bytes.slice(4, 12).every(x => x === 0);
+    return mapped || nat64;
+  }
+
+  // IPv6: Schnittstellenkennung mit Nullen in den oberen 48 Bit (::1, ::fe, ::254) bleibt ganz erhalten.
+  // Damit keine andere Kennung dorthin abgebildet wird, kippt auf dem Nullpfad (Bit 64 bis 111) kein Bit.
+  function ipKleineKennung(bytes) {
+    return bytes.length === 16 && bytes.slice(8, 14).every(x => x === 0);
+  }
+
+  function ipKennungErlaubt(praefix, pos) {
+    if (praefix.length !== 16 || pos < 64 || pos >= 112) return true;
+    for (let i = 64; i < pos; i++) if (ipBit(praefix, i)) return true;
+    return false;
+  }
+
   // Klassenerhaltende Abbildung einer Adresse (4 oder 16 Byte); rueck = Umkehrung
   function ipVerfremden(ks, bytes, rueck) {
     const n = bytes.length;
@@ -257,11 +295,15 @@
     const vorher = ks.memo.get(schl);
     if (vorher) return Uint8Array.from(vorher);
     const k = ipKlasse(bytes);
+    // IPv6: kleine Schnittstellenkennung bleibt (Bereich endet bei Bit 64), sonst Nullpfad sperren
+    const klein = ipKleineKennung(bytes);
+    const kennung = n === 16 ? ipKennungErlaubt : null;
+    const ende = (voll) => (klein ? Math.min(64, voll) : voll);
     let aus;
     if (k.art === "fest") aus = Uint8Array.from(bytes);
-    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, IP_GRENZE[n], null, !!rueck);
-    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, n * 8, null, !!rueck);
-    else aus = cryptoPanAbbilden(ks, bytes, 0, IP_GRENZE[n], ipOeffentlichErlaubt, !!rueck);
+    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(IP_GRENZE[n]), kennung, !!rueck);
+    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(n * 8), kennung, !!rueck);
+    else aus = cryptoPanAbbilden(ks, bytes, 0, ende(IP_GRENZE[n]), n === 16 ? (p, pos) => ipOeffentlichErlaubt(p, pos) && ipKennungErlaubt(p, pos) : ipOeffentlichErlaubt, !!rueck);
     ks.memo.set(schl, Uint8Array.from(aus));
     return aus;
   }

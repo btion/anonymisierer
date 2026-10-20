@@ -1495,6 +1495,53 @@ Assert-True ((Test-Path -LiteralPath $zr2) -and [System.IO.File]::ReadAllText($z
 Assert-True (-not $zrLog.Contains("172.22.0.230")) "IP-Modell: -Zurueck gibt keinen Klartext auf der Konsole aus"
 Assert-Throws { & $anonScript -Zurueck -Eingabe (Join-Path $ipDir "aus1/anonym/eingabe.txt") -Ausgabe (Join-Path $ipDir "r3.txt") > $null 2>&1 } "IP-Modell: -Zurueck ohne Tabelle und ohne IP-Schlüssel wird abgelehnt"
 
+Write-Host "=== Fix IP-Sonderformen (eingebettete IPv4, ::ffff:hhhh:hhhh, führende Nullen, Schnittstellenkennung) ===" -ForegroundColor Cyan
+if ($ipKernDa) {
+    $sv = $ipVek.sonderformen
+    $sKs = New-Object AnonTool.CryptoPan (,(ConvertFrom-TestHex $sv.schluesselHex))
+    foreach ($modus in @("schluessel", "platzhalter")) {
+        $sCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+        if ($modus -eq "schluessel") { $sCfg.IpModus = "schluessel"; $sCfg.IpSchluessel = $sKs }
+        $sSt = New-Object AnonTool.AnonState
+        [void][AnonTool.AnonEngine]::ProcessText([string]$sv.eingabe, $sCfg, $sSt)
+        $sAus = [AnonTool.AnonEngine]::ProcessText([string]$sv.eingabe, $sCfg, $sSt)
+        $sSoll = if ($modus -eq "schluessel") { [string]$sv.ausgabeSchluessel } else { [string]$sv.ausgabePlatzhalter }
+        if ($sAus -cne $sSoll) {
+            $ea = $sAus.Split("`n"); $es = $sSoll.Split("`n")
+            for ($i = 0; $i -lt [Math]::Min($ea.Length, $es.Length); $i++) { if ($ea[$i] -cne $es[$i]) { Write-Host "    Zeile $($i + 1): erwartet '$($es[$i])', erhalten '$($ea[$i])'" -ForegroundColor Yellow } }
+        }
+        Assert-True ($sAus -ceq $sSoll) "Sonderformen ($modus): Parität A == B, Ausgabe gleich JS"
+        $sF = @([AnonTool.AnonEngine]::AuditText($sAus, "s.txt", $sCfg, $sSt) | Where-Object { $_.Kategorie -match "IP" })
+        Assert-Equal $sF.Count 0 "Sonderformen ($modus): Prüfung meldet keine verfremdeten Adressen"
+        Assert-Equal (@([AnonTool.AnonEngine]::Nachpruefen($sAus, "s.txt", $sCfg)).Count) 0 "Sonderformen ($modus): Nachprüfung der Ausgabe ohne Fund"
+        $ra = 0; $rb = 0
+        $sR = [AnonTool.AnonEngine]::DeanonymizeText($sAus, $sSt.Reverse, $null, [ref]$ra, [ref]$rb)
+        $sRSoll = if ($modus -eq "schluessel") { [string]$sv.rueckNurSchluessel } else { ([string]$sv.rueckNurSchluessel).Replace("d ::ffff:0a00:000d", "d ::ffff:10.0.0.13") }
+        Assert-True ($sR -ceq $sRSoll) "Sonderformen ($modus): Rückübersetzung über die Zuordnung"
+    }
+    $ra = 0; $rb = 0
+    $sR2 = [AnonTool.AnonEngine]::DeanonymizeText([string]$sv.ausgabeSchluessel, (New-Object AnonTool.AnonState).Reverse, $sKs, [ref]$ra, [ref]$rb)
+    Assert-True ($sR2 -ceq [string]$sv.rueckNurSchluessel) "Sonderformen: Rückübersetzung nur über den Schlüssel gleich JS"
+    $nCfg = New-TestConfig -RulesObj $rulesObj -Netzerhaltend $true
+    $nRest = @([AnonTool.AnonEngine]::Nachpruefen("neighbor 98:41dc:2a1b:81ef.0.0.13`nntp server 010.000.000.013`nlogging host 10.0.0.013`nversion 16.9.3`n", "r.txt", $nCfg) | Where-Object { $_.Kategorie -eq "Nachpruefung-IP" })
+    Assert-Equal $nRest.Count 3 "Nachprüfung: Rest einer IPv4 an einer IPv6 und führende Nullen sind Funde"
+    Assert-True (@([AnonTool.AnonEngine]::AuditText("neighbor 98:41dc:2a1b:81ef.0.0.13`n", "r.txt", $nCfg, (New-Object AnonTool.AnonState)) | Where-Object { $_.Kategorie -eq "Nachpruefung-IP" }).Count -gt 0) "Prüfung im Lauf meldet den Rest einer IPv4 an einer IPv6"
+    # Schnittstellenkennung: kleine Kennungen bleiben, andere landen nie dort, umkehrbar
+    $rng = New-Object System.Random 815
+    $iidFehler = 0
+    $netz = [AnonTool.CryptoPan]::Ip6Lesen("2001:db8:0:1::")
+    for ($i = 0; $i -lt 600; $i++) {
+        $b = [byte[]]$netz.Clone()
+        $r = New-Object byte[] 8; $rng.NextBytes($r)
+        for ($j = 0; $j -lt 8; $j++) { $b[8 + $j] = $r[$j] }
+        if ($i % 3 -eq 0) { for ($j = 8; $j -lt 14; $j++) { $b[$j] = 0 } }
+        $o = $sKs.Verfremden($b, $false)
+        $klein = [AnonTool.CryptoPan]::KleineKennung($b)
+        if ($klein -ne [AnonTool.CryptoPan]::KleineKennung($o) -or ($klein -and (ConvertTo-TestHex $o[8..15]) -ne (ConvertTo-TestHex $b[8..15])) -or (ConvertTo-TestHex ($sKs.Verfremden($o, $true))) -ne (ConvertTo-TestHex $b)) { $iidFehler++ }
+    }
+    Assert-Equal $iidFehler 0 "Sonderformen: kleine Schnittstellenkennungen bleiben, andere landen nie dort, umkehrbar"
+}
+
 $env:LOCALAPPDATA = $origLocalAppData
 
 # Aufräumen des temporären Testordners

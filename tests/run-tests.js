@@ -2228,6 +2228,71 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     }
   }
 
+  // --- 19f. Fix IP-Sonderformen: IPv6 mit eingebetteter IPv4, ::ffff:hhhh:hhhh, führende Nullen, Schnittstellenkennung ---
+  console.log("--- 19f. Fix IP-Sonderformen ---");
+  {
+    const vek = JSON.parse(fs.readFileSync(path.join(__dirname, "ip-testvektoren.json"), "utf8"));
+    const kBytes = Uint8Array.from(Buffer.from(vek.engine.schluesselHex, "hex"));
+    const ks = core.cryptoPanSchluessel(kBytes);
+    const vf = (t, p) => core.ipTextVerfremden(ks, t, p === undefined ? null : p, false);
+    const hex4 = (ip) => { const b = core.ip4Lesen(ip); return ((b[0] << 8) | b[1]).toString(16).padStart(4, "0") + ":" + ((b[2] << 8) | b[3]).toString(16).padStart(4, "0"); };
+    const zeilen = ["a ::ffff:10.0.0.13", "b 64:ff9b::10.0.0.13", "c 2001:db8::10.0.0.13/64", "d ::ffff:0a00:000d", "e 010.000.000.013", "f 10.0.0.013", "g 10.0.0.13", "h fe80::1", "i 2001:db8:0:1::fe", "j ::ffff:127.0.0.1", ""];
+    const ein = zeilen.join("\n");
+    // Schlüsselmodus
+    const cfgK = core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "schluessel", ipSchluessel: kBytes });
+    const stK = new core.AnonState();
+    const ausK = core.processText(ein, cfgK, stK);
+    const zk = ausK.split("\n");
+    const v4 = vf("10.0.0.13");
+    assert(zk[0] === "a ::ffff:" + v4 && zk[1] === "b 64:ff9b::" + v4, `Sonderformen: ::ffff:a.b.c.d und 64:ff9b::a.b.c.d behalten das Präfix, IPv4-Teil wie die nackte IPv4 (${zk[0]} | ${zk[1]})`);
+    assert(zk[2] === "c " + vf("2001:db8::a00:d") + "/64", `Sonderformen: sonstige IPv6 mit eingebetteter IPv4 als ganze IPv6 in normaler Schreibweise (${zk[2]})`);
+    assert(zk[3] === "d ::ffff:" + hex4(v4), `Sonderformen: ::ffff:hhhh:hhhh behält Präfix und Schreibweise (${zk[3]})`);
+    assert(zk[4] === "e " + v4 && zk[5] === "f " + v4 && zk[6] === "g " + v4, `Sonderformen: führende Nullen wie die normale IPv4, Ausgabe ohne führende Nullen (${zk[4]} | ${zk[5]})`);
+    assert(zk[7] === "h fe80::1", `Sonderformen: fe80::1 bleibt (Schnittstellenkennung mit Nullen in den oberen 48 Bit) (${zk[7]})`);
+    assert(/^i 2001:db8:[0-9a-f:]+::fe$/.test(zk[8]) && zk[8] !== "i 2001:db8:0:1::fe", `Sonderformen: ::fe bleibt, Netzteil verfremdet (${zk[8]})`);
+    assert(zk[9] === "j ::ffff:127.0.0.1", "Sonderformen: ::ffff:127.0.0.1 bleibt (IPv4-Regel)");
+    assert(!/(?<![0-9.])10\.0\.0\.13(?![0-9])|0a00:000d|010\.000|0\.0\.013/.test(ausK), `Sonderformen: kein Rest der Original-IPv4 in der Ausgabe (Schlüsselmodus)`);
+    // Alter Modus: gleicher Platzhalter wie die nackte IPv4
+    const cfgA = core.buildEngineConfig(diskRules, { netzerhaltend: true, ipModus: "platzhalter" });
+    const stA = new core.AnonState();
+    const ausA = core.processText(ein, cfgA, stA);
+    const za = ausA.split("\n");
+    const tok = za[6].slice(2);
+    assert(/^NET-[0-9]+\.H[0-9]+$/.test(tok) && za[0] === "a ::ffff:" + tok && za[1] === "b 64:ff9b::" + tok && za[3] === "d ::ffff:" + tok && za[4] === "e " + tok && za[5] === "f " + tok, `Sonderformen (alter Modus): eingebettete IPv4 und führende Nullen ergeben denselben Platzhalter (${za.slice(0, 6).join(" | ")})`);
+    assert(/^c IP6(?:-PUB)?-[0-9]+\/64$/.test(za[2]) && !/(?<![0-9.])10\.0\.0\.13(?![0-9])|0a00:000d|010\.000|0\.0\.013/.test(ausA), `Sonderformen (alter Modus): sonstige eingebettete IPv4 als ganze IPv6, kein Rest (${za[2]})`);
+    // Prüfung im Lauf: keine Funde auf korrekter Ausgabe; Reste und nicht umgerechnete Sonderformen sind Funde
+    for (const [name, aus, cfg, st] of [["Schlüsselmodus", ausK, cfgK, stK], ["alter Modus", ausA, cfgA, stA]]) {
+      const f = core.auditText(aus, "s.txt", cfg, st).filter(x => /IP/.test(x.kategorie));
+      assert(f.length === 0, `Sonderformen (${name}): Prüfung meldet keine verfremdeten Adressen (${JSON.stringify(f.map(x => x.kategorie + ":" + x.fund))})`);
+    }
+    const rest = core.nachpruefen("neighbor 98:41dc:2a1b:81ef.0.0.13\nntp server 010.000.000.013\nlogging host 10.0.0.013\nversion 16.9.3\n", "r.txt", cfgK);
+    assert(rest.filter(f => f.kategorie === "Nachpruefung-IP").length === 3, `Nachprüfung: Rest einer IPv4 an einer IPv6 und führende Nullen sind Funde (${JSON.stringify(rest.map(f => f.kategorie + ":" + f.fund))})`);
+    assert(core.nachpruefen(ausK, "s.txt", cfgK).length === 0 && core.nachpruefen(ausA, "s.txt", cfgA).length === 0, "Nachprüfung: korrekte Ausgabe beider Modi ohne Fund");
+    const restLauf = core.auditText("neighbor 98:41dc:2a1b:81ef.0.0.13\n", "r.txt", cfgK, stK);
+    assert(restLauf.some(f => f.kategorie === "Nachpruefung-IP"), `Prüfung im Lauf meldet den Rest einer IPv4 an einer IPv6 (${JSON.stringify(restLauf.map(f => f.kategorie))})`);
+    assert(core.freigabeKategorie("Nachpruefung-IP", "x") === "IPv4", "Sonderformen: Fund Nachpruefung-IP ist in Kategorie IPv4 freigebbar");
+    // Rückübersetzung (Zuordnung und nur Schlüssel); Sonderformen kommen in normaler Schreibweise zurück
+    // (im alten Modus wird ::ffff:hhhh:hhhh zu ::ffff:NET-n.Hm und kommt als ::ffff:a.b.c.d zurück)
+    const soll = ["a ::ffff:10.0.0.13", "b 64:ff9b::10.0.0.13", "c 2001:db8::a00:d/64", "d ::ffff:0a00:000d", "e 10.0.0.13", "f 10.0.0.13", "g 10.0.0.13", "h fe80::1", "i 2001:db8:0:1::fe", "j ::ffff:127.0.0.1", ""].join("\n");
+    assert(core.deanonymizeTextDetail(ausK, stK, null).text === soll, `Sonderformen: Rückübersetzung über die Zuordnung (${JSON.stringify(core.deanonymizeTextDetail(ausK, stK, null).text)})`);
+    assert(core.deanonymizeTextDetail(ausK, new core.AnonState(), ks).text === soll, `Sonderformen: Rückübersetzung nur über den Schlüssel (${JSON.stringify(core.deanonymizeTextDetail(ausK, new core.AnonState(), ks).text)})`);
+    assert(core.deanonymizeTextDetail(ausA, stA, null).text === soll.replace("d ::ffff:0a00:000d", "d ::ffff:10.0.0.13"), `Sonderformen (alter Modus): Rückübersetzung (${JSON.stringify(core.deanonymizeTextDetail(ausA, stA, null).text)})`);
+    // Schnittstellenkennung: Zufallstest im /64, keine Adresse mit Kennung >= 2^16 landet auf einer kleinen Kennung, umkehrbar
+    let iidFehler = 0;
+    const netz = core.ip6Lesen("2001:db8:0:1::");
+    for (let i = 0; i < 1500; i++) {
+      const b = Uint8Array.from(netz);
+      const r = crypto.randomBytes(8);
+      for (let j = 0; j < 8; j++) b[8 + j] = r[j];
+      if (i % 3 === 0) { for (let j = 8; j < 14; j++) b[j] = 0; }
+      const klein = b.slice(8, 14).every(x => x === 0);
+      const o = core.ipVerfremden(ks, b, false);
+      const oKlein = o.slice(8, 14).every(x => x === 0);
+      if (klein !== oKlein || (klein && !Buffer.from(o.slice(8)).equals(Buffer.from(b.slice(8)))) || !Buffer.from(core.ipVerfremden(ks, o, true)).equals(Buffer.from(b))) iidFehler++;
+    }
+    assert(iidFehler === 0, `Sonderformen: kleine Schnittstellenkennungen bleiben, andere landen nie dort, umkehrbar (${iidFehler} abweichend)`);
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

@@ -443,10 +443,37 @@ namespace AnonTool
         }
 
         // IPv6 in 16 Byte (Kurz- und Langform, ohne Zonen-Index und ohne eingebettete IPv4-Schreibweise)
+        // IPv4 auch mit führenden Nullen in den Oktetten (010.000.000.013); null, wenn keine IPv4
+        public static byte[] Ip4LesenNullen(string text)
+        {
+            if (text == null) return null;
+            string[] t = text.Split('.');
+            if (t.Length != 4) return null;
+            byte[] b = new byte[4];
+            for (int i = 0; i < 4; i++)
+            {
+                if (!RxIp4OktettNullen.IsMatch(t[i])) return null;
+                int v = int.Parse(t[i]);
+                if (v > 255) return null;
+                b[i] = (byte)v;
+            }
+            return b;
+        }
+
+        private static readonly Regex RxIp4OktettNullen = new Regex("^[0-9]{1,3}$");
+
+        // IPv6 in 16 Byte (Kurz- und Langform, auch gemischt mit eingebetteter IPv4 wie ::ffff:192.0.2.1; ohne Zonen-Index)
         public static byte[] Ip6Lesen(string text)
         {
             if (text == null) return null;
             string t = text.ToLowerInvariant();
+            if (t.IndexOf('.') >= 0)
+            {
+                int p = t.LastIndexOf(':');
+                byte[] v4 = p >= 0 ? Ip4LesenNullen(t.Substring(p + 1)) : null;
+                if (v4 == null) return null;
+                t = t.Substring(0, p + 1) + ((v4[0] << 8) | v4[1]).ToString("x") + ":" + ((v4[2] << 8) | v4[3]).ToString("x");
+            }
             if (!RxIp6Zeichen.IsMatch(t) || t.IndexOf(":::", StringComparison.Ordinal) >= 0) return null;
             string[] teile = t.Split(new string[] { "::" }, StringSplitOptions.None);
             if (teile.Length > 2) return null;
@@ -542,6 +569,33 @@ namespace AnonTool
             return Struktur(n, bits + "0") == Struktur(n, bits + "1");
         }
 
+        // IPv6 mit eingebetteter IPv4: ::ffff:0:0/96 (IPv4-mapped) und 64:ff9b::/96 (NAT64); die IPv4 steht in Byte 12-15
+        public static bool EingebetteteV4(byte[] b)
+        {
+            if (b == null || b.Length != 16) return false;
+            bool mapped = b[10] == 0xff && b[11] == 0xff;
+            for (int i = 0; i < 10; i++) if (b[i] != 0) mapped = false;
+            bool nat64 = b[0] == 0 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b;
+            for (int i = 4; i < 12; i++) if (b[i] != 0) nat64 = false;
+            return mapped || nat64;
+        }
+
+        // IPv6: Schnittstellenkennung mit Nullen in den oberen 48 Bit (::1, ::fe, ::254) bleibt ganz erhalten.
+        // Damit keine andere Kennung dorthin abgebildet wird, kippt auf dem Nullpfad (Bit 64 bis 111) kein Bit.
+        public static bool KleineKennung(byte[] b)
+        {
+            if (b.Length != 16) return false;
+            for (int i = 8; i < 14; i++) if (b[i] != 0) return false;
+            return true;
+        }
+
+        private static bool KennungErlaubt(byte[] praefix, int pos)
+        {
+            if (praefix.Length != 16 || pos < 64 || pos >= 112) return true;
+            for (int i = 64; i < pos; i++) if (Bit(praefix, i) == 1) return true;
+            return false;
+        }
+
         // Klassenerhaltende Abbildung einer Adresse (4 oder 16 Byte); rueck = Umkehrung
         public byte[] Verfremden(byte[] bytes, bool rueck)
         {
@@ -557,9 +611,17 @@ namespace AnonTool
             int grenze = n == 4 ? 24 : 120;
             byte[] aus;
             if (art == "fest") aus = (byte[])bytes.Clone();
-            else if (art == "privat") aus = Abbilden(bytes, laenge, grenze, null, rueck);
-            else if (art == "block") aus = Abbilden(bytes, laenge, n * 8, null, rueck);
-            else aus = Abbilden(bytes, 0, grenze, OeffentlichErlaubt, rueck);
+            else
+            {
+                // IPv6: kleine Schnittstellenkennung bleibt (Bereich endet bei Bit 64), sonst Nullpfad sperren
+                bool klein = KleineKennung(bytes);
+                Func<byte[], int, bool> kennung = null;
+                if (n == 16) kennung = KennungErlaubt;
+                if (art == "privat") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, grenze) : grenze, kennung, rueck);
+                else if (art == "block") aus = Abbilden(bytes, laenge, klein ? Math.Min(64, n * 8) : n * 8, kennung, rueck);
+                else if (n == 16) aus = Abbilden(bytes, 0, klein ? Math.Min(64, grenze) : grenze, (pr, pos) => OeffentlichErlaubt(pr, pos) && KennungErlaubt(pr, pos), rueck);
+                else aus = Abbilden(bytes, 0, grenze, OeffentlichErlaubt, rueck);
+            }
             lock (_memo) { _memo[schl] = (byte[])aus.Clone(); }
             return aus;
         }
@@ -945,9 +1007,14 @@ namespace AnonTool
         private static readonly Regex RxMacAruba = new Regex(@"(?<![0-9A-Za-z_.:-])[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}(?![0-9A-Za-z_.:-])", RegexOptions.Compiled, RxTimeout);
 
         // IPv4 inkl. Direktangrenzung an _ oder Buchstaben (z.B. WAN_192.0.2.0-27 oder 192.0.2.0/24) und Satzende (z.B. "von 192.0.2.40.")
-        private static readonly Regex RxIpv4 = new Regex(@"(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:(?:/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])", RegexOptions.Compiled, RxTimeout);
+        // IPv4, auch mit führenden Nullen in den Oktetten (010.000.000.013); Ausgabe immer ohne führende Nullen
+        private static readonly Regex RxIpv4 = new Regex(@"(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:(?:/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])", RegexOptions.Compiled, RxTimeout);
 
         // IPv6 (Standard, komprimiert ::, fe80::, 2001:db8:: usw., keine einfachen Uhrzeiten wie 12:34:56)
+        // IPv6 mit eingebetteter IPv4 (gemischte Schreibweise x:x::a.b.c.d) als EINE Adresse; Gültigkeit prüft CryptoPan.Ip6Lesen
+        private static readonly Regex RxIpv6Gemischt = new Regex(@"(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f.]|:[0-9A-Fa-f])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxNachIpRest = new Regex(@"(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}([0-9A-Fa-f]{1,4}(?:\.[0-9]{1,3}){3})(?![0-9A-Za-z.])", RegexOptions.Compiled, RxTimeout);
+        private static readonly Regex RxNachIpNullen = new Regex(@"(?<![0-9A-Za-z.:])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?![0-9A-Za-z]|\.[0-9])", RegexOptions.Compiled, RxTimeout);
         private static readonly Regex RxIpv6 = new Regex(@"(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])", RegexOptions.Compiled, RxTimeout);
 
         // CLI-Prompt am Zeilenanfang (z.B. dc1-sw-core01# oder fw-edge01(config-if)#)
@@ -1002,6 +1069,25 @@ namespace AnonTool
                     sb.Append(char.ToLowerInvariant(c));
             }
             return sb.ToString();
+        }
+
+        private static readonly Regex RxHexGruppe = new Regex("^[0-9A-Fa-f]{1,4}$");
+
+        // IPv6 mit eingebetteter IPv4 (x:x::a.b.c.d): ::ffff:0:0/96 und 64:ff9b::/96 behalten Präfix und Schreibweise,
+        // der IPv4-Teil folgt den IPv4-Regeln (gleiches Ergebnis wie die nackte IPv4); sonst ganze Adresse als IPv6 in
+        // normaler Schreibweise. null = keine gültige Adresse (dann übernehmen die IPv6- und IPv4-Stufe).
+        public static string FormatIpv6GemischtToken(string rawMatch, EngineConfig cfg, AnonState state)
+        {
+            int slashIdx = rawMatch.IndexOf('/');
+            string ipPart = slashIdx > 0 ? rawMatch.Substring(0, slashIdx) : rawMatch;
+            string suffix = slashIdx > 0 ? rawMatch.Substring(slashIdx) : "";
+            byte[] bytes = CryptoPan.Ip6Lesen(ipPart);
+            if (bytes == null) return null;
+            if (cfg.ExakteAusnahmen.Contains(ipPart.ToLowerInvariant())) return rawMatch;
+            int p = ipPart.LastIndexOf(':');
+            if (CryptoPan.EingebetteteV4(bytes))
+                return ipPart.Substring(0, p + 1) + FormatIpv4Token(bytes[12] + "." + bytes[13] + "." + bytes[14] + "." + bytes[15], cfg, state) + suffix;
+            return FormatIpv6Token(CryptoPan.Ip6Text(bytes) + suffix, cfg, state);
         }
 
         // Schlüsselmodus: Ausgabe wie CryptoPan.TextVerfremden; die Zuordnungstabelle erhält Ausgabe -> Original
@@ -1061,20 +1147,16 @@ namespace AnonTool
             string[] parts = ipPart.Split('.');
             if (parts.Length != 4) return rawMatch;
 
-            // Keine führenden Nullen wie 01.02.03.04 (oft Version/Build)
-            for (int i = 0; i < 4; i++)
-            {
-                if (parts[i].Length > 1 && parts[i][0] == '0')
-                    return rawMatch;
-            }
-
             int o1, o2, o3, o4;
             if (!int.TryParse(parts[0], out o1) || !int.TryParse(parts[1], out o2) ||
                 !int.TryParse(parts[2], out o3) || !int.TryParse(parts[3], out o4))
                 return rawMatch;
+            // Führende Nullen (010.000.000.013): wie die normale IPv4 behandeln, Ausgabe ohne führende Nullen
+            ipPart = o1.ToString() + "." + o2.ToString() + "." + o3.ToString() + "." + o4.ToString();
+            string unveraendert = ipPart + suffix;
 
             if (IsSubnetMaskOrSpecialIpv4(o1, o2, o3, o4, cfg.SubnetzmaskenBehalten))
-                return rawMatch;
+                return unveraendert;
 
             if (cfg.ExakteAusnahmen.Contains(ipPart) || cfg.ExakteAusnahmen.Contains(rawMatch))
                 return rawMatch;
@@ -1083,7 +1165,7 @@ namespace AnonTool
             {
                 int praefix = slashIdx > 0 ? int.Parse(suffix.Substring(1)) : -1;
                 string aus = IpSchluesselAusgabe(ipPart, praefix, false, cfg, state);
-                return aus == null ? rawMatch : aus + suffix;
+                return aus == null ? unveraendert : aus + suffix;
             }
 
             state.AddStat("ip", 1);
@@ -1165,6 +1247,23 @@ namespace AnonTool
                 string[] segs = lower.Split(':');
                 if (segs.Length < 6)
                     return rawMatch;
+            }
+
+            byte[] bytes6 = CryptoPan.Ip6Lesen(lower);
+            if (CryptoPan.EingebetteteV4(bytes6))
+            {
+                // ::ffff:hhhh:hhhh, 64:ff9b::hhhh:hhhh: Präfix und Schreibweise bleiben, IPv4-Teil nach den IPv4-Regeln
+                string v4 = bytes6[12] + "." + bytes6[13] + "." + bytes6[14] + "." + bytes6[15];
+                string r = FormatIpv4Token(v4, cfg, state);
+                if (r == v4) return rawMatch;
+                string[] gruppen = ipPart.Split(':');
+                bool zweiGruppen = gruppen.Length >= 3 && RxHexGruppe.IsMatch(gruppen[gruppen.Length - 1]) && RxHexGruppe.IsMatch(gruppen[gruppen.Length - 2]);
+                string vorn = zweiGruppen ? string.Join(":", gruppen, 0, gruppen.Length - 2) + ":" : (bytes6[1] == 0x64 ? "64:ff9b::" : "::ffff:");
+                byte[] rb = CryptoPan.Ip4Lesen(r);
+                if (rb == null) return vorn + r + suffix;
+                int b1 = zweiGruppen && gruppen[gruppen.Length - 2].Length == 4 ? 4 : 1;
+                int b2 = zweiGruppen && gruppen[gruppen.Length - 1].Length == 4 ? 4 : 1;
+                return vorn + ((rb[0] << 8) | rb[1]).ToString("x").PadLeft(b1, '0') + ":" + ((rb[2] << 8) | rb[3]).ToString("x").PadLeft(b2, '0') + suffix;
             }
 
             if (cfg.IpModus == "schluessel")
@@ -2181,6 +2280,13 @@ namespace AnonTool
             // ----------------------------------------------------------------
             if (cfg.CatIp)
             {
+                // zuerst IPv6 mit eingebetteter IPv4 als eine Adresse
+                text = RxIpv6Gemischt.Replace(text, (Match m) =>
+                {
+                    string replaced = FormatIpv6GemischtToken(m.Value, cfg, state);
+                    return replaced == null ? m.Value : protect(replaced);
+                });
+
                 text = RxIpv6.Replace(text, (Match m) =>
                 {
                     string replaced = FormatIpv6Token(m.Value, cfg, state);
@@ -2576,6 +2682,18 @@ namespace AnonTool
                 werte.Add(v);
                 return "\u0002R" + (werte.Count - 1).ToString() + "\u0003";
             };
+            // Eingebettete IPv4 (::ffff:…, 64:ff9b::…): nur der IPv4-Teil wird zurückübersetzt; null = unverändert
+            Func<string, string> v4Zurueck = v4 =>
+            {
+                string tv = ipVonTabelle(v4);
+                if (tv != null) { tab++; return tv; }
+                byte[] b = CryptoPan.Ip4Lesen(v4);
+                int lk;
+                if (ks == null || b == null || CryptoPan.Klasse(b, out lk) == "fest" || IsSubnetMaskOrSpecialIpv4(b[0], b[1], b[2], b[3], true)) return null;
+                string rv = ks.TextVerfremden(v4, -1, true);
+                if (rv != null) schl++;
+                return rv;
+            };
             Func<string, bool, string> zurueck = (m, v6) =>
             {
                 int trenn = v6 ? m.IndexOf('/') : m.IndexOfAny(new char[] { '/', '-' });
@@ -2583,6 +2701,17 @@ namespace AnonTool
                 string suffix = trenn > 0 ? m.Substring(trenn) : "";
                 byte[] bytes = v6 ? CryptoPan.Ip6Lesen(ip) : CryptoPan.Ip4Lesen(ip);
                 if (bytes == null) return m;
+                if (v6 && CryptoPan.EingebetteteV4(bytes) && ipVonTabelle(ip) == null)
+                {
+                    string r4 = v4Zurueck(bytes[12] + "." + bytes[13] + "." + bytes[14] + "." + bytes[15]);
+                    if (r4 == null) return m;
+                    if (ip.IndexOf('.') >= 0) return marke(ip.Substring(0, ip.LastIndexOf(':') + 1) + r4 + suffix);
+                    string[] g = ip.Split(':');
+                    byte[] rb = CryptoPan.Ip4Lesen(r4);
+                    int w1 = g[g.Length - 2].Length == 4 ? 4 : 1;
+                    int w2 = g[g.Length - 1].Length == 4 ? 4 : 1;
+                    return marke(string.Join(":", g, 0, g.Length - 2) + ":" + ((rb[0] << 8) | rb[1]).ToString("x").PadLeft(w1, '0') + ":" + ((rb[2] << 8) | rb[3]).ToString("x").PadLeft(w2, '0') + suffix);
+                }
                 string norm = v6 ? CryptoPan.Ip6Text(bytes) : ip;
                 string t = ipVonTabelle(ip) ?? ipVonTabelle(norm);
                 if (t != null) { tab++; return marke(t + suffix); }
@@ -2595,7 +2724,14 @@ namespace AnonTool
                 schl++;
                 return marke(r + suffix);
             };
-            string text = RxIpv6.Replace(input, (Match m) => zurueck(m.Value, true));
+            // gültige gemischte Adressen immer als Ganzes markieren, damit die IPv6-Stufe sie nicht zerteilt
+            string text = RxIpv6Gemischt.Replace(input, (Match m) =>
+            {
+                if (CryptoPan.Ip6Lesen(m.Value.Split('/')[0]) == null) return m.Value;
+                string r = zurueck(m.Value, true);
+                return r == m.Value ? marke(m.Value) : r;
+            });
+            text = RxIpv6.Replace(text, (Match m) => zurueck(m.Value, true));
             text = RxIpv4.Replace(text, (Match m) => zurueck(m.Value, false));
             // Längste Platzhalter zuerst ersetzen (damit NET-1.H12 vor NET-1 und IP-PRIV-10 vor IP-PRIV-1 ersetzt wird!)
             var sortedTokens = ci.Keys.Where(k => CryptoPan.Ip4Lesen(k) == null && CryptoPan.Ip6Lesen(k) == null).OrderByDescending(k => k.Length).ToList();
@@ -2762,6 +2898,7 @@ namespace AnonTool
                 case "Nachpruefung-Domaene": return "Domaene";
                 case "Rest-IPv4": case "Pfad-IPv4": return "IPv4";
                 case "Rest-IPv6": return "IPv6";
+                case "Nachpruefung-IP": return "IPv4";
                 case "Rest-MAC": return "MAC";
                 case "Rest-EMail": return "EMail";
                 case "Rest-Freitext": return "Freitext";
@@ -3012,6 +3149,32 @@ namespace AnonTool
             Regex rxSuspiciousLongHexOrB64 = new Regex(@"\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b", RegexOptions.Compiled, RxTimeout);
             Regex rxCryptHash = new Regex(@"\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[a-zA-Z0-9./=$+]{6,128}", RegexOptions.Compiled, RxTimeout);
 
+            // 0c. IPv6 mit eingebetteter IPv4 (x:x::a.b.c.d) als eine Adresse prüfen und für die Schritte 1 und 2 ausblenden
+            Func<string, bool> ipOk4 = v4 =>
+            {
+                byte[] b = CryptoPan.Ip4Lesen(v4);
+                return b != null && (IsAllowedInAudit(v4, cfg) || IstVerfremdeteIp(v4, state) || BleibtImSchluesselmodus(v4, cfg) || IsSubnetMaskOrSpecialIpv4(b[0], b[1], b[2], b[3], true));
+            };
+            foreach (Match m in RxIpv6Gemischt.Matches(cleanText))
+            {
+                string val = m.Value.Split('/')[0];
+                byte[] b6 = CryptoPan.Ip6Lesen(val);
+                if (b6 == null) continue;
+                int ln = GetLineNumber(lineStarts, m.Index);
+                if (CryptoPan.EingebetteteV4(b6))
+                {
+                    string v4 = b6[12] + "." + b6[13] + "." + b6[14] + "." + b6[15];
+                    if (!ipOk4(v4)) findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-IPv4", Fund = v4, Kontext = getLineCtx(ln) });
+                }
+                else if (!(IsAllowedInAudit(val, cfg) || IstVerfremdeteIp(CryptoPan.Ip6Text(b6), state) || BleibtImSchluesselmodus(CryptoPan.Ip6Text(b6), cfg)))
+                {
+                    findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-IPv6", Fund = m.Value, Kontext = getLineCtx(ln) });
+                }
+            }
+            MatchEvaluator gemischtAus = mm => CryptoPan.Ip6Lesen(mm.Value.Split('/')[0]) != null ? Regex.Replace(mm.Value, "[^\\r\\n]", " ") : mm.Value;
+            ipCleanText = RxIpv6Gemischt.Replace(ipCleanText, gemischtAus);
+            string v6Text = RxIpv6Gemischt.Replace(cleanText, gemischtAus);
+
             // 1. Prüfe auf verbliebene IPv4
             foreach (Match m in RxIpv4.Matches(ipCleanText))
             {
@@ -3029,11 +3192,14 @@ namespace AnonTool
             }
 
             // 2. Prüfe auf verbliebene IPv6
-            foreach (Match m in RxIpv6.Matches(cleanText))
+            foreach (Match m in RxIpv6.Matches(v6Text))
             {
                 string val = m.Value.Split('/')[0];
                 if (IsAllowedInAudit(val, cfg) || IstVerfremdeteIp(val, state) || BleibtImSchluesselmodus(val, cfg)) continue;
                 if (!val.Contains("::") && val.Split(':').Length < 6) continue;
+                // ::ffff:hhhh:hhhh und 64:ff9b::hhhh:hhhh: die eingebettete IPv4 entscheidet
+                byte[] e6 = CryptoPan.Ip6Lesen(val);
+                if (CryptoPan.EingebetteteV4(e6) && ipOk4(e6[12] + "." + e6[13] + "." + e6[14] + "." + e6[15])) continue;
                 int ln = GetLineNumber(lineStarts, m.Index);
                 findings.Add(new AuditFinding { Datei = fileName, Zeile = ln, Kategorie = "Rest-IPv6", Fund = m.Value, Kontext = getLineCtx(ln) });
             }
@@ -3672,6 +3838,25 @@ namespace AnonTool
                             else if (!NachNurTechnik(wert)) pruefeBeschreibung(j + 1, "T", wert);
                         }
                     }
+                }
+            }
+            // IP-Sonderformen: Rest einer IPv4 an einer IPv6 (…:81ef.0.0.13) und Adressen mit führenden Nullen (010.000.000.013)
+            for (int i = 0; i < zeilen.Length; i++)
+            {
+                foreach (Match m in RxNachIpRest.Matches(zeilen[i]))
+                {
+                    if (CryptoPan.Ip4LesenNullen(m.Groups[1].Value) == null && !NachErlaubt(m.Value, cfg, fest)) melde(i + 1, "IP", m.Value, "Nachpruefung-IP");
+                }
+                foreach (Match m in RxNachIpNullen.Matches(zeilen[i]))
+                {
+                    string[] okt = m.Value.Split('.');
+                    bool gueltig = true, nullen = false;
+                    foreach (string o in okt)
+                    {
+                        if (int.Parse(o) > 255) gueltig = false;
+                        if (o.Length > 1 && o[0] == '0') nullen = true;
+                    }
+                    if (gueltig && nullen && !NachErlaubt(m.Value, cfg, fest)) melde(i + 1, "IP", m.Value, "Nachpruefung-IP");
                 }
             }
             return funde;

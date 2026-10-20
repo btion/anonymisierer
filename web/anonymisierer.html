@@ -2630,7 +2630,10 @@
   const RxMacDot = /(?<![0-9A-Fa-f.])(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])/g;
   const RxMacRawContext = /((?<![A-Za-z0-9_])(?:mac(?:-address|_address|[ \t]+address)?|hwaddr|lladdr|station|client-id|bssid|chassis-id|peer-mac)(?![A-Za-z0-9_])[ \t":=]{1,6})([0-9A-Fa-f]{6}-?[0-9A-Fa-f]{6})("?)(?![0-9A-Fa-f])/gi;
   const RxMacAruba = /(?<![0-9A-Za-z_.:-])[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}(?![0-9A-Za-z_.:-])/g;
-  const RxIpv4 = /(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:(?:\/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])/g;
+  // IPv4, auch mit führenden Nullen in den Oktetten (010.000.000.013); Ausgabe immer ohne führende Nullen
+  const RxIpv4 = /(?<![0-9.])(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:(?:\/|-)(?:3[0-2]|[12]?[0-9])(?![0-9]))?(?![0-9]|\.[0-9\u0002])/g;
+  // IPv6 mit eingebetteter IPv4 (gemischte Schreibweise x:x::a.b.c.d) als EINE Adresse; Gültigkeit prüft ip6Lesen
+  const RxIpv6Gemischt = /(?<![0-9A-Fa-f:.])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f.]|:[0-9A-Fa-f])/g;
   const RxIpv6 = /(?<![0-9A-Fa-f:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?(?![0-9A-Fa-f:])/g;
   const RxCliPrompt = /^([A-Za-z][A-Za-z0-9_-]{2,48})(\([A-Za-z0-9_-]+\))?([#>])[ \t]+/gm;
   const RxUnprotect = /\u0002PROT_(\d+)\u0003/g;
@@ -2837,9 +2840,27 @@
     return b[0] + "." + b[1] + "." + b[2] + "." + b[3];
   }
 
-  // IPv6 in 16 Byte (Kurz- und Langform, ohne Zonen-Index und ohne eingebettete IPv4-Schreibweise)
+  // IPv4 auch mit führenden Nullen in den Oktetten (010.000.000.013); null, wenn keine IPv4
+  function ip4LesenNullen(text) {
+    const t = String(text).split(".");
+    if (t.length !== 4) return null;
+    const b = new Uint8Array(4);
+    for (let i = 0; i < 4; i++) {
+      if (!/^[0-9]{1,3}$/.test(t[i]) || Number(t[i]) > 255) return null;
+      b[i] = Number(t[i]);
+    }
+    return b;
+  }
+
+  // IPv6 in 16 Byte (Kurz- und Langform, auch gemischt mit eingebetteter IPv4 wie ::ffff:192.0.2.1; ohne Zonen-Index)
   function ip6Lesen(text) {
-    const t = String(text).toLowerCase();
+    let t = String(text).toLowerCase();
+    if (t.indexOf(".") >= 0) {
+      const p = t.lastIndexOf(":");
+      const v4 = p >= 0 ? ip4LesenNullen(t.slice(p + 1)) : null;
+      if (!v4) return null;
+      t = t.slice(0, p + 1) + ((v4[0] << 8) | v4[1]).toString(16) + ":" + ((v4[2] << 8) | v4[3]).toString(16);
+    }
     if (!/^[0-9a-f:]+$/.test(t) || t.indexOf(":::") >= 0) return null;
     const teile = t.split("::");
     if (teile.length > 2) return null;
@@ -2917,6 +2938,26 @@
     return ipStruktur(n, bits + "0") === ipStruktur(n, bits + "1");
   }
 
+  // IPv6 mit eingebetteter IPv4: ::ffff:0:0/96 (IPv4-mapped) und 64:ff9b::/96 (NAT64); die IPv4 steht in Byte 12-15
+  function ipEingebetteteV4(bytes) {
+    if (!bytes || bytes.length !== 16) return false;
+    const mapped = bytes.slice(0, 10).every(x => x === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+    const nat64 = bytes[0] === 0 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b && bytes.slice(4, 12).every(x => x === 0);
+    return mapped || nat64;
+  }
+
+  // IPv6: Schnittstellenkennung mit Nullen in den oberen 48 Bit (::1, ::fe, ::254) bleibt ganz erhalten.
+  // Damit keine andere Kennung dorthin abgebildet wird, kippt auf dem Nullpfad (Bit 64 bis 111) kein Bit.
+  function ipKleineKennung(bytes) {
+    return bytes.length === 16 && bytes.slice(8, 14).every(x => x === 0);
+  }
+
+  function ipKennungErlaubt(praefix, pos) {
+    if (praefix.length !== 16 || pos < 64 || pos >= 112) return true;
+    for (let i = 64; i < pos; i++) if (ipBit(praefix, i)) return true;
+    return false;
+  }
+
   // Klassenerhaltende Abbildung einer Adresse (4 oder 16 Byte); rueck = Umkehrung
   function ipVerfremden(ks, bytes, rueck) {
     const n = bytes.length;
@@ -2924,11 +2965,15 @@
     const vorher = ks.memo.get(schl);
     if (vorher) return Uint8Array.from(vorher);
     const k = ipKlasse(bytes);
+    // IPv6: kleine Schnittstellenkennung bleibt (Bereich endet bei Bit 64), sonst Nullpfad sperren
+    const klein = ipKleineKennung(bytes);
+    const kennung = n === 16 ? ipKennungErlaubt : null;
+    const ende = (voll) => (klein ? Math.min(64, voll) : voll);
     let aus;
     if (k.art === "fest") aus = Uint8Array.from(bytes);
-    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, IP_GRENZE[n], null, !!rueck);
-    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, n * 8, null, !!rueck);
-    else aus = cryptoPanAbbilden(ks, bytes, 0, IP_GRENZE[n], ipOeffentlichErlaubt, !!rueck);
+    else if (k.art === "privat") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(IP_GRENZE[n]), kennung, !!rueck);
+    else if (k.art === "block") aus = cryptoPanAbbilden(ks, bytes, k.laenge, ende(n * 8), kennung, !!rueck);
+    else aus = cryptoPanAbbilden(ks, bytes, 0, ende(IP_GRENZE[n]), n === 16 ? (p, pos) => ipOeffentlichErlaubt(p, pos) && ipKennungErlaubt(p, pos) : ipOeffentlichErlaubt, !!rueck);
     ks.memo.set(schl, Uint8Array.from(aus));
     return aus;
   }
@@ -2956,6 +3001,22 @@
 
   function normalizeMac(rawMac) {
     return rawMac.replace(/[^0-9A-Fa-f]/g, "").toLowerCase();
+  }
+
+  // IPv6 mit eingebetteter IPv4 (x:x::a.b.c.d): ::ffff:0:0/96 und 64:ff9b::/96 behalten Präfix und Schreibweise,
+  // der IPv4-Teil folgt den IPv4-Regeln (gleiches Ergebnis wie die nackte IPv4); sonst ganze Adresse als IPv6 in
+  // normaler Schreibweise. null = keine gültige Adresse (dann übernehmen die IPv6- und IPv4-Stufe).
+  function formatIpv6GemischtToken(rawMatch, cfg, state) {
+    const slashIdx = rawMatch.indexOf("/");
+    const ipPart = slashIdx > 0 ? rawMatch.slice(0, slashIdx) : rawMatch;
+    const suffix = slashIdx > 0 ? rawMatch.slice(slashIdx) : "";
+    const bytes = ip6Lesen(ipPart);
+    if (!bytes) return null;
+    if (cfg.exakteAusnahmen.has(ipPart.toLowerCase())) return rawMatch;
+    const p = ipPart.lastIndexOf(":");
+    if (ipEingebetteteV4(bytes)) return ipPart.slice(0, p + 1) + formatIpv4Token(ip4Text(bytes.slice(12)), cfg, state) + suffix;
+    const norm = ip6Text(bytes) + suffix;
+    return formatIpv6Token(norm, cfg, state);
   }
 
   // Schlüsselmodus: Ausgabe wie ipTextVerfremden; die Zuordnungstabelle erhält Ausgabe -> Original
@@ -2993,17 +3054,17 @@
 
     const parts = ipPart.split(".");
     if (parts.length !== 4) return rawMatch;
-    for (let i = 0; i < 4; i++) {
-      if (parts[i].length > 1 && parts[i][0] === "0") return rawMatch;
-    }
     const o1 = parseInt(parts[0], 10);
     const o2 = parseInt(parts[1], 10);
     const o3 = parseInt(parts[2], 10);
     const o4 = parseInt(parts[3], 10);
     if ([o1, o2, o3, o4].some(n => Number.isNaN(n))) return rawMatch;
+    // Führende Nullen (010.000.000.013): wie die normale IPv4 behandeln, Ausgabe ohne führende Nullen
+    ipPart = o1 + "." + o2 + "." + o3 + "." + o4;
+    const unveraendert = ipPart + suffix;
 
     if (isSubnetMaskOrSpecialIpv4(o1, o2, o3, o4, cfg.subnetzmaskenBehalten)) {
-      return rawMatch;
+      return unveraendert;
     }
 
     if (cfg.exakteAusnahmen.has(ipPart.toLowerCase()) || cfg.exakteAusnahmen.has(rawMatch.toLowerCase())) {
@@ -3013,7 +3074,7 @@
     if (cfg.ipModus === "schluessel") {
       const praefix = slashIdx > 0 ? parseInt(suffix.slice(1), 10) : null;
       const aus = ipSchluesselAusgabe(ipPart, praefix, false, cfg, state);
-      return aus === null ? rawMatch : aus + suffix;
+      return aus === null ? unveraendert : aus + suffix;
     }
 
     state.addStat("ip", 1);
@@ -3086,6 +3147,22 @@
     if (!lower.includes("::")) {
       const segs = lower.split(":");
       if (segs.length < 6) return rawMatch;
+    }
+    const bytes6 = ip6Lesen(lower);
+    if (ipEingebetteteV4(bytes6)) {
+      // ::ffff:hhhh:hhhh, 64:ff9b::hhhh:hhhh: Präfix und Schreibweise bleiben, IPv4-Teil nach den IPv4-Regeln
+      const v4 = ip4Text(bytes6.slice(12));
+      const r = formatIpv4Token(v4, cfg, state);
+      if (r === v4) return rawMatch;
+      const gruppen = ipPart.split(":");
+      const zweiGruppen = gruppen.length >= 3 && /^[0-9A-Fa-f]{1,4}$/.test(gruppen[gruppen.length - 1]) && /^[0-9A-Fa-f]{1,4}$/.test(gruppen[gruppen.length - 2]);
+      const vorn = zweiGruppen ? gruppen.slice(0, -2).join(":") + ":" : (bytes6[1] === 0x64 ? "64:ff9b::" : "::ffff:");
+      const rb = ip4Lesen(r);
+      if (!rb) return vorn + r + suffix;
+      const breite = (g) => (zweiGruppen && g.length === 4 ? 4 : 1);
+      const h1 = ((rb[0] << 8) | rb[1]).toString(16).padStart(breite(gruppen[gruppen.length - 2] || ""), "0");
+      const h2 = ((rb[2] << 8) | rb[3]).toString(16).padStart(breite(gruppen[gruppen.length - 1] || ""), "0");
+      return vorn + h1 + ":" + h2 + suffix;
     }
     if (cfg.ipModus === "schluessel") {
       const aus = ipSchluesselAusgabe(lower, slashIdx > 0 ? parseInt(suffix.slice(1), 10) : null, true, cfg, state);
@@ -3790,8 +3867,12 @@
       });
     }
 
-    // STUFE 9: IPv6 & IPv4
+    // STUFE 9: IPv6 & IPv4 (zuerst IPv6 mit eingebetteter IPv4 als eine Adresse)
     if (cfg.catIp) {
+      text = text.replace(RxIpv6Gemischt, (m) => {
+        const replaced = formatIpv6GemischtToken(m, cfg, state);
+        return replaced === null ? m : protect(replaced);
+      });
       text = text.replace(RxIpv6, (m) => {
         const replaced = formatIpv6Token(m, cfg, state);
         if (replaced === m) return m;
@@ -4081,12 +4162,31 @@
     };
     const werte = [];
     const marke = (v) => { werte.push(v); return "\u0002R" + (werte.length - 1) + "\u0003"; };
+    // Eingebettete IPv4 (::ffff:…, 64:ff9b::…): nur der IPv4-Teil wird zurückübersetzt; null = unverändert
+    const v4Zurueck = (v4) => {
+      const t = ipVonTabelle(v4);
+      if (t !== undefined) { erg.ausTabelle++; return t; }
+      const b = ip4Lesen(v4);
+      if (!ks || !b || ipKlasse(b).art === "fest" || isSubnetMaskOrSpecialIpv4(b[0], b[1], b[2], b[3], true)) return null;
+      const r = ipTextVerfremden(ks, v4, null, true);
+      if (r !== null) erg.ueberSchluessel++;
+      return r;
+    };
     const zurueck = (m, v6) => {
       const trenn = v6 ? m.indexOf("/") : m.search(/[/-]/);
       const ip = trenn > 0 ? m.slice(0, trenn) : m;
       const suffix = trenn > 0 ? m.slice(trenn) : "";
       const bytes = v6 ? ip6Lesen(ip) : ip4Lesen(ip);
       if (!bytes) return m;
+      if (v6 && ipEingebetteteV4(bytes) && ipVonTabelle(ip) === undefined) {
+        const r = v4Zurueck(ip4Text(bytes.slice(12)));
+        if (r === null) return m;
+        if (ip.indexOf(".") >= 0) return marke(ip.slice(0, ip.lastIndexOf(":") + 1) + r + suffix);
+        const g = ip.split(":");
+        const rb = ip4Lesen(r);
+        const pad = (x, alt) => x.toString(16).padStart(alt && alt.length === 4 ? 4 : 1, "0");
+        return marke(g.slice(0, -2).join(":") + ":" + pad((rb[0] << 8) | rb[1], g[g.length - 2]) + ":" + pad((rb[2] << 8) | rb[3], g[g.length - 1]) + suffix);
+      }
       const norm = v6 ? ip6Text(bytes) : ip;
       const t = ipVonTabelle(ip) !== undefined ? ipVonTabelle(ip) : ipVonTabelle(norm);
       if (t !== undefined) { erg.ausTabelle++; return marke(t + suffix); }
@@ -4098,7 +4198,13 @@
       erg.ueberSchluessel++;
       return marke(r + suffix);
     };
-    let text = input.replace(RxIpv6, (m) => zurueck(m, true));
+    // gültige gemischte Adressen immer als Ganzes markieren, damit die IPv6-Stufe sie nicht zerteilt
+    let text = input.replace(RxIpv6Gemischt, (m) => {
+      if (!ip6Lesen(m.split("/")[0])) return m;
+      const r = zurueck(m, true);
+      return r === m ? marke(m) : r;
+    });
+    text = text.replace(RxIpv6, (m) => zurueck(m, true));
     text = text.replace(RxIpv4, (m) => zurueck(m, false));
     const tokens = Array.from(rev.keys()).filter(k => k && !ip4Lesen(k) && !ip6Lesen(k)).sort((a, b) => b.length - a.length);
     if (tokens.length > 0) {
@@ -4505,8 +4611,20 @@
         }
       }
     }
+    // IP-Sonderformen: Rest einer IPv4 an einer IPv6 (…:81ef.0.0.13) und Adressen mit führenden Nullen (010.000.000.013)
+    for (let i = 0; i < zeilen.length; i++) {
+      for (const m of zeilen[i].matchAll(RxNachIpRest)) {
+        if (!ip4LesenNullen(m[1]) && !nachErlaubt(m[0], cfg)) melde(i + 1, "IP", m[0], "Nachpruefung-IP");
+      }
+      for (const m of zeilen[i].matchAll(RxNachIpNullen)) {
+        const okt = m[0].split(".");
+        if (okt.every(o => Number(o) <= 255) && okt.some(o => o.length > 1 && o[0] === "0") && !nachErlaubt(m[0], cfg)) melde(i + 1, "IP", m[0], "Nachpruefung-IP");
+      }
+    }
     return funde;
   }
+  const RxNachIpRest = /(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}([0-9A-Fa-f]{1,4}(?:\.[0-9]{1,3}){3})(?![0-9A-Za-z.])/g;
+  const RxNachIpNullen = /(?<![0-9A-Za-z.:])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?![0-9A-Za-z]|\.[0-9])/g;
 
   // --------------------------------------------------------------------------
   // Kategoriegebundene Freigaben (ausnahmen.freigegeben: [{ kategorie, wert }]): ein bewusst
@@ -4537,6 +4655,7 @@
       case "Nachpruefung-Domaene": return "Domaene";
       case "Rest-IPv4": case "Pfad-IPv4": return "IPv4";
       case "Rest-IPv6": return "IPv6";
+      case "Nachpruefung-IP": return "IPv4";
       case "Rest-MAC": return "MAC";
       case "Rest-EMail": return "EMail";
       case "Rest-Freitext": return "Freitext";
@@ -4736,6 +4855,27 @@
     const rxSuspiciousLongHexOrB64 = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9+/]{40,}={1,2})\b/g;
     const rxCryptHash = /\$(?:1a?|2[abxy]|5|6|7|8|9|y|c)\$[a-zA-Z0-9./=$+]{6,128}/g;
 
+    // 0c. IPv6 mit eingebetteter IPv4 (x:x::a.b.c.d) als eine Adresse prüfen und für die Schritte 1 und 2 ausblenden
+    const ipOk4 = (v4) => {
+      const b = ip4Lesen(v4);
+      return Boolean(b) && (isAllowedInAudit(v4, cfg) || istVerfremdeteIp(v4, state) || bleibtImSchluesselmodus(v4, cfg) || isSubnetMaskOrSpecialIpv4(b[0], b[1], b[2], b[3], true));
+    };
+    for (const m of cleanText.matchAll(RxIpv6Gemischt)) {
+      const val = m[0].split("/")[0];
+      const b6 = ip6Lesen(val);
+      if (!b6) continue;
+      const ln = getLineNumberFromIndex(lineStarts, m.index);
+      if (ipEingebetteteV4(b6)) {
+        const v4 = ip4Text(b6.slice(12));
+        if (!ipOk4(v4)) findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv4", fund: v4, kontext: getLineCtx(ln) });
+      } else if (!(isAllowedInAudit(val, cfg) || istVerfremdeteIp(ip6Text(b6), state) || bleibtImSchluesselmodus(ip6Text(b6), cfg))) {
+        findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv6", fund: m[0], kontext: getLineCtx(ln) });
+      }
+    }
+    const gemischtAus = (t) => t.replace(RxIpv6Gemischt, (m) => (ip6Lesen(m.split("/")[0]) ? m.replace(/[^\r\n]/g, " ") : m));
+    ipCleanText = gemischtAus(ipCleanText);
+    const v6Text = gemischtAus(cleanText);
+
     // 1. Prüfe auf verbliebene IPv4 (verfremdete Adressen aus der Zuordnungstabelle sind kein Restfund)
     for (const m of ipCleanText.matchAll(RxIpv4)) {
       const val = m[0];
@@ -4748,10 +4888,13 @@
     }
 
     // 2. Prüfe auf verbliebene IPv6
-    for (const m of cleanText.matchAll(RxIpv6)) {
+    for (const m of v6Text.matchAll(RxIpv6)) {
       const val = m[0].split("/")[0];
       if (isAllowedInAudit(val, cfg) || istVerfremdeteIp(val, state) || bleibtImSchluesselmodus(val, cfg)) continue;
       if (!val.includes("::") && val.split(":").length < 6) continue;
+      // ::ffff:hhhh:hhhh und 64:ff9b::hhhh:hhhh: die eingebettete IPv4 entscheidet
+      const b6 = ip6Lesen(val);
+      if (ipEingebetteteV4(b6) && ipOk4(ip4Text(b6.slice(12)))) continue;
       const ln = getLineNumberFromIndex(lineStarts, m.index);
       findings.push({ datei: fileName, zeile: ln, kategorie: "Rest-IPv6", fund: m[0], kontext: getLineCtx(ln) });
     }
@@ -6443,6 +6586,7 @@
     "Rest-IPv4": "IP-Adresse",
     "Pfad-IPv4": "IP-Adresse im Dateinamen",
     "Rest-IPv6": "IPv6-Adresse",
+    "Nachpruefung-IP": "IP-Adresse in Sonderform (Rest an IPv6, führende Nullen)",
     "Rest-MAC": "MAC-Adresse",
     "Rest-EMail": "E-Mail-Adresse",
     "Rest-Freitext": "Freitext (Beschreibung, Standort)",

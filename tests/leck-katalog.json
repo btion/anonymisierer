@@ -11,7 +11,8 @@
     "Community": "Nachpruefung-Geheimnis",
     "Beschreibung": "Nachpruefung-Beschreibung",
     "IPv4": "Rest-IPv4",
-    "IPv6": "Rest-IPv6"
+    "IPv6": "Rest-IPv6",
+    "IP-Sonderform": "Nachpruefung-IP"
   },
   "faelle": [
     {
@@ -829,6 +830,73 @@
         {
           "wert": "2001:0db8:0000:0000:0000:0000:0000:0001",
           "kategorie": "IPv6",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K35",
+      "quelle": "Fix IP-Sonderformen (Schlüsselmodus): IPv6 mit eingebetteter IPv4, ::ffff:hhhh:hhhh, führende Nullen",
+      "ipModus": "schluessel",
+      "ipSchluesselHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "eingabe": "ipv6 neighbor ::ffff:10.0.0.13\nnat64 prefix 64:ff9b::10.0.0.13\nipv6 address 2001:db8::10.0.0.13/64\nmapped ::ffff:0a00:000d\nntp server 010.000.000.013\nlogging host 10.0.0.013\n",
+      "ziele": [
+        {
+          "wert": "10.0.0.13",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "2001:db8::10.0.0.13",
+          "kategorie": "IPv6",
+          "art": "identitaet"
+        },
+        {
+          "wert": "::ffff:0a00:000d",
+          "kategorie": "IPv6",
+          "art": "identitaet"
+        },
+        {
+          "wert": "010.000.000.013",
+          "kategorie": "IP-Sonderform",
+          "art": "identitaet"
+        },
+        {
+          "wert": "10.0.0.013",
+          "kategorie": "IP-Sonderform",
+          "art": "identitaet"
+        }
+      ]
+    },
+    {
+      "id": "K36",
+      "quelle": "Fix IP-Sonderformen (alter Modus): IPv6 mit eingebetteter IPv4, ::ffff:hhhh:hhhh, führende Nullen",
+      "ipModus": "platzhalter",
+      "eingabe": "ipv6 neighbor ::ffff:10.0.0.13\nnat64 prefix 64:ff9b::10.0.0.13\nipv6 address 2001:db8::10.0.0.13/64\nmapped ::ffff:0a00:000d\nntp server 010.000.000.013\nlogging host 10.0.0.013\n",
+      "ziele": [
+        {
+          "wert": "10.0.0.13",
+          "kategorie": "IPv4",
+          "art": "identitaet"
+        },
+        {
+          "wert": "2001:db8::10.0.0.13",
+          "kategorie": "IPv6",
+          "art": "identitaet"
+        },
+        {
+          "wert": "::ffff:0a00:000d",
+          "kategorie": "IPv6",
+          "art": "identitaet"
+        },
+        {
+          "wert": "010.000.000.013",
+          "kategorie": "IP-Sonderform",
+          "art": "identitaet"
+        },
+        {
+          "wert": "10.0.0.013",
+          "kategorie": "IP-Sonderform",
           "art": "identitaet"
         }
       ]
