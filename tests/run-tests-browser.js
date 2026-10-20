@@ -5,6 +5,7 @@
 // 3. Korrekturen nach Praxistest: a) Verdachtsfund freigeben, b) Ersetzungsliste, c) Einzeldatei-Download,
 //    d) Description in "show interface brief", dazu Sperre bei unvollständigem Lauf, verdeckte Dateinamen, Layout.
 // 4. IP-Modell: Schlüsselmodus als Standard, IP-Schlüssel (.anonkey), Hinweise, Rückübersetzung, alter Modus wählbar.
+// 5. Sammelentscheidungen für Fundgruppen (Auswahl, Sammelaktion, Bestätigung, Rückgängig, Zähler, Tastatur).
 // Die Abläufe 1 bis 3 laufen ausdrücklich im alten IP-Modus.
 //
 //   node tests/run-tests-browser.js        ohne Browser: "NICHT AUSGEFÜHRT" (Exit-Code 0)
@@ -590,6 +591,132 @@ window.addEventListener("load", async () => {
 });
 </script></body>`;
 
+// 5. Sammelentscheidungen für Fundgruppen (Schritt 3)
+const PROBE_SAMMEL = `<script>
+${WARTE_HILFE}
+window.__fehler = [];
+window.__alerts = 0;
+window.addEventListener("error", e => window.__fehler.push(String(e.message)));
+window.alert = () => { window.__alerts++; };
+window.confirm = () => true;
+const blobs = [];
+const origUrl = URL.createObjectURL.bind(URL);
+URL.createObjectURL = (b) => { blobs.push(b); return origUrl(b); };
+const warte = (ms) => new Promise(r => setTimeout(r, ms));
+const $ = (id) => document.getElementById(id);
+const pruefungen = [];
+const pruefe = (name, ok, detail) => pruefungen.push({ name, ok: Boolean(ok), detail: detail === undefined ? "" : String(detail) });
+const code = () => $("ablaufStatus").dataset.code;
+const zip = () => !$("btnDownloadZip").disabled;
+async function dateien(liste) {
+  const info = $("fileCountInfo");
+  info.textContent = "";
+  const dt = new DataTransfer();
+  for (const [name, inhalt] of liste) dt.items.add(new File([inhalt], name, { type: "text/plain" }));
+  const inp = $("inputFiles");
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event("change"));
+  await bis(() => /bereit/.test(info.textContent));
+}
+async function lauf(knopf) {
+  const banner = $("auditBanner");
+  banner.textContent = "";
+  $(knopf || "btnRunAnon").click();
+  await bis(() => /Prüfergebnis/.test(banner.textContent));
+  await warte(50);
+}
+// erfundene Hexwerte (34 Zeichen, ohne Schlüsselwort): Verdachtsfunde
+async function hexWert(i) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode("sammel-browser-" + i)));
+  return Array.from(h).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 34);
+}
+const karten = () => Array.from(document.querySelectorAll(".fundkarte"));
+const offen = () => karten().filter(k => !k.classList.contains("entschieden")).length;
+const anzahl = () => $("sammelAnzahl").textContent;
+window.addEventListener("load", async () => {
+  try {
+    const zeilen = [];
+    for (let i = 0; i < 50; i++) zeilen.push("x " + await hexWert(i));
+    await dateien([["v.log", zeilen.join("\\n") + "\\n"]]);
+    await lauf();
+    pruefe("Sammel: 50 offene Verdachtsfunde", code() === "OFFENE_FUNDE" && offen() === 50 && !$("sammelLeiste").hidden, code() + " " + offen());
+    pruefe("Sammel: jede Fundkarte hat ein Auswahl-Häkchen", karten().every(k => k.querySelector("input.fk-auswahl")));
+    $("btnSammelAlle").click(); await warte(20);
+    pruefe("Sammel: 'Alle auswählen' zeigt 50 ausgewählt", /^50 ausgewählt/.test(anzahl()), anzahl());
+    $("btnSammelFreigeben").click(); await warte(20);
+    pruefe("Sammel: Freigabe ohne gemeinsame Bestätigung gesperrt", $("sammelZusammenfassung").hidden && /bestätigen/i.test($("sammelStatus").textContent) && offen() === 50, $("sammelStatus").textContent);
+    pruefe("Sammel: EINE Bestätigung für alle Verdachtsfunde", !$("sammelBestaetigungZeile").hidden && /Ich habe die 50 ausgewählten Verdachtsfunde geprüft: kein Geheimnis/.test($("sammelBestaetigungText").textContent), $("sammelBestaetigungText").textContent);
+    $("sammelBestaetigung").click(); await warte(20);
+    $("btnSammelFreigeben").click(); await warte(20);
+    pruefe("Sammel: Zusammenfassung vor dem Anwenden (Kategorie, Aktion, Anzahl)", !$("sammelZusammenfassung").hidden && /50/.test($("sammelZusammenfassungText").textContent) && $("sammelZusammenfassungListe").children.length === 50 && offen() === 50, $("sammelZusammenfassungText").textContent);
+    $("btnSammelBestaetigen").click(); await warte(50);
+    pruefe("Sammel: 50 Verdachtsfunde mit einem Klick freigegeben", offen() === 0, offen());
+    $("btnSammelRueckgaengig").click(); await warte(50);
+    pruefe("Sammel: Rückgängig stellt den Zustand wieder her", offen() === 50 && $("btnSammelRueckgaengig").disabled, offen());
+    $("btnSammelAlle").click(); await warte(20);
+    if (!$("sammelBestaetigung").checked) $("sammelBestaetigung").click();
+    $("btnSammelFreigeben").click(); await warte(20);
+    $("btnSammelBestaetigen").click(); await warte(50);
+    const einzel = karten()[0].querySelector('button[data-aktion="rueckgaengig"]');
+    einzel.click(); await warte(50);
+    pruefe("Sammel: Einzelkarte bleibt einzeln änderbar", offen() === 1, offen());
+    const k0 = karten().find(k => !k.classList.contains("entschieden"));
+    const bes = k0.querySelector("input[data-bestaetigung]"); bes.click(); await warte(20);
+    k0.querySelector('button[data-aktion="unveraendert"]').click(); await warte(50);
+    await lauf("btnApplyFindingDecisions");
+    pruefe("Sammel: nach dem Anwenden keine Restfunde, Download frei", code() === "KEINE_RESTFUNDE" && zip(), code());
+    pruefe("Sammel: Zähler 'davon per Sammelaktion: 49'", /50 bewusst freigegeben, davon per Sammelaktion: 49/.test($("ablaufStatus").textContent), $("ablaufStatus").textContent);
+    $("btnDownloadReport").click(); await warte(50);
+    const bericht = JSON.parse(await blobs[blobs.length - 1].text());
+    pruefe("Sammel: Bericht weist Sammelfreigaben getrennt aus", bericht.bewusstFreigegeben === 50 && bericht.bewusstFreigegebenSammelaktion === 49, JSON.stringify([bericht.bewusstFreigegeben, bericht.bewusstFreigegebenSammelaktion]));
+    // 3 Verdacht + 1 sicheres Geheimnis: Geheimnis wird übersprungen und bleibt offen
+    $("btnClearAll").click(); await warte(50);
+    await dateien([["g.log", ["x " + await hexWert(100), "x " + await hexWert(101), "x " + await hexWert(102), "authorization Kx7mPq2zQ", ""].join("\\n")]]);
+    await lauf();
+    pruefe("Sammel: 4 offene Fundgruppen", offen() === 4, offen());
+    $("btnSammelAlle").click(); await warte(20);
+    pruefe("Sammel: Bestätigung nennt nur die 3 Verdachtsfunde", /Ich habe die 3 ausgewählten Verdachtsfunde/.test($("sammelBestaetigungText").textContent), $("sammelBestaetigungText").textContent);
+    $("sammelBestaetigung").click(); await warte(20);
+    $("btnSammelFreigeben").click(); await warte(20);
+    $("btnSammelBestaetigen").click(); await warte(50);
+    const offeneKarte = karten().find(k => !k.classList.contains("entschieden"));
+    pruefe("Sammel: sicheres Geheimnis übersprungen und weiter offen", offen() === 1 && offeneKarte && /sicher erkannt/.test(offeneKarte.textContent) && /1 übersprungen, weil sicheres Geheimnis/.test($("sammelStatus").textContent), $("sammelStatus").textContent);
+    // Auswahl nach Kategorie, Tastatur, Umschalt+Klick
+    $("btnSammelRueckgaengig").click(); await warte(50);
+    $("btnSammelKeine").click(); await warte(20);
+    pruefe("Sammel: 'Auswahl aufheben'", /^0 ausgewählt/.test(anzahl()), anzahl());
+    const opt = Array.from($("sammelKategorie").options).find(o => /Verdacht/.test(o.textContent));
+    $("sammelKategorie").value = opt ? opt.value : "";
+    $("btnSammelKategorie").click(); await warte(20);
+    pruefe("Sammel: Auswahl nach Kategorie (alle Verdacht)", /^3 ausgewählt/.test(anzahl()), anzahl());
+    $("btnSammelKeine").click(); await warte(20);
+    $("sammelDatei").value = "g.log"; $("btnSammelDatei").click(); await warte(20);
+    pruefe("Sammel: Auswahl nach Datei", /^4 ausgewählt/.test(anzahl()), anzahl());
+    $("btnSammelKeine").click(); await warte(20);
+    const k1 = karten()[1];
+    k1.focus();
+    k1.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    await warte(20);
+    pruefe("Sammel: Leertaste markiert die fokussierte Karte", /^1 ausgewählt/.test(anzahl()) && karten()[1].querySelector("input.fk-auswahl").checked, anzahl());
+    $("btnSammelKeine").click(); await warte(20);
+    karten()[0].querySelector("input.fk-auswahl").click(); await warte(20);
+    karten()[3].querySelector("input.fk-auswahl").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
+    await warte(20);
+    pruefe("Sammel: Umschalt+Klick markiert einen Bereich", /^4 ausgewählt/.test(anzahl()), anzahl());
+    // Dauerhafte Regel landet kategoriegebunden in ausnahmen.freigegeben
+    if (!$("sammelBestaetigung").checked) $("sammelBestaetigung").click();
+    document.querySelector('input[name="sammelUmfang"][value="dauerhaft"]').click();
+    $("btnSammelFreigeben").click(); await warte(20);
+    $("btnSammelBestaetigen").click(); await warte(50);
+    pruefe("Sammel: dauerhafte Regel als 3 bewusst freigegebene Werte in den Einstellungen", /3 bewusst freigegebene Werte/.test($("einstellungsZusammenfassung").textContent), $("einstellungsZusammenfassung").textContent);
+  } catch (e) { window.__fehler.push("Probe: " + e.message); }
+  const out = document.createElement("pre");
+  out.id = "__probe";
+  out.textContent = JSON.stringify({ fehler: window.__fehler, alerts: window.__alerts, pruefungen });
+  document.body.appendChild(out);
+});
+</script></body>`;
+
 let passed = 0;
 let failed = 0;
 function assert(cond, msg) {
@@ -668,6 +795,18 @@ function probeAusfuehren(skript, budgetMs) {
     assert(daten.alerts === 0, `IP-Modell-Test: keine alert()-Dialoge (${daten.alerts})`);
     for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
     assert(daten.pruefungen.length >= 20, `IP-Modell-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
+  }
+}
+
+// 5. Sammelentscheidungen für Fundgruppen
+{
+  const daten = probeAusfuehren(PROBE_SAMMEL, 180000);
+  assert(Boolean(daten), "Sammel-Test: Ergebnis des Testskripts gefunden");
+  if (daten) {
+    assert(daten.fehler.length === 0, `Sammel-Test: keine JavaScript-Fehler (${daten.fehler.join(" | ")})`);
+    assert(daten.alerts === 0, `Sammel-Test: keine alert()-Dialoge (${daten.alerts})`);
+    for (const c of daten.pruefungen) assert(c.ok, `${c.name}${c.detail ? " (" + c.detail + ")" : ""}`);
+    assert(daten.pruefungen.length >= 21, `Sammel-Test: alle Prüfungen ausgeführt (${daten.pruefungen.length})`);
   }
 }
 

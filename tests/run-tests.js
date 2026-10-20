@@ -2309,6 +2309,69 @@ const releaseZipBytes = core.createZipArchive(releaseEntries);
     assert(privat / N < 0.002, `Crypto-PAn: private Adresse (12 Bit) bleibt nur mit ~1/4096 unverändert (${(100 * privat / N).toFixed(3)} %, Soll unter 0,2 %)`);
   }
 
+  // --- 20. Bedienoberfläche: Sammelentscheidungen für Fundgruppen (Logik ohne DOM) ---
+  console.log("--- 20. Sammelentscheidungen (Logik) ---");
+  {
+    const da = ["planeSammelaktion", "sammelEintraegeErzeugen", "sammelFreigabeSchluessel", "auswahlNachKategorie", "auswahlNachDatei", "auswahlBereich", "sammelKategorien"].every(f => typeof core[f] === "function");
+    assert(da, "Sammelaktion: Logikfunktionen exportiert (Plan, Einträge, Auswahl nach Kategorie/Datei/Bereich)");
+    if (da) {
+      const hexWert = (i) => crypto.createHash("sha1").update("sammel-" + i).digest("hex").slice(0, 34);
+      const ov = { overrides: { ipModus: "platzhalter" } };
+      // 50 Verdachtsfunde (Hexwerte ohne Schlüsselwort)
+      const text50 = Array.from({ length: 50 }, (_, i) => "x " + hexWert(i)).join("\n") + "\n";
+      const l1 = core.reprocessFilesWithState([{ path: "v.log", text: text50 }], diskRules, {}, new core.AnonState(), ov);
+      const g50 = core.bildeFundgruppen(l1.findings, null);
+      assert(g50.length === 50 && g50.every(g => g.verdacht), `Sammelaktion: 50 Verdachtsfunde als 50 Fundgruppen (${g50.length})`);
+      const alle = new Set(g50.map(g => g.schluessel));
+      const ohne = core.planeSammelaktion(g50, alle, "unveraendert", {}, false);
+      assert(ohne.fehltBestaetigung && ohne.verdacht === 50, "Sammelaktion: Freigabe von Verdachtsfunden braucht EINE Bestätigung für alle 50");
+      let abgelehnt = false;
+      try { core.sammelEintraegeErzeugen(ohne, "auftrag", "s1"); } catch (e) { abgelehnt = true; }
+      assert(abgelehnt, "Sammelaktion: ohne Bestätigung wird nichts angewendet");
+      const mit = core.planeSammelaktion(g50, alle, "unveraendert", {}, true);
+      const e50 = core.sammelEintraegeErzeugen(mit, "auftrag", "s1");
+      assert(!mit.fehltBestaetigung && e50.length === 50 && e50.every(e => e.aktion === "unveraendert" && e.sammel === "s1" && e.umfang === "auftrag"), "Sammelaktion: 50 Verdachtsfunde mit einem Klick freigegeben");
+      assert(mit.zusammenfassung.length === 1 && mit.zusammenfassung[0].anzahl === 50 && mit.zusammenfassung[0].aktion === "unveraendert", `Sammelaktion: Zusammenfassung je Kategorie und Aktion (${JSON.stringify(mit.zusammenfassung.map(z => [z.kategorie, z.aktion, z.anzahl]))})`);
+      const ct50 = core.baueLaufBegriffe({}, e50);
+      const l2 = core.reprocessFilesWithState([{ path: "v.log", text: text50 }], diskRules, ct50, new core.AnonState(), ov);
+      assert(l2.findings.length === 0 && core.isReleaseAllowed(l2.findings, false, l2.results), `Sammelaktion: nach der Sammelfreigabe keine Restfunde, Download frei (${l2.findings.length})`);
+      const sf = core.sammelFreigabeSchluessel(e50);
+      assert(sf.size === 50 && Array.from(sf).every(k => k.startsWith("Verdacht\u0000")), "Sammelaktion: Freigaben kategoriegebunden (Verdacht)");
+      // 3 Verdacht + 1 sicheres Geheimnis: Geheimnis wird übersprungen und bleibt offen
+      const text4 = ["x " + hexWert(100), "x " + hexWert(101), "x " + hexWert(102), "authorization Kx7mPq2zQ", ""].join("\n");
+      const l3 = core.reprocessFilesWithState([{ path: "g.log", text: text4 }], diskRules, {}, new core.AnonState(), ov);
+      const g4 = core.bildeFundgruppen(l3.findings, null);
+      assert(g4.length === 4 && g4.filter(g => g.verdacht).length === 3 && g4.filter(g => g.sicheresGeheimnis).length === 1, `Sammelaktion: 3 Verdacht und 1 sicheres Geheimnis (${g4.map(g => g.art).join(",")})`);
+      const p4 = core.planeSammelaktion(g4, new Set(g4.map(g => g.schluessel)), "unveraendert", {}, true);
+      const geh = g4.find(g => g.sicheresGeheimnis);
+      assert(p4.anwenden.length === 3 && p4.uebersprungenGeheimnis === 1 && p4.uebersprungen.some(u => u.gruppe === geh && u.grund === "sicheres Geheimnis"), "Sammelaktion: sicheres Geheimnis bei Freigabe übersprungen (1 übersprungen)");
+      const d4 = {};
+      for (const e of core.sammelEintraegeErzeugen(p4, "auftrag", "s2")) d4[e.schluessel] = e;
+      assert(!d4[geh.schluessel] && Object.keys(d4).length === 3, "Sammelaktion: sicheres Geheimnis bleibt offen");
+      const m4 = core.planeSammelaktion(g4, new Set([geh.schluessel]), "maskieren", d4, false);
+      assert(m4.anwenden.length === 1 && !m4.fehltBestaetigung && core.sammelEintraegeErzeugen(m4, "auftrag", "s3")[0].eintraege.geheimnisMuster.length === 1, "Sammelaktion: sicheres Geheimnis per Sammelaktion maskierbar");
+      const r4 = core.planeSammelaktion(g4, new Set(g4.map(g => g.schluessel)), "ersetzen", d4, false);
+      assert(r4.uebersprungen.filter(u => u.grund === "bereits entschieden").length === 3 && r4.anwenden.length === 1 && r4.anwenden[0].aktion === "ersetzen", "Sammelaktion: bereits entschiedene Gruppen bleiben unverändert");
+      // Dauerhafte Regel: kategoriegebunden in ausnahmen.freigegeben
+      const dauer = core.sammelEintraegeErzeugen(core.planeSammelaktion(g4, new Set(g4.map(g => g.schluessel)), "unveraendert", {}, true), "dauerhaft", "s4");
+      let ctD = {};
+      for (const e of dauer) ctD = core.fuegeEintraegeHinzu(ctD, e.eintraege);
+      const fr = ctD.muster["ausnahmen.freigegeben"] || [];
+      assert(dauer.every(e => e.umfang === "dauerhaft") && fr.length === 3 && fr.every(x => x.kategorie === "Verdacht" && core.pruefeFreigabeEintrag(x) === null), `Sammelaktion: dauerhafte Regel landet kategoriegebunden in ausnahmen.freigegeben (${JSON.stringify(fr.map(x => x.kategorie))})`);
+      // Auswahlhilfen
+      const kat = core.sammelKategorien(g4);
+      assert(kat.length === 2 && kat.some(k => k.anzahl === 3), `Sammelaktion: Kategorien mit Anzahl (${JSON.stringify(kat)})`);
+      const verdachtText = g4.find(g => g.verdacht).text;
+      assert(core.auswahlNachKategorie(g4, verdachtText).length === 3 && core.auswahlNachDatei(g4, "g.log").length === 4 && core.auswahlNachDatei(g4, "x.log").length === 0, "Sammelaktion: Auswahl nach Kategorie und Datei");
+      assert(JSON.stringify(core.auswahlBereich(g4, 3, 1)) === JSON.stringify(g4.slice(1, 4).map(g => g.schluessel)), "Sammelaktion: Bereichsauswahl (Umschalt+Klick) in beide Richtungen");
+      // Zähler: davon per Sammelaktion
+      const st = core.berechneAblaufStatus({ dateien: 1, lauf: { isProbe: false, offeneGruppen: 0, gruppen: 0, nichtVerarbeitet: 0, freigegeben: 50, freigegebenSammel: 50 }, freigabe: true });
+      assert(/50 bewusst freigegeben, davon per Sammelaktion: 50/.test(st.text), `Sammelaktion: Zähler 'bewusst freigegeben (N), davon per Sammelaktion: M' (${st.text})`);
+      const det = core.auditTextDetail("x " + hexWert(0) + "\n", "v.log", core.buildEngineConfig(core.validateAndMergeEigeneBegriffe(diskRules, ct50).mergedRules, { ipModus: "platzhalter" }), null);
+      assert(det.freigegeben === 1 && Array.isArray(det.freigegebenWerte) && det.freigegebenWerte.length === 1 && sf.has(det.freigegebenWerte[0]), "Sammelaktion: Prüfung nennt die freigegebenen Werte (für den Zähler)");
+    }
+  }
+
   console.log(`\n========================================`);
   console.log(`TESTERGEBNIS (Node.js): ${passed} bestanden, ${failed} fehlgeschlagen`);
   console.log(`========================================`);

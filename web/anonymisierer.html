@@ -426,6 +426,10 @@
     @media (max-width: 1100px) { .pruef-grid { grid-template-columns: 1fr; } }
     .fundkarten { max-height: 560px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
     .fundkarte { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #0f172a; }
+    .fundkarte.ausgewaehlt { outline: 2px solid var(--accent, #3b82f6); }
+    .fk-auswahl { margin-right: 6px; }
+    .sammel-leiste { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+    .sammel-zusammenfassung { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px; }
     .fundkarte.entschieden { border-color: #64748b; opacity: 0.85; }
     .fundkarte.aktiv { border-color: #fde047; }
     .fundkarte .fk-titel { font-weight: 700; }
@@ -616,6 +620,38 @@
                 <button type="button" id="btnNaechsterFund" disabled>Nächster offener Fund</button>
               </div>
               <div class="small-muted" style="margin:6px 0 8px;">Für jede Fundgruppe entscheiden: <strong>Alle Vorkommen ersetzen</strong> (Wert wird durch einen Platzhalter bzw. Geheimnisse durch <code>*****</code> ersetzt) oder <strong>Unverändert lassen</strong> (Wert bleibt sichtbar, nur für seine Kategorie). Verdachtsfunde (z. B. Build-ID) nach Prüfung freigeben oder als Geheimnis maskieren; sicher erkannte Geheimnisse nur maskieren. Ein Klick auf einen Fundort zeigt die Stelle in der Vorschau.</div>
+              <div id="sammelLeiste" class="sammel-leiste" hidden>
+                <div class="btn-row">
+                  <button type="button" class="btn-sm" id="btnSammelAlle">Alle auswählen</button>
+                  <button type="button" class="btn-sm" id="btnSammelKeine">Auswahl aufheben</button>
+                  <select id="sammelKategorie" aria-label="Fundgruppen einer Kategorie auswählen" style="max-width:320px;"></select>
+                  <button type="button" class="btn-sm" id="btnSammelKategorie">Kategorie auswählen</button>
+                  <select id="sammelDatei" aria-label="Fundgruppen einer Datei auswählen" style="max-width:220px;"></select>
+                  <button type="button" class="btn-sm" id="btnSammelDatei">Datei auswählen</button>
+                  <span id="sammelAnzahl" class="small-muted" role="status" aria-live="polite">0 ausgewählt</span>
+                </div>
+                <div class="btn-row">
+                  <button type="button" class="btn-sm" id="btnSammelFreigeben" data-sammel="unveraendert">Unverändert lassen (freigeben)</button>
+                  <button type="button" class="btn-sm" id="btnSammelErsetzen" data-sammel="ersetzen">Ersetzen</button>
+                  <button type="button" class="btn-sm" id="btnSammelMaskieren" data-sammel="maskieren">Als Geheimnis maskieren</button>
+                  <label><input type="radio" name="sammelUmfang" value="auftrag" checked> nur dieser Auftrag</label>
+                  <label><input type="radio" name="sammelUmfang" value="dauerhaft"> als dauerhafte Regel</label>
+                </div>
+                <label id="sammelBestaetigungZeile" class="fk-bestaetigung" hidden><input type="checkbox" id="sammelBestaetigung"> <span id="sammelBestaetigungText"></span></label>
+                <div id="sammelZusammenfassung" class="sammel-zusammenfassung" hidden>
+                  <div id="sammelZusammenfassungText"></div>
+                  <details><summary>Liste der Fundgruppen</summary><ul id="sammelZusammenfassungListe"></ul></details>
+                  <div class="btn-row">
+                    <button type="button" class="btn-sm primary" id="btnSammelBestaetigen">Bestätigen</button>
+                    <button type="button" class="btn-sm" id="btnSammelAbbrechen">Abbrechen</button>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button type="button" class="btn-sm" id="btnSammelRueckgaengig" disabled>Letzte Sammelaktion rückgängig</button>
+                  <span class="small-muted">Leertaste markiert die fokussierte Karte, Umschalt+Klick einen Bereich.</span>
+                </div>
+                <div id="sammelStatus" class="meldung" role="status" aria-live="polite"></div>
+              </div>
               <div id="fundgruppenListe" class="fundkarten"><div class="small-muted">Noch keine Funde.</div></div>
               <div class="btn-row" style="margin-top:8px;">
                 <button type="button" class="primary" id="btnApplyFindingDecisions" disabled>Entscheidungen anwenden und neu verarbeiten</button>
@@ -4708,15 +4744,18 @@
         alle.push({ datei: fileName, zeile: n, kategorie: "Rest-Tabellenzeile", fund: z, kontext: z });
       }
     }
-    if (!cfg.freigegeben || cfg.freigegeben.size === 0) return { funde: alle, freigegeben: 0 };
+    if (!cfg.freigegeben || cfg.freigegeben.size === 0) return { funde: alle, freigegeben: 0, freigegebenWerte: [] };
     const funde = [];
     let freigegeben = 0;
+    // freigegebenWerte: "Kategorie\u0000Wert" je freigegebenem Fund (Zähler "davon per Sammelaktion")
+    const freigegebenWerte = [];
     for (const f of alle) {
       const kat = freigabeKategorie(f.kategorie, f.fund, state);
-      if (kat && cfg.freigegeben.has(kat + "\u0000" + String(f.fund == null ? "" : f.fund).trim())) freigegeben++;
+      const schluessel = kat + "\u0000" + String(f.fund == null ? "" : f.fund).trim();
+      if (kat && cfg.freigegeben.has(schluessel)) { freigegeben++; freigegebenWerte.push(schluessel); }
       else funde.push(f);
     }
-    return { funde, freigegeben };
+    return { funde, freigegeben, freigegebenWerte };
   }
 
   function auditText(text, fileName, cfg, state) {
@@ -6745,6 +6784,88 @@
     return ergebnis;
   }
 
+  // --------------------------------------------------------------------------
+  // Sammelentscheidungen (Schritt 3): Plan für die ausgewählten Fundgruppen, ohne DOM.
+  // aktion: "unveraendert" (freigeben), "ersetzen" oder "maskieren". Sicher erkannte Geheimnisse werden bei der
+  // Freigabe übersprungen; Verdachtsfunde brauchen EINE gemeinsame Bestätigung. Entschiedene Gruppen bleiben, wie sie sind.
+  // --------------------------------------------------------------------------
+  function planeSammelaktion(gruppen, auswahl, aktion, entscheidungen, verdachtBestaetigt) {
+    const sel = auswahl instanceof Set ? auswahl : new Set(auswahl || []);
+    const plan = { aktion, anwenden: [], uebersprungen: [], verdacht: 0, fehltBestaetigung: false, zusammenfassung: [], uebersprungenGeheimnis: 0 };
+    for (const g of (gruppen || [])) {
+      if (!sel.has(g.schluessel)) continue;
+      if (entscheidungen && entscheidungen[g.schluessel]) { plan.uebersprungen.push({ gruppe: g, grund: "bereits entschieden" }); continue; }
+      let a = aktion;
+      let grund = "";
+      if (aktion === "unveraendert") {
+        if (g.sicheresGeheimnis) grund = "sicheres Geheimnis";
+        else if (g.aktionen.indexOf("unveraendert") < 0) grund = "nicht freigebbar";
+      } else if (aktion === "ersetzen") {
+        // Verdachtsfund: "Ersetzen" heißt maskieren (*****)
+        if (g.aktionen.indexOf("ersetzen") >= 0) a = "ersetzen";
+        else if (g.aktionen.indexOf("maskieren") >= 0) a = "maskieren";
+        else grund = "nicht ersetzbar";
+      } else if (aktion === "maskieren") {
+        if (!g.kannErsetzen) grund = "nicht ersetzbar";
+      } else {
+        grund = "unbekannte Aktion";
+      }
+      if (grund) { plan.uebersprungen.push({ gruppe: g, grund }); continue; }
+      if (a === "unveraendert" && g.verdacht) plan.verdacht++;
+      plan.anwenden.push({ gruppe: g, aktion: a });
+    }
+    plan.fehltBestaetigung = plan.verdacht > 0 && !verdachtBestaetigt;
+    plan.uebersprungenGeheimnis = plan.uebersprungen.filter(u => u.grund === "sicheres Geheimnis").length;
+    const zs = new Map();
+    for (const p of plan.anwenden) {
+      const k = p.gruppe.text + "\u0000" + p.aktion;
+      if (!zs.has(k)) zs.set(k, { kategorie: p.gruppe.text, aktion: p.aktion, anzahl: 0, werte: [] });
+      const e = zs.get(k);
+      e.anzahl++;
+      e.werte.push(p.gruppe.fund);
+    }
+    plan.zusammenfassung = Array.from(zs.values());
+    return plan;
+  }
+
+  // Entscheidungen eines bestätigten Plans (je Gruppe ein Eintrag wie bei der Einzelentscheidung, mit Kennung der Sammelaktion)
+  function sammelEintraegeErzeugen(plan, umfang, sammelId) {
+    if (!plan || plan.fehltBestaetigung) throw new Error("Bestätigung für die ausgewählten Verdachtsfunde fehlt.");
+    return plan.anwenden.map(p => ({
+      schluessel: p.gruppe.schluessel, aktion: p.aktion, umfang: umfang === "dauerhaft" ? "dauerhaft" : "auftrag",
+      text: p.gruppe.text, werte: p.gruppe.werte.slice(), eintraege: entscheidungsEintraege(p.gruppe, p.aktion),
+      gruppe: { geheimnis: p.gruppe.geheimnis }, sammel: sammelId
+    }));
+  }
+
+  // Freigaben (Kategorie\u0000Wert) aus Sammelentscheidungen
+  function sammelFreigabeSchluessel(eintraege) {
+    const set = new Set();
+    for (const e of (eintraege || [])) {
+      if (!e || !e.sammel || !e.eintraege) continue;
+      for (const f of e.eintraege.freigegeben) set.add(f.kategorie + "\u0000" + String(f.wert).trim());
+    }
+    return set;
+  }
+
+  function sammelKategorien(gruppen) {
+    const m = new Map();
+    for (const g of (gruppen || [])) m.set(g.text, (m.get(g.text) || 0) + 1);
+    return Array.from(m.entries()).map(([text, anzahl]) => ({ text, anzahl }));
+  }
+  function auswahlNachKategorie(gruppen, text) {
+    return (gruppen || []).filter(g => g.text === text).map(g => g.schluessel);
+  }
+  function auswahlNachDatei(gruppen, datei) {
+    return (gruppen || []).filter(g => g.dateien.indexOf(datei) >= 0).map(g => g.schluessel);
+  }
+  // Umschalt+Klick: alle Gruppen zwischen zwei Positionen (beide eingeschlossen, Richtung egal)
+  function auswahlBereich(gruppen, von, bis) {
+    const a = Math.max(0, Math.min(von, bis));
+    const b = Math.min((gruppen || []).length - 1, Math.max(von, bis));
+    return (gruppen || []).slice(a, b + 1).map(g => g.schluessel);
+  }
+
   // Einträge in eigene Begriffe übernehmen (ohne Duplikate); liefert neue eigene Begriffe
   function fuegeEintraegeHinzu(customTerms, eintraege) {
     const ct = cloneCustomTerms(customTerms || {});
@@ -6796,7 +6917,8 @@
     const s = z || {};
     const lauf = s.lauf || null;
     const nv = lauf ? (lauf.nichtVerarbeitet || 0) : 0;
-    const frei = lauf && lauf.freigegeben > 0 ? ` (${lauf.freigegeben} bewusst freigegeben)` : "";
+    const frei = lauf && lauf.freigegeben > 0
+      ? ` (${lauf.freigegeben} bewusst freigegeben${lauf.freigegebenSammel > 0 ? `, davon per Sammelaktion: ${lauf.freigegebenSammel}` : ""})` : "";
     if (s.laeuft) {
       const f = s.fortschritt || {};
       return { code: "LAEUFT", ton: "info", text: f.gesamt ? `Verarbeitung läuft (Datei ${f.aktuell} von ${f.gesamt})` : "Verarbeitung läuft", gesperrt: true, grund: "Die Verarbeitung läuft noch.", aktion: "Bitte warten." };
@@ -6972,6 +7094,11 @@
     }
     let findingGroups = [];          // Fundgruppen des letzten Laufs (bildeFundgruppen)
     let bestaetigteGruppen = new Set(); // Verdachtsfunde mit Häkchen "Ich habe geprüft: kein Geheimnis" (bis zum nächsten Lauf)
+    let auswahl = new Set();         // ausgewählte Fundgruppen für Sammelaktionen
+    let letzterAuswahlIndex = -1;    // für Umschalt+Klick
+    let sammelOffen = null;          // { plan, umfang } bis "Bestätigen"
+    let letzteSammelaktion = null;   // { id, eintraege } für "Rückgängig"
+    let sammelZaehler = 0;
     let findingDecisions = {};       // schluessel -> { aktion: "ersetzen" | "unveraendert", umfang: "auftrag" | "dauerhaft", eintraege }
     let auftragsEntscheidungen = []; // Entscheidungen "nur für diesen Auftrag": [{ schluessel, aktion, text, werte, eintraege }]
     let dauerhafteEntscheidungen = []; // zum Rückgängigmachen dauerhafter Entscheidungen
@@ -8177,11 +8304,15 @@
         }
         // Prüfung mit allen im Lauf erkannten Werten
         let bewusstFreigegeben = 0;
+        // Freigaben aus Sammelaktionen ("davon per Sammelaktion")
+        let freigegebenSammel = 0;
+        const sammelFrei = sammelFreigabeSchluessel(auftragsEntscheidungen.concat(dauerhafteEntscheidungen));
         for (const res of processedResults) {
           const detail = auditTextDetail(res.anonText, res.path, cfg, runState, res.unsichereZeilen);
           res.findings = detail.funde;
           res.freigegeben = detail.freigegeben;
           bewusstFreigegeben += detail.freigegeben;
+          freigegebenSammel += (detail.freigegebenWerte || []).filter(k => sammelFrei.has(k)).length;
           for (const f of res.findings) allFindings.push(f);
         }
         const nichtVerarbeitet = loadedInputFiles.filter(f => f.status !== "verarbeitet").length;
@@ -8202,12 +8333,13 @@
 
         $("skippedInfo").textContent = `Verarbeitet: ${processedResults.length} | Nicht verarbeitet: ${nichtVerarbeitet}` +
           (skippedBinaryFiles.length > 0 ? ` (Binärdateien: ${skippedBinaryFiles.join(", ")})` : "") +
-          ` | Bewusst freigegeben: ${bewusstFreigegeben} | Dauer: ${elapsedSec} s`;
+          ` | Bewusst freigegeben: ${bewusstFreigegeben}${freigegebenSammel > 0 ? ` (davon per Sammelaktion: ${freigegebenSammel})` : ""} | Dauer: ${elapsedSec} s`;
 
         const pfadKollisionen = findPathCollisions(processedResults.map(r => r.path));
         findingGroups = bildeFundgruppen(allFindings, runState);
         findingDecisions = {};
         bestaetigteGruppen = new Set();
+        auswahl = new Set(); letzterAuswahlIndex = -1; sammelOffen = null; letzteSammelaktion = null;
         fundZeiger = -1;
 
         const banner = $("auditBanner");
@@ -8284,7 +8416,8 @@
           kategorienGesamt,
           pruefergebnis: allFindings.length === 0 ? "KEINE_RESTFUNDE" : "RESTFUNDE_VORHANDEN",
           pruefTrefferAnzahl: allFindings.length,
-          bewusstFreigegeben
+          bewusstFreigegeben,
+          bewusstFreigegebenSammelaktion: freigegebenSammel
         };
         const ipHinweisEl = $("ipLaufHinweis");
         if (cfg.ipModus === "schluessel") {
@@ -8303,7 +8436,7 @@
         }
         releaseGuard.finishRun(laufStand, { findings: pfadKollisionen.length > 0 ? [{ kategorie: "Ausgabepfad-Kollision" }] : allFindings, isProbe, resultCount: processedResults.length });
         releaseAllowed = releaseGuard.isAllowed();
-        laufErgebnis = { isProbe, freigegeben: bewusstFreigegeben, nichtVerarbeitet, fehler };
+        laufErgebnis = { isProbe, freigegeben: bewusstFreigegeben, freigegebenSammel, nichtVerarbeitet, fehler };
         ergebnisVeraltet = false;
         laeuft = false;
         renderFindingGroupsUI();
@@ -8349,6 +8482,7 @@
       findingGroups = [];
       findingDecisions = {};
       bestaetigteGruppen = new Set();
+      auswahl = new Set(); letzterAuswahlIndex = -1; sammelOffen = null; letzteSammelaktion = null;
       auftragsEntscheidungen = [];
       unsavedTableChanges = false;
       lastReportObj = null;
@@ -8492,10 +8626,34 @@
         card.dataset.index = String(i);
         card.setAttribute("role", "group");
         card.setAttribute("aria-label", g.text);
+        card.tabIndex = 0;
+        if (auswahl.has(g.schluessel)) card.classList.add("ausgewaehlt");
 
         const titel = document.createElement("div");
         titel.className = "fk-titel";
-        titel.textContent = g.text;
+        // Auswahl für Sammelaktionen; Umschalt+Klick markiert einen Bereich
+        const wahl = document.createElement("input");
+        wahl.type = "checkbox";
+        wahl.className = "fk-auswahl";
+        wahl.checked = auswahl.has(g.schluessel);
+        wahl.setAttribute("aria-label", "Fundgruppe für Sammelaktion auswählen: " + g.text);
+        wahl.addEventListener("click", (ev) => {
+          if (ev.shiftKey && letzterAuswahlIndex >= 0) {
+            for (const k of auswahlBereich(findingGroups, letzterAuswahlIndex, i)) auswahl.add(k);
+          } else if (wahl.checked) auswahl.add(g.schluessel);
+          else auswahl.delete(g.schluessel);
+          letzterAuswahlIndex = i;
+          aktualisiereAuswahl();
+        });
+        card.addEventListener("keydown", (ev) => {
+          if (ev.target !== card || (ev.key !== " " && ev.key !== "Spacebar")) return;
+          ev.preventDefault();
+          if (auswahl.has(g.schluessel)) auswahl.delete(g.schluessel); else auswahl.add(g.schluessel);
+          letzterAuswahlIndex = i;
+          aktualisiereAuswahl();
+        });
+        titel.appendChild(wahl);
+        titel.appendChild(document.createTextNode(g.text));
         const anzahl = document.createElement("div");
         anzahl.className = "fk-anzahl";
         anzahl.textContent = `${g.anzahl} Vorkommen in ${g.dateien.length} Datei${g.dateien.length === 1 ? "" : "en"}`;
@@ -8609,7 +8767,155 @@
       btn.disabled = findingGroups.length === 0 || offen > 0;
       $("btnNaechsterFund").disabled = offen === 0;
       status.textContent = findingGroups.length === 0 ? "" : (offen > 0 ? `${offen} von ${findingGroups.length} Fundgruppe(n) noch offen` : "Alle Fundgruppen entschieden – jetzt neu verarbeiten");
+      renderSammelLeiste();
     }
+
+    // ------------------------------------------------------------------
+    // Sammelentscheidungen: Auswahl, Plan (planeSammelaktion), Zusammenfassung, Bestätigen, Rückgängig
+    // ------------------------------------------------------------------
+    function renderSammelLeiste() {
+      const leiste = $("sammelLeiste");
+      if (!leiste) return;
+      leiste.hidden = findingGroups.length === 0;
+      for (const k of Array.from(auswahl)) if (!findingGroups.some(g => g.schluessel === k)) auswahl.delete(k);
+      const kat = $("sammelKategorie");
+      const katWert = kat.value;
+      kat.textContent = "";
+      for (const k of sammelKategorien(findingGroups)) {
+        const o = document.createElement("option");
+        o.value = k.text;
+        o.textContent = `alle „${k.text}“ (${k.anzahl})`;
+        kat.appendChild(o);
+      }
+      if (katWert) kat.value = katWert;
+      const dat = $("sammelDatei");
+      const datWert = dat.value;
+      dat.textContent = "";
+      const dateienListe = [];
+      for (const g of findingGroups) for (const d of g.dateien) if (dateienListe.indexOf(d) < 0) dateienListe.push(d);
+      for (const d of dateienListe) { const o = document.createElement("option"); o.value = d; o.textContent = d; dat.appendChild(o); }
+      if (datWert) dat.value = datWert;
+      $("btnSammelRueckgaengig").disabled = !letzteSammelaktion;
+      aktualisiereAuswahl(true);
+    }
+
+    function aktualisiereAuswahl(ohneKarten) {
+      if (!ohneKarten) {
+        document.querySelectorAll(".fundkarte").forEach(card => {
+          const an = auswahl.has(card.dataset.schluessel);
+          card.classList.toggle("ausgewaehlt", an);
+          const cb = card.querySelector("input.fk-auswahl");
+          if (cb) cb.checked = an;
+        });
+      }
+      const offenAusgewaehlt = findingGroups.filter(g => auswahl.has(g.schluessel) && !findingDecisions[g.schluessel]);
+      $("sammelAnzahl").textContent = `${auswahl.size} ausgewählt` + (offenAusgewaehlt.length !== auswahl.size ? ` (${offenAusgewaehlt.length} offen)` : "");
+      const verdacht = offenAusgewaehlt.filter(g => g.verdacht && g.kannUnveraendert).length;
+      $("sammelBestaetigungZeile").hidden = verdacht === 0;
+      $("sammelBestaetigungText").textContent = `Ich habe die ${verdacht} ausgewählten Verdachtsfunde geprüft: kein Geheimnis`;
+      if (verdacht === 0) $("sammelBestaetigung").checked = false;
+      if (sammelOffen) { sammelOffen = null; $("sammelZusammenfassung").hidden = true; }
+    }
+
+    function gewaehlterSammelUmfang() {
+      const r = document.querySelector('input[name="sammelUmfang"]:checked');
+      return r ? r.value : "auftrag";
+    }
+
+    function zeigeSammelPlan(aktion) {
+      const plan = planeSammelaktion(findingGroups, auswahl, aktion, findingDecisions, $("sammelBestaetigung").checked);
+      const box = $("sammelZusammenfassung");
+      if (plan.anwenden.length === 0) {
+        box.hidden = true;
+        zeigeMeldung("sammelStatus", auswahl.size === 0 ? "Keine Fundgruppe ausgewählt." : `Keine der ausgewählten Fundgruppen kann so entschieden werden${plan.uebersprungenGeheimnis ? ` (${plan.uebersprungenGeheimnis} übersprungen, weil sicheres Geheimnis)` : ""}.`);
+        return;
+      }
+      if (plan.fehltBestaetigung) {
+        box.hidden = true;
+        zeigeMeldung("sammelStatus", `Bitte zuerst bestätigen: „Ich habe die ${plan.verdacht} ausgewählten Verdachtsfunde geprüft: kein Geheimnis“.`);
+        return;
+      }
+      const umfang = gewaehlterSammelUmfang();
+      sammelOffen = { plan, umfang };
+      const teile = plan.zusammenfassung.map(z => `${z.anzahl} × ${z.kategorie}: ${AKTION_TEXTE[z.aktion] || z.aktion}`);
+      const ueb = plan.uebersprungen.length > 0 ? ` Übersprungen: ${plan.uebersprungen.length}${plan.uebersprungenGeheimnis ? ` (davon ${plan.uebersprungenGeheimnis}, weil sicheres Geheimnis)` : ""}.` : "";
+      $("sammelZusammenfassungText").textContent = `${plan.anwenden.length} Fundgruppe(n) ${umfang === "dauerhaft" ? "als dauerhafte Regel" : "nur für diesen Auftrag"} – ${teile.join("; ")}.${ueb} Erst nach „Bestätigen“ wirksam.`;
+      const liste = $("sammelZusammenfassungListe");
+      liste.textContent = "";
+      for (const p of plan.anwenden) {
+        const li = document.createElement("li");
+        li.textContent = `${p.gruppe.fund} – ${AKTION_TEXTE[p.aktion] || p.aktion}`;
+        liste.appendChild(li);
+      }
+      box.hidden = false;
+      zeigeMeldung("sammelStatus", "");
+    }
+
+    function wendeSammelPlanAn() {
+      if (!sammelOffen) return;
+      const { plan, umfang } = sammelOffen;
+      sammelOffen = null;
+      $("sammelZusammenfassung").hidden = true;
+      const id = "sammel-" + (++sammelZaehler);
+      const neu = sammelEintraegeErzeugen(plan, umfang, id);
+      for (const e of neu) findingDecisions[e.schluessel] = e;
+      if (umfang === "dauerhaft") {
+        let ct = readCustomTermsFromUI();
+        for (const e of neu) ct = fuegeEintraegeHinzu(ct, e.eintraege);
+        populateCustomTermsUI(ct, "entscheidung");
+        unsavedLocalTermsChanges = true;
+        dauerhafteEntscheidungen = dauerhafteEntscheidungen.concat(neu);
+      } else {
+        auftragsEntscheidungen = auftragsEntscheidungen.concat(neu);
+        markiereGeaendert("entscheidung");
+      }
+      letzteSammelaktion = { id, eintraege: neu };
+      for (const e of neu) auswahl.delete(e.schluessel);
+      $("sammelBestaetigung").checked = false;
+      renderFindingGroupsUI();
+      renderEntscheidungsListe();
+      aktualisiereEinstellungsZusammenfassung();
+      updateReleaseUI();
+      zeigeMeldung("sammelStatus", `${neu.length} Fundgruppe(n) entschieden` +
+        (plan.uebersprungenGeheimnis ? `, ${plan.uebersprungenGeheimnis} übersprungen, weil sicheres Geheimnis` : "") +
+        (plan.uebersprungen.length > plan.uebersprungenGeheimnis ? `, ${plan.uebersprungen.length - plan.uebersprungenGeheimnis} weitere übersprungen` : "") + ".", "ok");
+    }
+
+    function nimmSammelaktionZurueck() {
+      if (!letzteSammelaktion) return;
+      const { eintraege } = letzteSammelaktion;
+      letzteSammelaktion = null;
+      const aktiv = eintraege.filter(e => findingDecisions[e.schluessel] === e);
+      for (const e of aktiv) delete findingDecisions[e.schluessel];
+      const dauer = aktiv.filter(e => e.umfang === "dauerhaft");
+      if (dauer.length > 0) {
+        dauerhafteEntscheidungen = dauerhafteEntscheidungen.filter(e => dauer.indexOf(e) < 0);
+        let ct = readCustomTermsFromUI();
+        for (const e of dauer) ct = entferneEintraege(ct, e.eintraege);
+        populateCustomTermsUI(ct, "entscheidung");
+        unsavedLocalTermsChanges = true;
+      }
+      auftragsEntscheidungen = auftragsEntscheidungen.filter(e => aktiv.indexOf(e) < 0);
+      markiereGeaendert("entscheidung");
+      renderFindingGroupsUI();
+      renderEntscheidungsListe();
+      aktualisiereEinstellungsZusammenfassung();
+      updateReleaseUI();
+      zeigeMeldung("sammelStatus", `Sammelaktion rückgängig gemacht (${aktiv.length} Fundgruppe(n) wieder offen).`, "ok");
+    }
+
+    $("btnSammelAlle").addEventListener("click", () => { for (const g of findingGroups) auswahl.add(g.schluessel); aktualisiereAuswahl(); });
+    $("btnSammelKeine").addEventListener("click", () => { auswahl.clear(); letzterAuswahlIndex = -1; aktualisiereAuswahl(); });
+    $("btnSammelKategorie").addEventListener("click", () => { for (const k of auswahlNachKategorie(findingGroups, $("sammelKategorie").value)) auswahl.add(k); aktualisiereAuswahl(); });
+    $("btnSammelDatei").addEventListener("click", () => { for (const k of auswahlNachDatei(findingGroups, $("sammelDatei").value)) auswahl.add(k); aktualisiereAuswahl(); });
+    for (const id of ["btnSammelFreigeben", "btnSammelErsetzen", "btnSammelMaskieren"]) {
+      $(id).addEventListener("click", () => zeigeSammelPlan($(id).dataset.sammel));
+    }
+    $("sammelBestaetigung").addEventListener("change", () => { if (sammelOffen) { sammelOffen = null; $("sammelZusammenfassung").hidden = true; } });
+    document.querySelectorAll('input[name="sammelUmfang"]').forEach(r => r.addEventListener("change", () => { if (sammelOffen) { sammelOffen = null; $("sammelZusammenfassung").hidden = true; } }));
+    $("btnSammelBestaetigen").addEventListener("click", wendeSammelPlanAn);
+    $("btnSammelAbbrechen").addEventListener("click", () => { sammelOffen = null; $("sammelZusammenfassung").hidden = true; zeigeMeldung("sammelStatus", "Sammelaktion abgebrochen."); });
+    $("btnSammelRueckgaengig").addEventListener("click", nimmSammelaktionZurueck);
 
     $("btnNaechsterFund").addEventListener("click", () => {
       const n = findingGroups.length;
@@ -9058,6 +9364,13 @@
       fundKategorieText,
       istGeheimnisFund,
       bildeFundgruppen,
+      planeSammelaktion,
+      sammelEintraegeErzeugen,
+      sammelFreigabeSchluessel,
+      sammelKategorien,
+      auswahlNachKategorie,
+      auswahlNachDatei,
+      auswahlBereich,
       zaehlePlatzhalter,
       dateiAnzeigeName,
       erstesVorkommen,
